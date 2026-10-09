@@ -1,0 +1,25 @@
+
+firebase-service-account.json
+
+*.service-account.json
+
+# Local secrets
+.env.local
+.env*.local
+firebase-service-account.json
+*.service-account.json
+
+# Next.js
+node_modules/
+.next/
+out/
+.vercel/
+
+# Environment secrets
+.env
+.env.local
+.env.*.local
+
+# Firebase/Admin credentials
+firebase-service-account.json
+*.service-account.json

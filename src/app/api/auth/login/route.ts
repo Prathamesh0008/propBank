@@ -1,0 +1,11 @@
+import { handle, OPTIONS, unsupported } from '@/lib/server/http';
+import { login } from '@/lib/server/services/migration-remainder';
+export { OPTIONS };
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const GET = unsupported;
+export const POST = handle(async (request: Request) => login(request), 'Failed to generate token', true);
+export const PUT = unsupported;
+export const PATCH = unsupported;
+export const DELETE = unsupported;
+export const HEAD = unsupported;

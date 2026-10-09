@@ -1,0 +1,11 @@
+./admin_notification.go
+./document.go
+./inspection_report.go
+./property.go
+./review.go
+./service.go
+./site_settings.go
+./task.go
+./tenant.go
+./user.go
+./visit.go

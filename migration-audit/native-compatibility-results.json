@@ -1,0 +1,383 @@
+{
+  "results": [
+    {
+      "method": "GET",
+      "endpoint": "/api/upload/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/upload/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "PUT",
+      "endpoint": "/api/upload/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "PATCH",
+      "endpoint": "/api/upload/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "DELETE",
+      "endpoint": "/api/upload/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "HEAD",
+      "endpoint": "/api/upload/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "OPTIONS",
+      "endpoint": "/api/upload/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/upload/image/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/upload/image/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "PUT",
+      "endpoint": "/api/upload/image/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "PATCH",
+      "endpoint": "/api/upload/image/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "DELETE",
+      "endpoint": "/api/upload/image/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "HEAD",
+      "endpoint": "/api/upload/image/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "OPTIONS",
+      "endpoint": "/api/upload/image/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/upload/document/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/upload/document/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "PUT",
+      "endpoint": "/api/upload/document/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "PATCH",
+      "endpoint": "/api/upload/document/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "DELETE",
+      "endpoint": "/api/upload/document/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "HEAD",
+      "endpoint": "/api/upload/document/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "OPTIONS",
+      "endpoint": "/api/upload/document/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/upload/property-images/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/upload/property-images/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "PUT",
+      "endpoint": "/api/upload/property-images/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "PATCH",
+      "endpoint": "/api/upload/property-images/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "DELETE",
+      "endpoint": "/api/upload/property-images/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "HEAD",
+      "endpoint": "/api/upload/property-images/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "OPTIONS",
+      "endpoint": "/api/upload/property-images/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/upload/service-request-image/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/upload/service-request-image/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "PUT",
+      "endpoint": "/api/upload/service-request-image/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "PATCH",
+      "endpoint": "/api/upload/service-request-image/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "DELETE",
+      "endpoint": "/api/upload/service-request-image/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "HEAD",
+      "endpoint": "/api/upload/service-request-image/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "OPTIONS",
+      "endpoint": "/api/upload/service-request-image/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/agreements/renew/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/agreements/renew/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "PUT",
+      "endpoint": "/api/agreements/renew/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "PATCH",
+      "endpoint": "/api/agreements/renew/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "DELETE",
+      "endpoint": "/api/agreements/renew/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "HEAD",
+      "endpoint": "/api/agreements/renew/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "OPTIONS",
+      "endpoint": "/api/agreements/renew/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/agreements/terminate/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/agreements/terminate/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "PUT",
+      "endpoint": "/api/agreements/terminate/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "PATCH",
+      "endpoint": "/api/agreements/terminate/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "DELETE",
+      "endpoint": "/api/agreements/terminate/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "HEAD",
+      "endpoint": "/api/agreements/terminate/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "OPTIONS",
+      "endpoint": "/api/agreements/terminate/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/agreements/request-renewal/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/agreements/request-renewal/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "PUT",
+      "endpoint": "/api/agreements/request-renewal/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "PATCH",
+      "endpoint": "/api/agreements/request-renewal/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "DELETE",
+      "endpoint": "/api/agreements/request-renewal/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "HEAD",
+      "endpoint": "/api/agreements/request-renewal/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "OPTIONS",
+      "endpoint": "/api/agreements/request-renewal/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/agreements/request-termination/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/agreements/request-termination/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "PUT",
+      "endpoint": "/api/agreements/request-termination/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "PATCH",
+      "endpoint": "/api/agreements/request-termination/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "DELETE",
+      "endpoint": "/api/agreements/request-termination/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "HEAD",
+      "endpoint": "/api/agreements/request-termination/",
+      "status": 200,
+      "reachable": false
+    },
+    {
+      "method": "OPTIONS",
+      "endpoint": "/api/agreements/request-termination/",
+      "status": 200,
+      "reachable": false
+    }
+  ],
+  "scope": "Actual built Next routing; all nine trailing-slash paths and seven methods; unmatched routes return 404; no Firebase or R2 calls."
+}

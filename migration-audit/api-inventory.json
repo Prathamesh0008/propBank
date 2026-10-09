@@ -1,0 +1,1343 @@
+{
+  "callSites": 97,
+  "sourceOperations": 52,
+  "activeOperations": 47,
+  "uniqueActiveMethodPaths": 42,
+  "rows": [
+    {
+      "method": "GET",
+      "endpoint": "/api/admin/notifications",
+      "caller": "features/admin/AdminPortal.tsx:136",
+      "reachable": true,
+      "callers": [
+        "features/admin/AdminPortal.tsx:136"
+      ],
+      "route": "app/api/admin/notifications/route.ts",
+      "service": "notifications",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/admin/notifications",
+      "caller": "features/landing-page/GeneralInquiryForm.tsx:103",
+      "reachable": true,
+      "callers": [
+        "features/landing-page/GeneralInquiryForm.tsx:103",
+        "features/landing-page/useLandingProperties.ts:315",
+        "features/properties/ManageProperty.tsx:528",
+        "features/search/SearchResults.tsx:201",
+        "features/services/AttachDocuments.tsx:252",
+        "features/services/LegalServices.tsx:168",
+        "features/services/OtherServices.tsx:214",
+        "features/services/RequestServices.tsx:211"
+      ],
+      "route": "app/api/admin/notifications/route.ts",
+      "service": "notifications",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/admin/notifications?propertyId=:propertyId",
+      "caller": "features/properties/PropertyDetails.tsx:333",
+      "reachable": true,
+      "callers": [
+        "features/properties/PropertyDetails.tsx:333"
+      ],
+      "route": "app/api/admin/notifications/route.ts",
+      "service": "notifications",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/admin/notifications?unread=true",
+      "caller": "features/admin/AdminPortal.tsx:114",
+      "reachable": true,
+      "callers": [
+        "features/admin/AdminPortal.tsx:114"
+      ],
+      "route": "app/api/admin/notifications/route.ts",
+      "service": "notifications",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "PUT",
+      "endpoint": "/api/admin/notifications/:id/read",
+      "caller": "features/admin/AdminPortal.tsx:279",
+      "reachable": true,
+      "callers": [
+        "features/admin/AdminPortal.tsx:279"
+      ],
+      "route": "app/api/admin/notifications/[id]/read/route.ts",
+      "service": "notifications",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "PUT",
+      "endpoint": "/api/admin/notifications/:id/remarks",
+      "caller": "features/admin/AdminPortal.tsx:326",
+      "reachable": true,
+      "callers": [
+        "features/admin/AdminPortal.tsx:326"
+      ],
+      "route": "app/api/admin/notifications/[id]/remarks/route.ts",
+      "service": "notifications",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/admin/site-settings",
+      "caller": "features/admin/AdminPortal.tsx:152",
+      "reachable": true,
+      "callers": [
+        "features/admin/AdminPortal.tsx:152"
+      ],
+      "route": "app/api/admin/site-settings/route.ts",
+      "service": "migration-remainder",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "PROXY-ONLY"
+    },
+    {
+      "method": "PUT",
+      "endpoint": "/api/admin/site-settings",
+      "caller": "features/admin/AdminPortal.tsx:193",
+      "reachable": true,
+      "callers": [
+        "features/admin/AdminPortal.tsx:193"
+      ],
+      "route": "app/api/admin/site-settings/route.ts",
+      "service": "migration-remainder",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "PROXY-ONLY"
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/agreements/renew",
+      "caller": "features/services/RenewAgreement.tsx:95",
+      "reachable": true,
+      "callers": [
+        "features/services/RenewAgreement.tsx:95"
+      ],
+      "route": "app/api/agreements/renew/route.ts",
+      "service": "agreements",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/agreements/request-renewal",
+      "caller": "features/services/RenewAgreement.tsx:95",
+      "reachable": true,
+      "callers": [
+        "features/services/RenewAgreement.tsx:95"
+      ],
+      "route": "app/api/agreements/request-renewal/route.ts",
+      "service": "agreements",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/agreements/request-termination",
+      "caller": "features/properties/PropertyDetails.tsx:408",
+      "reachable": true,
+      "callers": [
+        "features/properties/PropertyDetails.tsx:408",
+        "features/services/TerminateAgreement.tsx:194"
+      ],
+      "route": "app/api/agreements/request-termination/route.ts",
+      "service": "agreements",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/agreements/terminate",
+      "caller": "features/services/TerminateAgreement.tsx:194",
+      "reachable": true,
+      "callers": [
+        "features/services/TerminateAgreement.tsx:194"
+      ],
+      "route": "app/api/agreements/terminate/route.ts",
+      "service": "agreements",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/auth/login",
+      "caller": "features/auth/GoogleAuth.tsx:147",
+      "reachable": true,
+      "callers": [
+        "features/auth/GoogleAuth.tsx:147",
+        "features/auth/GoogleAuth.tsx:226"
+      ],
+      "route": "app/api/auth/login/route.ts",
+      "service": "migration-remainder",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "PROXY-ONLY"
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/auth/user",
+      "caller": "features/auth/GoogleAuth.tsx:215",
+      "reachable": true,
+      "callers": [
+        "features/auth/GoogleAuth.tsx:215"
+      ],
+      "route": "app/api/auth/user/route.ts",
+      "service": "users",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/documents",
+      "caller": "features/services/AttachDocuments.tsx:203",
+      "reachable": true,
+      "callers": [
+        "features/services/AttachDocuments.tsx:203"
+      ],
+      "route": "app/api/documents/route.ts",
+      "service": "documents",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "DELETE",
+      "endpoint": "/api/documents/:id",
+      "caller": "features/services/AttachDocuments.tsx:309",
+      "reachable": true,
+      "callers": [
+        "features/services/AttachDocuments.tsx:309"
+      ],
+      "route": "app/api/documents/[id]/route.ts",
+      "service": "documents",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/documents/property/:propertyId",
+      "caller": "features/admin/AdminPropertyDetailsDialog.tsx:100",
+      "reachable": true,
+      "callers": [
+        "features/admin/AdminPropertyDetailsDialog.tsx:100",
+        "features/services/AttachDocuments.tsx:98",
+        "features/services/AttachDocuments.tsx:278",
+        "features/services/AttachDocuments.tsx:321"
+      ],
+      "route": "app/api/documents/property/[propertyId]/route.ts",
+      "service": "documents",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "DELETE",
+      "endpoint": "/api/files/delete",
+      "caller": "services/uploadService.ts:169",
+      "reachable": true,
+      "callers": [
+        "services/uploadService.ts:169"
+      ],
+      "route": "app/api/files/[...path]/route.ts",
+      "service": "uploads",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/inspection-reports",
+      "caller": "features/services/InspectionReport.tsx:199",
+      "reachable": true,
+      "callers": [
+        "features/services/InspectionReport.tsx:199"
+      ],
+      "route": "app/api/inspection-reports/route.ts",
+      "service": "migration-remainder",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "PROXY-ONLY"
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/inspection-reports/property/:propertyId",
+      "caller": "features/admin/AdminPropertyDetailsDialog.tsx:85",
+      "reachable": true,
+      "callers": [
+        "features/admin/AdminPropertyDetailsDialog.tsx:85",
+        "features/services/InspectionReportList.tsx:26"
+      ],
+      "route": "app/api/inspection-reports/property/[propertyId]/route.ts",
+      "service": "migration-remainder",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "PROXY-ONLY"
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/inspection-reports/user/:userId",
+      "caller": "features/admin/AdminUserDetailsDialog.tsx:41",
+      "reachable": true,
+      "callers": [
+        "features/admin/AdminUserDetailsDialog.tsx:41"
+      ],
+      "route": "app/api/inspection-reports/user/[userId]/route.ts",
+      "service": "migration-remainder",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "PROXY-ONLY"
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/properties",
+      "caller": "services/propertyService.ts:128",
+      "reachable": true,
+      "callers": [
+        "services/propertyService.ts:128",
+        "services/propertyService.ts:148"
+      ],
+      "route": "app/api/properties/route.ts",
+      "service": "properties",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/properties",
+      "caller": "features/properties/AddPropertyForm.tsx:695",
+      "reachable": true,
+      "callers": [
+        "features/properties/AddPropertyForm.tsx:695"
+      ],
+      "route": "app/api/properties/route.ts",
+      "service": "properties",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/properties?all=true",
+      "caller": "hooks/useProperties.ts:81",
+      "reachable": true,
+      "callers": [
+        "hooks/useProperties.ts:81"
+      ],
+      "route": "app/api/properties/route.ts",
+      "service": "properties",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/properties?listingType=:listingType",
+      "caller": "services/propertyService.ts:178",
+      "reachable": true,
+      "callers": [
+        "services/propertyService.ts:178"
+      ],
+      "route": "app/api/properties/route.ts",
+      "service": "properties",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/properties?ownerUID=:uid",
+      "caller": "hooks/useProperties.ts:15",
+      "reachable": true,
+      "callers": [
+        "hooks/useProperties.ts:15",
+        "hooks/useProperties.ts:97",
+        "services/propertyService.ts:220"
+      ],
+      "route": "app/api/properties/route.ts",
+      "service": "properties",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/properties/:id",
+      "caller": "features/services/AddTenant.tsx:135",
+      "reachable": true,
+      "callers": [
+        "features/services/AddTenant.tsx:135",
+        "features/services/AddTenant.tsx:506",
+        "features/services/AttachDocuments.tsx:89",
+        "features/services/InspectionReport.tsx:69",
+        "features/services/LegalServices.tsx:72",
+        "features/services/OtherServices.tsx:99",
+        "features/services/RenewAgreement.tsx:51",
+        "features/services/RequestServices.tsx:135",
+        "features/services/Review.tsx:72",
+        "features/services/TerminateAgreement.tsx:108",
+        "hooks/useProperties.ts:114",
+        "services/propertyService.ts:203"
+      ],
+      "route": "app/api/properties/[id]/route.ts",
+      "service": "properties",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "PATCH",
+      "endpoint": "/api/properties/:id",
+      "caller": "features/properties/ManageProperty.tsx:514",
+      "reachable": true,
+      "callers": [
+        "features/properties/ManageProperty.tsx:514"
+      ],
+      "route": "app/api/properties/[id]/route.ts",
+      "service": "properties",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "PUT",
+      "endpoint": "/api/properties/:id",
+      "caller": "features/properties/ArchivedProperties.tsx:79",
+      "reachable": true,
+      "callers": [
+        "features/properties/ArchivedProperties.tsx:79",
+        "features/properties/EditProperty.tsx:521",
+        "features/properties/ManageProperty.tsx:352",
+        "features/properties/ManageProperty.tsx:393",
+        "features/properties/ManageProperty.tsx:455"
+      ],
+      "route": "app/api/properties/[id]/route.ts",
+      "service": "properties",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/properties/search?q=:q&listingType=:listingType&projectCondition=:condition",
+      "caller": "services/propertyService.ts:249",
+      "reachable": true,
+      "callers": [
+        "services/propertyService.ts:249"
+      ],
+      "route": "app/api/properties/search/route.ts",
+      "service": "properties",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/properties/tenant/?userEmail=:email",
+      "caller": "hooks/useProperties.ts:55",
+      "reachable": true,
+      "callers": [
+        "hooks/useProperties.ts:55"
+      ],
+      "route": "app/api/properties/tenant/route.ts",
+      "service": "properties",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/reviews",
+      "caller": "features/services/Review.tsx:129",
+      "reachable": true,
+      "callers": [
+        "features/services/Review.tsx:129"
+      ],
+      "route": "app/api/reviews/route.ts",
+      "service": "migration-remainder",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "PROXY-ONLY"
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/service-requests",
+      "caller": "services/serviceApi.ts:67",
+      "reachable": false,
+      "callers": [
+        "services/serviceApi.ts:67"
+      ],
+      "route": "app/api/service-requests/route.ts",
+      "service": "migration-remainder",
+      "status": "UNUSED",
+      "nativeImplemented": true,
+      "before": "UNUSED"
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/service-requests?admin=true",
+      "caller": "services/serviceApi.ts:98",
+      "reachable": false,
+      "callers": [
+        "services/serviceApi.ts:98"
+      ],
+      "route": "app/api/service-requests/route.ts",
+      "service": "migration-remainder",
+      "status": "UNUSED",
+      "nativeImplemented": true,
+      "before": "UNUSED"
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/service-requests?userUID=:uid",
+      "caller": "services/serviceApi.ts:86",
+      "reachable": false,
+      "callers": [
+        "services/serviceApi.ts:86"
+      ],
+      "route": "app/api/service-requests/route.ts",
+      "service": "migration-remainder",
+      "status": "UNUSED",
+      "nativeImplemented": true,
+      "before": "UNUSED"
+    },
+    {
+      "method": "PUT",
+      "endpoint": "/api/service-requests/:id",
+      "caller": "services/serviceApi.ts:114",
+      "reachable": false,
+      "callers": [
+        "services/serviceApi.ts:114"
+      ],
+      "route": "app/api/service-requests/[id]/route.ts",
+      "service": "migration-remainder",
+      "status": "UNUSED",
+      "nativeImplemented": true,
+      "before": "UNUSED"
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/services",
+      "caller": "services/serviceApi.ts:49",
+      "reachable": false,
+      "callers": [
+        "services/serviceApi.ts:49"
+      ],
+      "route": "app/api/services/route.ts",
+      "service": "migration-remainder",
+      "status": "UNUSED",
+      "nativeImplemented": true,
+      "before": "UNUSED"
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/tenants",
+      "caller": "features/services/AddTenant.tsx:543",
+      "reachable": true,
+      "callers": [
+        "features/services/AddTenant.tsx:543"
+      ],
+      "route": "app/api/tenants/route.ts",
+      "service": "tenants",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/upload",
+      "caller": "services/uploadService.ts:26",
+      "reachable": true,
+      "callers": [
+        "services/uploadService.ts:26"
+      ],
+      "route": "app/api/upload/route.ts",
+      "service": "uploads",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/upload/document",
+      "caller": "services/uploadService.ts:120",
+      "reachable": true,
+      "callers": [
+        "services/uploadService.ts:120"
+      ],
+      "route": "app/api/upload/document/route.ts",
+      "service": "uploads",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/upload/image",
+      "caller": "services/uploadService.ts:52",
+      "reachable": true,
+      "callers": [
+        "services/uploadService.ts:52"
+      ],
+      "route": "app/api/upload/image/route.ts",
+      "service": "uploads",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/upload/property-images",
+      "caller": "services/uploadService.ts:83",
+      "reachable": true,
+      "callers": [
+        "services/uploadService.ts:83"
+      ],
+      "route": "app/api/upload/property-images/route.ts",
+      "service": "uploads",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/upload/service-request-image",
+      "caller": "services/uploadService.ts:144",
+      "reachable": true,
+      "callers": [
+        "services/uploadService.ts:144"
+      ],
+      "route": "app/api/upload/service-request-image/route.ts",
+      "service": "uploads",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/users",
+      "caller": "hooks/useUsers.ts:9",
+      "reachable": true,
+      "callers": [
+        "hooks/useUsers.ts:9"
+      ],
+      "route": "app/api/users/route.ts",
+      "service": "users",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/users/:id",
+      "caller": "components/RouteGuard.tsx:22",
+      "reachable": true,
+      "callers": [
+        "components/RouteGuard.tsx:22",
+        "features/auth/GoogleAuth.tsx:167",
+        "features/landing-page/useLandingProperties.ts:164",
+        "features/landing-page/useLandingProperties.ts:263",
+        "features/landing-page/useLandingProperties.ts:279",
+        "features/navbar/SiteHeader.tsx:38",
+        "features/properties/PropertyDetails.tsx:307",
+        "features/services/LegalServices.tsx:52",
+        "features/services/LegalServices.tsx:129",
+        "features/services/OtherServices.tsx:79",
+        "features/services/OtherServices.tsx:156",
+        "features/services/RequestServices.tsx:48",
+        "features/services/RequestServices.tsx:148",
+        "hooks/useProperties.ts:41"
+      ],
+      "route": "app/api/users/[id]/route.ts",
+      "service": "users",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "PUT",
+      "endpoint": "/api/users/:id",
+      "caller": "features/auth/GoogleAuth.tsx:87",
+      "reachable": true,
+      "callers": [
+        "features/auth/GoogleAuth.tsx:87"
+      ],
+      "route": "app/api/users/[id]/route.ts",
+      "service": "users",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/users/search?phone=:phone",
+      "caller": "features/properties/AddPropertyForm.tsx:205",
+      "reachable": true,
+      "callers": [
+        "features/properties/AddPropertyForm.tsx:205",
+        "features/services/AddTenant.tsx:196"
+      ],
+      "route": "app/api/users/search/route.ts",
+      "service": "users",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "POST",
+      "endpoint": "/api/visits",
+      "caller": "services/visitService.ts:65",
+      "reachable": true,
+      "callers": [
+        "services/visitService.ts:65"
+      ],
+      "route": "app/api/visits/route.ts",
+      "service": "visits",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/visits?userId=:uid&status=:status",
+      "caller": "services/visitService.ts:94",
+      "reachable": true,
+      "callers": [
+        "services/visitService.ts:94"
+      ],
+      "route": "app/api/visits/route.ts",
+      "service": "visits",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "DELETE",
+      "endpoint": "/api/visits/:id",
+      "caller": "services/visitService.ts:146",
+      "reachable": true,
+      "callers": [
+        "services/visitService.ts:146"
+      ],
+      "route": "app/api/visits/[id]/route.ts",
+      "service": "visits",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/visits/:id",
+      "caller": "services/visitService.ts:111",
+      "reachable": true,
+      "callers": [
+        "services/visitService.ts:111"
+      ],
+      "route": "app/api/visits/[id]/route.ts",
+      "service": "visits",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    },
+    {
+      "method": "PUT",
+      "endpoint": "/api/visits/:id",
+      "caller": "services/visitService.ts:128",
+      "reachable": true,
+      "callers": [
+        "services/visitService.ts:128"
+      ],
+      "route": "app/api/visits/[id]/route.ts",
+      "service": "visits",
+      "status": "NATIVE",
+      "nativeImplemented": true,
+      "before": "NATIVE"
+    }
+  ],
+  "routes": [
+    {
+      "endpoint": "/api/admin/notifications",
+      "file": "app/api/admin/notifications/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(handle(async (request: Request) => listNotifications(request), 'Failed to update admin remarks', false))",
+        "POST": "nativeGroup2(handle(async (request: Request) => postNotification(request), 'Failed to create notification', false))",
+        "PUT": "nativeGroup2(unsupported)",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(unsupported)",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "notifications"
+    },
+    {
+      "endpoint": "/api/admin/notifications/[id]/read",
+      "file": "app/api/admin/notifications/[id]/read/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(unsupported)",
+        "POST": "nativeGroup2(unsupported)",
+        "PUT": "nativeGroup2(handle(async (request: Request, context: { params: Promise<{ id: string }> }) => { const { id } = await context.params; return readNotification(request, id); }, 'Failed to update notification status', false))",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(unsupported)",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "notifications"
+    },
+    {
+      "endpoint": "/api/admin/notifications/[id]/remarks",
+      "file": "app/api/admin/notifications/[id]/remarks/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(unsupported)",
+        "POST": "nativeGroup2(unsupported)",
+        "PUT": "nativeGroup2(handle(async (request: Request, context: { params: Promise<{ id: string }> }) => { const { id } = await context.params; return remarksNotification(request, id); }, 'Failed to update admin remarks', false))",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(unsupported)",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "notifications"
+    },
+    {
+      "endpoint": "/api/admin/notifications/[id]",
+      "file": "app/api/admin/notifications/[id]/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(unsupported)",
+        "POST": "nativeGroup2(unsupported)",
+        "PUT": "nativeGroup2(unsupported)",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(handle(async (request: Request, context: { params: Promise<{ id: string }> }) => { const { id } = await context.params; return deleteNotification(request, id); }, 'Failed to delete notification', false))",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "notifications"
+    },
+    {
+      "endpoint": "/api/admin/site-settings",
+      "file": "app/api/admin/site-settings/route.ts",
+      "methods": {
+        "OPTIONS": "corsOptions",
+        "GET": "handle(async (request: Request) => siteSettings(request), 'Failed to get site settings', false)",
+        "POST": "unsupported",
+        "PUT": "handle(async (request: Request) => siteSettings(request), 'Failed to update site settings', false)",
+        "PATCH": "handle(async (request: Request) => siteSettings(request), 'Failed to update site settings', false)",
+        "DELETE": "unsupported",
+        "HEAD": "unsupported"
+      },
+      "service": "migration-remainder"
+    },
+    {
+      "endpoint": "/api/agreements/renew",
+      "file": "app/api/agreements/renew/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(unsupported)",
+        "POST": "nativeGroup2(handle(async (request: Request) => ownerAgreement(request, true), 'Failed to update property', false))",
+        "PUT": "nativeGroup2(unsupported)",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(unsupported)",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "agreements"
+    },
+    {
+      "endpoint": "/api/agreements/request-renewal",
+      "file": "app/api/agreements/request-renewal/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(unsupported)",
+        "POST": "nativeGroup2(handle(async (request: Request) => tenantAgreement(request, true), 'Failed to update property', false))",
+        "PUT": "nativeGroup2(unsupported)",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(unsupported)",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "agreements"
+    },
+    {
+      "endpoint": "/api/agreements/request-termination",
+      "file": "app/api/agreements/request-termination/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(unsupported)",
+        "POST": "nativeGroup2(handle(async (request: Request) => tenantAgreement(request, false), 'Failed to update property', false))",
+        "PUT": "nativeGroup2(unsupported)",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(unsupported)",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "agreements"
+    },
+    {
+      "endpoint": "/api/agreements/terminate",
+      "file": "app/api/agreements/terminate/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(unsupported)",
+        "POST": "nativeGroup2(handle(async (request: Request) => ownerAgreement(request, false), 'Failed to update property', false))",
+        "PUT": "nativeGroup2(unsupported)",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(unsupported)",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "agreements"
+    },
+    {
+      "endpoint": "/api/auth/login",
+      "file": "app/api/auth/login/route.ts",
+      "methods": {
+        "OPTIONS": "corsOptions",
+        "GET": "unsupported",
+        "POST": "handle(async (request: Request) => login(request), 'Failed to generate token', true)",
+        "PUT": "unsupported",
+        "PATCH": "unsupported",
+        "DELETE": "unsupported",
+        "HEAD": "unsupported"
+      },
+      "service": "migration-remainder"
+    },
+    {
+      "endpoint": "/api/auth/user",
+      "file": "app/api/auth/user/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup1(corsOptions)",
+        "GET": "nativeGroup1(unsupported)",
+        "POST": "nativeGroup1(handle(async (request: Request) => createUser(request, true), 'Failed to save user', true))",
+        "PUT": "nativeGroup1(unsupported)",
+        "PATCH": "nativeGroup1(unsupported)",
+        "DELETE": "nativeGroup1(unsupported)",
+        "HEAD": "nativeGroup1(unsupported)"
+      },
+      "service": "users"
+    },
+    {
+      "endpoint": "/api/documents/property",
+      "file": "app/api/documents/property/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(handle(async (request: Request) => listDocuments(request, ''), 'Failed to delete document', true))",
+        "POST": "nativeGroup2(unsupported)",
+        "PUT": "nativeGroup2(unsupported)",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(unsupported)",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "documents"
+    },
+    {
+      "endpoint": "/api/documents/property/[propertyId]",
+      "file": "app/api/documents/property/[propertyId]/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(handle(async (request: Request, context: { params: Promise<{ propertyId: string }> }) => { const { propertyId } = await context.params; return listDocuments(request, propertyId); }, 'Failed to delete document', true))",
+        "POST": "nativeGroup2(unsupported)",
+        "PUT": "nativeGroup2(unsupported)",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(unsupported)",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "documents"
+    },
+    {
+      "endpoint": "/api/documents",
+      "file": "app/api/documents/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(unsupported)",
+        "POST": "nativeGroup2(handle(async (request: Request) => createDocument(request), 'Failed to create document', true))",
+        "PUT": "nativeGroup2(unsupported)",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(unsupported)",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "documents"
+    },
+    {
+      "endpoint": "/api/documents/[id]",
+      "file": "app/api/documents/[id]/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(handle(async (request: Request, context: { params: Promise<{ id: string }> }) => { const { id } = await context.params; return getDocument(request, id); }, 'Failed to delete document', true))",
+        "POST": "nativeGroup2(unsupported)",
+        "PUT": "nativeGroup2(unsupported)",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(handle(async (request: Request, context: { params: Promise<{ id: string }> }) => { const { id } = await context.params; return deleteDocument(request, id); }, 'Failed to delete document', true))",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "documents"
+    },
+    {
+      "endpoint": "/api/files",
+      "file": "app/api/files/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(unsupported)",
+        "POST": "nativeGroup2(unsupported)",
+        "PUT": "nativeGroup2(unsupported)",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(handle(async (request: Request) => deleteFile(request), 'Failed to update property', false))",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "uploads"
+    },
+    {
+      "endpoint": "/api/files/[...path]",
+      "file": "app/api/files/[...path]/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(unsupported)",
+        "POST": "nativeGroup2(unsupported)",
+        "PUT": "nativeGroup2(unsupported)",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(handle(async (request: Request) => deleteFile(request), 'Failed to update property', false))",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "uploads"
+    },
+    {
+      "endpoint": "/api/inspection-reports/property/[propertyId]",
+      "file": "app/api/inspection-reports/property/[propertyId]/route.ts",
+      "methods": {
+        "OPTIONS": "corsOptions",
+        "GET": "handle(async (request: Request, context: { params: Promise<{ propertyId: string }> }) => listReports(request, 'propertyId', (await context.params).propertyId), 'Failed to fetch inspection reports', false)",
+        "POST": "unsupported",
+        "PUT": "unsupported",
+        "PATCH": "unsupported",
+        "DELETE": "unsupported",
+        "HEAD": "unsupported"
+      },
+      "service": "migration-remainder"
+    },
+    {
+      "endpoint": "/api/inspection-reports",
+      "file": "app/api/inspection-reports/route.ts",
+      "methods": {
+        "OPTIONS": "corsOptions",
+        "GET": "unsupported",
+        "POST": "handle(async (request: Request) => createReportOrReview(request, 'report'), 'Failed to create inspection report', false)",
+        "PUT": "unsupported",
+        "PATCH": "unsupported",
+        "DELETE": "unsupported",
+        "HEAD": "unsupported"
+      },
+      "service": "migration-remainder"
+    },
+    {
+      "endpoint": "/api/inspection-reports/user/[userId]",
+      "file": "app/api/inspection-reports/user/[userId]/route.ts",
+      "methods": {
+        "OPTIONS": "corsOptions",
+        "GET": "handle(async (request: Request, context: { params: Promise<{ userId: string }> }) => listReports(request, 'userId', (await context.params).userId), 'Failed to fetch inspection reports', false)",
+        "POST": "unsupported",
+        "PUT": "unsupported",
+        "PATCH": "unsupported",
+        "DELETE": "unsupported",
+        "HEAD": "unsupported"
+      },
+      "service": "migration-remainder"
+    },
+    {
+      "endpoint": "/api/properties",
+      "file": "app/api/properties/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup1(corsOptions)",
+        "GET": "nativeGroup1(handle(async (request: Request) => listProperties(request), 'Failed to get properties', false))",
+        "POST": "nativeGroup1(handle(async (request: Request) => createProperty(request), 'Failed to create property', false))",
+        "PUT": "nativeGroup1(unsupported)",
+        "PATCH": "nativeGroup1(unsupported)",
+        "DELETE": "nativeGroup1(unsupported)",
+        "HEAD": "nativeGroup1(unsupported)"
+      },
+      "service": "properties"
+    },
+    {
+      "endpoint": "/api/properties/search",
+      "file": "app/api/properties/search/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup1(corsOptions)",
+        "GET": "nativeGroup1(handle(async (request: Request) => searchProperties(request), 'Failed to search properties', false))",
+        "POST": "nativeGroup1(unsupported)",
+        "PUT": "nativeGroup1(unsupported)",
+        "PATCH": "nativeGroup1(unsupported)",
+        "DELETE": "nativeGroup1(unsupported)",
+        "HEAD": "nativeGroup1(unsupported)"
+      },
+      "service": "properties"
+    },
+    {
+      "endpoint": "/api/properties/tenant",
+      "file": "app/api/properties/tenant/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup1(corsOptions)",
+        "GET": "nativeGroup1(handle(async (request: Request) => listTenantProperties(request), 'Failed to get properties', false))",
+        "POST": "nativeGroup1(unsupported)",
+        "PUT": "nativeGroup1(unsupported)",
+        "PATCH": "nativeGroup1(unsupported)",
+        "DELETE": "nativeGroup1(unsupported)",
+        "HEAD": "nativeGroup1(unsupported)"
+      },
+      "service": "properties"
+    },
+    {
+      "endpoint": "/api/properties/[id]",
+      "file": "app/api/properties/[id]/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup1(corsOptions)",
+        "GET": "nativeGroup1(handle(async (request: Request, context: { params: Promise<{ id: string }> }) => readProperty(request, (await context.params).id), 'Failed to get property', false))",
+        "POST": "nativeGroup1(unsupported)",
+        "PUT": "nativeGroup1(handle(async (request: Request, context: { params: Promise<{ id: string }> }) => updateProperty(request, (await context.params).id), 'Failed to update property', false))",
+        "PATCH": "nativeGroup1(handle(async (request: Request, context: { params: Promise<{ id: string }> }) => updateProperty(request, (await context.params).id), 'Failed to update property', false))",
+        "DELETE": "nativeGroup1(unsupported)",
+        "HEAD": "nativeGroup1(unsupported)"
+      },
+      "service": "properties"
+    },
+    {
+      "endpoint": "/api/reviews",
+      "file": "app/api/reviews/route.ts",
+      "methods": {
+        "OPTIONS": "corsOptions",
+        "GET": "unsupported",
+        "POST": "handle(async (request: Request) => createReportOrReview(request, 'review'), 'Failed to create review', false)",
+        "PUT": "unsupported",
+        "PATCH": "unsupported",
+        "DELETE": "unsupported",
+        "HEAD": "unsupported"
+      },
+      "service": "migration-remainder"
+    },
+    {
+      "endpoint": "/api/service-requests",
+      "file": "app/api/service-requests/route.ts",
+      "methods": {
+        "OPTIONS": "corsOptions",
+        "GET": "handle(async (request: Request) => listServiceRequests(request), 'Failed to fetch service requests', true)",
+        "POST": "handle(async (request: Request) => createServiceRequest(request), 'Failed to create service request', true)",
+        "PUT": "unsupported",
+        "PATCH": "unsupported",
+        "DELETE": "unsupported",
+        "HEAD": "unsupported"
+      },
+      "service": "migration-remainder"
+    },
+    {
+      "endpoint": "/api/service-requests/[id]",
+      "file": "app/api/service-requests/[id]/route.ts",
+      "methods": {
+        "OPTIONS": "corsOptions",
+        "GET": "unsupported",
+        "POST": "unsupported",
+        "PUT": "handle(async (request: Request, context: { params: Promise<{ id: string }> }) => updateServiceRequest(request, (await context.params).id), 'Failed to update service request', true)",
+        "PATCH": "unsupported",
+        "DELETE": "unsupported",
+        "HEAD": "unsupported"
+      },
+      "service": "migration-remainder"
+    },
+    {
+      "endpoint": "/api/services",
+      "file": "app/api/services/route.ts",
+      "methods": {
+        "OPTIONS": "corsOptions",
+        "GET": "handle(async (request: Request) => listServices(), 'Failed to fetch services', true)",
+        "POST": "unsupported",
+        "PUT": "unsupported",
+        "PATCH": "unsupported",
+        "DELETE": "unsupported",
+        "HEAD": "unsupported"
+      },
+      "service": "migration-remainder"
+    },
+    {
+      "endpoint": "/api/tenants",
+      "file": "app/api/tenants/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(handle(async (request: Request) => listTenants(request), 'Failed to retrieve tenants', false))",
+        "POST": "nativeGroup2(handle(async (request: Request) => createTenants(request), 'Failed to add tenants', false))",
+        "PUT": "nativeGroup2(unsupported)",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(unsupported)",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "tenants"
+    },
+    {
+      "endpoint": "/api/tenants/[id]",
+      "file": "app/api/tenants/[id]/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(handle(async (request: Request, context: { params: Promise<{ id: string }> }) => { const { id } = await context.params; return getTenant(request, id); }, 'Failed to retrieve tenant', false))",
+        "POST": "nativeGroup2(unsupported)",
+        "PUT": "nativeGroup2(handle(async (request: Request, context: { params: Promise<{ id: string }> }) => { const { id } = await context.params; return updateTenant(request, id); }, 'Failed to update tenant', false))",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(handle(async (request: Request, context: { params: Promise<{ id: string }> }) => { const { id } = await context.params; return deleteTenant(request, id); }, 'Failed to delete tenant', false))",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "tenants"
+    },
+    {
+      "endpoint": "/api/upload/document",
+      "file": "app/api/upload/document/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(unsupported)",
+        "POST": "nativeGroup2(handle(async (request: Request) => multipartUpload(request, true), 'Failed to update property', false))",
+        "PUT": "nativeGroup2(unsupported)",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(unsupported)",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "uploads"
+    },
+    {
+      "endpoint": "/api/upload/image",
+      "file": "app/api/upload/image/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(unsupported)",
+        "POST": "nativeGroup2(handle(async (request: Request) => base64Upload(request, 'image'), 'Failed to update property', false))",
+        "PUT": "nativeGroup2(unsupported)",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(unsupported)",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "uploads"
+    },
+    {
+      "endpoint": "/api/upload/property-images",
+      "file": "app/api/upload/property-images/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(unsupported)",
+        "POST": "nativeGroup2(handle(async (request: Request) => base64Upload(request, 'property-images'), 'Failed to update property', false))",
+        "PUT": "nativeGroup2(unsupported)",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(unsupported)",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "uploads"
+    },
+    {
+      "endpoint": "/api/upload",
+      "file": "app/api/upload/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(unsupported)",
+        "POST": "nativeGroup2(handle(async (request: Request) => multipartUpload(request), 'Failed to update property', false))",
+        "PUT": "nativeGroup2(unsupported)",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(unsupported)",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "uploads"
+    },
+    {
+      "endpoint": "/api/upload/service-request-image",
+      "file": "app/api/upload/service-request-image/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(unsupported)",
+        "POST": "nativeGroup2(handle(async (request: Request) => base64Upload(request, 'service-request-image'), 'Failed to update property', false))",
+        "PUT": "nativeGroup2(unsupported)",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(unsupported)",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "uploads"
+    },
+    {
+      "endpoint": "/api/users",
+      "file": "app/api/users/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup1(corsOptions)",
+        "GET": "nativeGroup1(handle(async (request: Request) => listUsers(request), 'Failed to fetch users', true))",
+        "POST": "nativeGroup1(handle(async (request: Request) => createUser(request), 'Failed to create/update user', true))",
+        "PUT": "nativeGroup1(unsupported)",
+        "PATCH": "nativeGroup1(unsupported)",
+        "DELETE": "nativeGroup1(unsupported)",
+        "HEAD": "nativeGroup1(unsupported)"
+      },
+      "service": "users"
+    },
+    {
+      "endpoint": "/api/users/search",
+      "file": "app/api/users/search/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup1(corsOptions)",
+        "GET": "nativeGroup1(handle(async (request: Request) => searchUser(request), 'Failed to search user', true))",
+        "POST": "nativeGroup1(unsupported)",
+        "PUT": "nativeGroup1(unsupported)",
+        "PATCH": "nativeGroup1(unsupported)",
+        "DELETE": "nativeGroup1(unsupported)",
+        "HEAD": "nativeGroup1(unsupported)"
+      },
+      "service": "users"
+    },
+    {
+      "endpoint": "/api/users/[id]",
+      "file": "app/api/users/[id]/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup1(corsOptions)",
+        "GET": "nativeGroup1(handle(async (request: Request, context: { params: Promise<{ id: string }> }) => readUser(request, (await context.params).id), 'Failed to fetch user', true))",
+        "POST": "nativeGroup1(unsupported)",
+        "PUT": "nativeGroup1(handle(async (request: Request, context: { params: Promise<{ id: string }> }) => updateUser(request, (await context.params).id), 'Failed to update user', true))",
+        "PATCH": "nativeGroup1(handle(async (request: Request, context: { params: Promise<{ id: string }> }) => updateUser(request, (await context.params).id), 'Failed to update user', true))",
+        "DELETE": "nativeGroup1(unsupported)",
+        "HEAD": "nativeGroup1(unsupported)"
+      },
+      "service": "users"
+    },
+    {
+      "endpoint": "/api/visits",
+      "file": "app/api/visits/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(handle(async (request: Request) => listVisits(request), 'Failed to retrieve visits', true))",
+        "POST": "nativeGroup2(handle(async (request: Request) => createVisit(request), 'Failed to create visit', true))",
+        "PUT": "nativeGroup2(unsupported)",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(unsupported)",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "visits"
+    },
+    {
+      "endpoint": "/api/visits/[id]",
+      "file": "app/api/visits/[id]/route.ts",
+      "methods": {
+        "OPTIONS": "nativeGroup2(corsOptions)",
+        "GET": "nativeGroup2(handle(async (request: Request, context: { params: Promise<{ id: string }> }) => { const { id } = await context.params; return getVisit(request, id); }, 'Failed to retrieve visit', true))",
+        "POST": "nativeGroup2(unsupported)",
+        "PUT": "nativeGroup2(handle(async (request: Request, context: { params: Promise<{ id: string }> }) => { const { id } = await context.params; return updateVisit(request, id); }, 'Failed to update visit', true))",
+        "PATCH": "nativeGroup2(unsupported)",
+        "DELETE": "nativeGroup2(handle(async (request: Request, context: { params: Promise<{ id: string }> }) => { const { id } = await context.params; return deleteVisit(request, id); }, 'Failed to delete visit', true))",
+        "HEAD": "nativeGroup2(unsupported)"
+      },
+      "service": "visits"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+import { handle, OPTIONS, unsupported } from '@/lib/server/http';
+import { listReports } from '@/lib/server/services/migration-remainder';
+export { OPTIONS };
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const GET = handle(async (request: Request, context: { params: Promise<{ propertyId: string }> }) => listReports(request, 'propertyId', (await context.params).propertyId), 'Failed to fetch inspection reports', false);
+export const POST = unsupported;
+export const PUT = unsupported;
+export const PATCH = unsupported;
+export const DELETE = unsupported;
+export const HEAD = unsupported;

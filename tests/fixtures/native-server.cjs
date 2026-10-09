@@ -1,0 +1,50 @@
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),crypto=require('node:crypto'),ts=require('typescript');
+class Timestamp{constructor(seconds,nanoseconds){this.seconds=seconds;this.nanoseconds=nanoseconds;}toDate(){return new Date(this.seconds*1000+this.nanoseconds/1e6);}}
+const clone=v=>v instanceof Timestamp?new Timestamp(v.seconds,v.nanoseconds):v instanceof Date?new Date(v):Buffer.isBuffer(v)?Buffer.from(v):Array.isArray(v)?v.map(clone):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).map(([key,value])=>[key,clone(value)])):v;
+function isolated(seed={}) {
+ const state=clone(seed),writes=[],reads=[],emails=[],queued=[],verified=[],objects=[];
+ let failure=false,r2Failure=false;
+ const env={RESEND_API_KEY:'isolated-mail-key',CLOUDFLARE_ACCOUNT_ID:'existing-account',CLOUDFLARE_R2_ACCESS_KEY_ID:'isolated-key',CLOUDFLARE_R2_SECRET_ACCESS_KEY:'isolated-secret',CLOUDFLARE_R2_BUCKET_NAME:'propbank',CLOUDFLARE_R2_PUBLIC_URL:'https://existing-r2.test'};
+ class Query {
+  constructor(collection,filters=[],limit=Infinity,order=null){this.collection=collection;this.filters=filters;this.count=limit;this.order=order;}
+  where(field,_op,value){return new Query(this.collection,[...this.filters,[field,value]],this.count,this.order);}
+  limit(count){return new Query(this.collection,this.filters,count,this.order);}
+  orderBy(field,direction){return new Query(this.collection,this.filters,this.count,[field,direction]);}
+  async get(){reads.push({collection:this.collection,filters:this.filters,order:this.order});if(failure)throw new Error('isolated database outage');let rows=Object.entries(state[this.collection]||{}).sort(([a],[b])=>a.localeCompare(b)).filter(([,data])=>this.filters.every(([field,value])=>data[field]===value));if(this.order){const [key,dir]=this.order;rows=rows.filter(([,data])=>data[key]!==undefined).sort(([,a],[,b])=>(+new Date(a[key])-+new Date(b[key]))*(dir==='desc'?-1:1));}return {docs:rows.slice(0,this.count).map(([id,data])=>({id,exists:true,data:()=>clone(data)}))};}
+  doc(id=crypto.randomUUID()) {
+   const collection=this.collection;
+   const write=async(data,create=false,merge=false)=>{if(failure)throw new Error('isolated database outage');state[collection]||={};if(create&&state[collection][id])throw new Error('already exists');state[collection][id]=merge?{...state[collection][id],...clone(data)}:clone(data);writes.push({kind:create?'create':merge?'merge':'set',collection,id,data:clone(data)});};
+   return {id,get:async()=>{reads.push({collection,id});if(failure)throw new Error('isolated database outage');return {id,exists:!!state[collection]?.[id],data:()=>clone(state[collection]?.[id])};},set:(data,options)=>write(data,false,options?.merge),create:data=>write(data,true),delete:async()=>{if(failure)throw new Error('delete failed');if(state[collection])delete state[collection][id];writes.push({kind:'delete',collection,id});},update:async(data)=>{
+    if(failure||!state[collection]?.[id])throw new Error('update failed');
+    for(const [key,value] of Object.entries(data)){const parts=key.split('.');let cursor=state[collection][id];for(const part of parts.slice(0,-1))cursor=cursor[part]||={};const field=parts.at(-1);if(value?.__arrayUnion){cursor[field]||=[];for(const entry of value.values)if(!cursor[field].some(v=>JSON.stringify(v)===JSON.stringify(entry)))cursor[field].push(clone(entry));}else cursor[field]=clone(value);}
+    writes.push({kind:'update',collection,id,data:clone(data)});
+   }};
+  }
+ }
+ const db={collection:name=>new Query(name)},cache=new Map(),root=path.resolve('src');
+ class PutObjectCommand{constructor(input){this.input=input;}}
+ class DeleteObjectCommand{constructor(input){this.input=input;}}
+ class S3Client{async send(command){objects.push({operation:command.constructor.name,...command.input,Body:command.input.Body?Buffer.from(command.input.Body):undefined});if(r2Failure)throw new Error('isolated R2 outage');}}
+ const stubs={
+  'server-only':{},'node:crypto':crypto,'@aws-sdk/client-s3':{PutObjectCommand,DeleteObjectCommand,S3Client},
+  'firebase-admin/firestore':{Timestamp,FieldValue:{arrayUnion:(...values)=>({__arrayUnion:true,values})}},
+  'next/server':{after:fn=>queued.push(fn)},
+  [path.join(root,'lib/server/firebase-admin.ts')]:{getFirebaseAdminAuth:()=>({verifyIdToken:async(token,revoked)=>{verified.push({token,revoked});if(token.startsWith('expired'))throw {code:'auth/id-token-expired'};return {uid:token,email:`${token}@test.invalid`};}})},
+  [path.join(root,'lib/server/firestore.ts')]:{getDatabase:()=>db,COLLECTIONS:{users:'users',properties:'properties',visits:'visits',tenants:'tenants',documents:'documents',services:'services',serviceRequests:'service_requests',reviews:'reviews',inspectionReports:'inspection_reports',siteSettings:'siteSettings',adminNotifications:'admin_notifications'},SITE_SETTINGS_DOCUMENT:'main_settings'},
+ };
+ function load(file) {
+  let resolved=file.startsWith('@/')?path.join(root,file.slice(2)):path.resolve(file);if(!resolved.endsWith('.ts'))resolved+='.ts';
+  if(stubs[resolved])return stubs[resolved];if(cache.has(resolved))return cache.get(resolved);
+  const exports={};cache.set(resolved,exports);
+  const compiled=ts.transpileModule(fs.readFileSync(resolved,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
+  const context=vm.createContext({exports,Date,Error,Buffer,URL,Headers,Request,Response,FormData,File,AbortSignal,process:{env},fetch:async(_url,init)=>{emails.push(JSON.parse(init.body));return new Response('{}',{status:200});},require:name=>stubs[name]||load(name.startsWith('@/')?name:path.resolve(path.dirname(resolved),name))});
+  vm.runInContext(compiled,context,{filename:resolved});return exports;
+ }
+ return {load,state,writes,reads,emails,verified,objects,env,outage:()=>{failure=true;},r2Outage:()=>{r2Failure=true;},flush:async()=>{for(const task of queued.splice(0))await task();}};
+}
+const defaults={createdAt:new Date('2024-01-02T03:04:05Z'),updatedAt:new Date('2024-01-02T03:04:05Z'),isActive:true};
+const users={owner:{...defaults,uid:'owner',email:'owner@test.invalid',name:'Owner',role:'individual',phoneNumber:'+91123'},tenant:{...defaults,uid:'tenant',email:'tenant@test.invalid',name:'Tenant',role:'individual',phoneNumber:'456'},other:{...defaults,uid:'other',email:'other@test.invalid',name:'Other',role:'individual'},admin:{...defaults,uid:'admin',email:'admin@test.invalid',name:'Admin',role:'admin'}};
+const properties={P:{...defaults,id:'P',title:'Existing Home',address:'Existing Address',location:'Existing Location',ownerUID:'owner',ownerName:'Owner',ownerEmail:'owner@test.invalid',ownerPhone:'123',rentalStatus:'rented',listingType:'rent',tenantEmail:'tenant@test.invalid',tenantName:'Tenant',mobileNumber:'456',tenants:[{id:'T',userUID:'tenant',firstName:'Tenant',lastName:'Name',email:'tenant@test.invalid',phone:'456',isActive:true}],historicalField:'keep'}};
+function request(url,uid,method='GET',body) {const multipart=body instanceof FormData;const serialized=multipart?body:body===undefined?undefined:typeof body==='string'?body:JSON.stringify(body);return new Request(`http://local/api${url}`,{method,headers:{...(uid?{Authorization:`Bearer ${uid}`} : {}),...(!multipart?{'Content-Type':'application/json',...(serialized!==undefined?{'Content-Length':String(Buffer.byteLength(serialized))}:{})}:{})},...(serialized!==undefined?{body:serialized}:{})});}
+const route=(app,name)=>app.load(`@/app/api/${name}/route`),context=(id,key='id')=>({params:Promise.resolve({[key]:id})});
+module.exports={isolated,users,properties,defaults,request,route,context};

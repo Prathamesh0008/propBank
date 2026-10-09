@@ -1,0 +1,11 @@
+import { handle, OPTIONS, unsupported } from '@/lib/server/http';
+import { createReportOrReview } from '@/lib/server/services/migration-remainder';
+export { OPTIONS };
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const GET = unsupported;
+export const POST = handle(async (request: Request) => createReportOrReview(request, 'report'), 'Failed to create inspection report', false);
+export const PUT = unsupported;
+export const PATCH = unsupported;
+export const DELETE = unsupported;
+export const HEAD = unsupported;
