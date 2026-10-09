@@ -23,3 +23,5 @@ out/
 # Firebase/Admin credentials
 firebase-service-account.json
 *.service-account.json
+
+*.tsbuildinfo
