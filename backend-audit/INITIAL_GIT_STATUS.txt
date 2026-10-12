@@ -1,0 +1,31 @@
+ M src/lib/server/firestore.ts
+ M src/lib/server/http.ts
+ M src/lib/server/services/migration-remainder.ts
+ M src/lib/server/services/properties.ts
+ M src/lib/server/services/property-effects.ts
+ M src/lib/server/services/users.ts
+ M tests/migration-remainder.test.cjs
+ M tests/native-group1.test.cjs
+ M tests/server-foundation.test.cjs
+?? .next-acceptance-test/
+?? migration-audit/
+?? playwright.acceptance.config.ts
+?? src/app/api/cron/
+?? src/app/api/negotiations/
+?? src/app/property/
+?? src/app/search/
+?? src/features/negotiations/
+?? src/lib/negotiation.ts
+?? src/lib/server/services/negotiations.ts
+?? src/lib/server/services/reminders.ts
+?? test-results/auth-1440.png
+?? test-results/auth-390.png
+?? test-results/auth-768.png
+?? test-results/landing-1440.png
+?? test-results/landing-390.png
+?? test-results/landing-768.png
+?? tests/acceptance.spec.ts
+?? tests/fixtures/acceptance-server.cjs
+?? tests/negotiations-reminders.test.cjs
+?? tests/security-workflows.test.cjs
+feature/property-management-improvements

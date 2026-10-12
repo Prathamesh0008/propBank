@@ -1,9 +1,9 @@
 import { handle, OPTIONS, unsupported } from '@/lib/server/http';
-import { createReportOrReview } from '@/lib/server/services/migration-remainder';
+import { createReportOrReview, listReviews } from '@/lib/server/services/migration-remainder';
 export { OPTIONS };
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const GET = unsupported;
+export const GET = handle(listReviews, 'Failed to fetch reviews', true);
 export const POST = handle(async (request: Request) => createReportOrReview(request, 'review'), 'Failed to create review', false);
 export const PUT = unsupported;
 export const PATCH = unsupported;

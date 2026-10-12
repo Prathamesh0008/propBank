@@ -1,6 +1,7 @@
 import 'server-only';
 import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getR2Client, getR2Configuration, getR2PublicUrl } from '../r2';
+import { randomUUID } from 'node:crypto';
 
 const extensions:Record<string,string>={'image/png':'.png','image/gif':'.gif','image/webp':'.webp','application/pdf':'.pdf'};
 function validateBase64(encoded:string) {
@@ -35,19 +36,21 @@ export function originalFilename(name:string,folder:string,seconds=Math.floor(Da
 }
 export async function putFile(bytes:Buffer,key:string,contentType:string) {
   const config=getR2Configuration();
-  try {await getR2Client().send(new PutObjectCommand({Bucket:config.bucketName,Key:key,Body:bytes,ContentType:contentType}));}
+  const uploader=/^uploads\/([^/]+)\//.exec(key)?.[1];
+  try {await getR2Client().send(new PutObjectCommand({Bucket:config.bucketName,Key:key,Body:bytes,ContentType:contentType,...(uploader?{Metadata:{uploadedBy:uploader}}:{})}));}
   catch {throw new Error('failed to upload to R2');}
   return getR2PublicUrl(key);
 }
 export async function uploadBase64(data:string,folder:string,identifier:string) {
   const parsed=parseBase64(data);
-  return putFile(parsed.bytes,`${folder}/${identifier}_${Math.floor(Date.now()/1000)}${parsed.extension}`,parsed.contentType);
+  return putFile(parsed.bytes,`${folder}/${identifier.replace(/[^a-zA-Z0-9_-]/g,'_')}_${randomUUID()}${parsed.extension}`,parsed.contentType);
 }
 export async function uploadFile(file:File,folder:string) {
   const bytes=Buffer.from(await file.arrayBuffer());
   // Validated multipart upload handlers require MIME; this fallback matches
   // Go's shared storage dependency for files lacking an explicit type.
-  return putFile(bytes,originalFilename(file.name,folder),file.type || 'application/octet-stream');
+  const name=file.name.replace(/[\\/]/g,'_');
+  return putFile(bytes,originalFilename(name,folder).replace(/_(\d+)(?=\.[^.]*$|$)/,`_${randomUUID()}`),file.type || 'application/octet-stream');
 }
 export function extractR2Key(fileURL:string) {
   const config=getR2Configuration();
@@ -57,7 +60,7 @@ export function extractR2Key(fileURL:string) {
     try {
       if(new URL(fileURL).origin!==new URL(prefix).origin)continue;
       const key=fileURL.slice(prefix.length);
-      if(key) return key;
+      if(key && !/[?#\\]/.test(key) && !key.split('/').some(part=>!part||['.','..'].includes(decodeURIComponent(part))||decodeURIComponent(part).includes('/')||decodeURIComponent(part).includes('\\'))) return key;
     }catch{/* Reject malformed/lookalike URLs before sending a DeleteObject. */}
   }
   throw new Error('invalid file URL');

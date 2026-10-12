@@ -1,5 +1,9 @@
 "use client";
+import {ProductDashboard} from '@/features/properties/PropertyHub';
 
+
+import NegotiationPanel from '@/features/negotiations/NegotiationPanel';
+import {ServiceRequestHistory} from '@/features/services/ServiceRequestWorkflow';
 import { apiFetch } from '@/lib/api-client';
 
 import { useState, useEffect } from "react";
@@ -28,12 +32,12 @@ const AdminPortal = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("service-requests");
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
-  const { data: propertiesData, isLoading: loadingProperties } = useAllProperties();
+  const { data: propertiesData, isLoading: loadingProperties,error:propertiesError } = useAllProperties();
   const allProperties = propertiesData || [];
-  
-  const { data: usersData, isLoading: loadingUsers } = useAllUsers();
+
+  const { data: usersData, isLoading: loadingUsers,refetch:refetchUsers } = useAllUsers();
   const agents = usersData || [];
-  
+
   const [loading, setLoading] = useState(true);
 
   // Site settings state
@@ -75,7 +79,7 @@ const AdminPortal = () => {
       if (activeTab === "service-requests") {
         await fetchNotifications();
       } else if (activeTab === "agents") {
-        await fetchAgents();
+        await refetchUsers();
       } else if (activeTab === "archive") {
         await fetchArchivedNotifications();
       } else if (activeTab === "settings") {
@@ -118,7 +122,7 @@ const AdminPortal = () => {
         // Double-check isRead is false as a safety measure
         const serviceRequests = Array.isArray(data)
           ? data.filter((n: AdminNotification) =>
-            (n.type === "document_upload" || n.type === "review" || n.type === "want_to_sell" || n.type === "want_to_sell_cancelled" || n.type === "property_enquiry" || n.type === "service_request" || n.type === "legal_service_request" || n.type === "other_service_request" || n.type === "inspection_report" || n.type === "agreement_renewal" || n.type === "agreement_termination" || n.type === "general_inquiry" || n.type === "property_added") && n.isRead === false
+            (n.type === "document_upload" || n.type === "review" || n.type === "want_to_sell" || n.type === "want_to_sell_cancelled" || n.type === "property_enquiry" || n.type === "service_request" || n.type === "legal_service_request" || n.type === "other_service_request" || n.type === "inspection_report" || n.type === "agreement_renewal" || n.type === "agreement_termination" || n.type === "general_inquiry" || n.type === "property_added" || n.type === "rent_due" || n.type === "agreement_expiry" || n.type === "visit_update" || n.type === "negotiation_update") && n.isRead === false
           )
           : [];
 
@@ -374,8 +378,9 @@ const AdminPortal = () => {
         </div>
       </div>
 
+      <ProductDashboard admin/>
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1">
           <TabsTrigger value="service-requests" className="flex items-center gap-2">
             <AlertCircle className="h-4 w-4" />
             <span className="hidden sm:inline">Active Service Requests</span>
@@ -399,12 +404,15 @@ const AdminPortal = () => {
             <span className="hidden sm:inline">Site Settings</span>
             <span className="sm:hidden">Settings</span>
           </TabsTrigger>
+          <TabsTrigger value="offers">Offers</TabsTrigger>
         </TabsList>
 
+        <TabsContent value="offers"><NegotiationPanel admin/></TabsContent>
         <TabsContent value="service-requests" className="mt-6">
+          <ServiceRequestHistory admin/>
           <AdminServiceRequestsTab
             loading={loading}
-            notifications={notifications}
+            notifications={notifications.filter(n=>!(n.type==="service_request" && n.relatedId))}
             handleMarkComplete={handleMarkComplete}
             handleViewPropertyDetails={handleViewPropertyDetails}
             loadingProperty={loadingProperty}
@@ -418,8 +426,9 @@ const AdminPortal = () => {
         </TabsContent>
 
         <TabsContent value="properties" className="mt-6">
+          {propertiesError&&<p role="alert" className="text-destructive mb-4">Could not load properties. Please refresh to retry.</p>}
           <AdminPropertiesTab
-            loading={loading}
+            loading={loading||loadingProperties}
             properties={allProperties}
             handleViewPropertyDetails={handleViewPropertyDetails}
             loadingProperty={loadingProperty}
@@ -475,7 +484,4 @@ const AdminPortal = () => {
 };
 
 export default AdminPortal;
-function fetchAgents() {
-  throw new Error("Function not implemented.");
-}
 

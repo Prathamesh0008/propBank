@@ -6,7 +6,7 @@ import { requirePropertyMember } from '../permissions';
 import { model, isRecord, stringValue, type RecordData } from './contracts';
 import { getProperty } from './properties';
 
-export async function readObject(request:Request,maxBytes?:number):Promise<RecordData> {
+export async function readObject(request:Request,maxBytes=20<<20):Promise<RecordData> {
   const reader=request.body?.getReader();
   const chunks:Uint8Array[]=[];
   let length=0;
@@ -50,7 +50,8 @@ export function knownFields(input:RecordData,fields:string[]):RecordData {
 export async function getRecord(collection:string,id:string,name:string):Promise<RecordData|null> {
   if(!id) return null;
   const doc=await getDatabase().collection(collection).doc(id).get();
-  return doc.exists?model(name,doc.data() || {}):null;
+  if(!doc.exists)return null;
+  const value=model(name,doc.data() || {});if('id' in value)value.id=doc.id;return value;
 }
 export async function getRecords(query:Query,name:string,fillID=false):Promise<RecordData[]> {
   const snapshot=await query.get();
@@ -95,8 +96,8 @@ export async function propertyMember(user:AuthenticatedUser,id:string) {
   if(!property) return null;
   // Reuse existing permissions, including Go's historical root tenant fields.
   const tenants=Array.isArray(property.tenants)?property.tenants:[];
-  const legacy={email:stringValue(property.tenantEmail),phone:stringValue(property.mobileNumber),isActive:property.rentalStatus==='rented'};
-  requirePropertyMember({...user,email:user.token.email||user.email},{ownerUID:stringValue(property.ownerUID),tenants:[...tenants,legacy] as Parameters<typeof requirePropertyMember>[1]['tenants']});
+  const legacy={email:stringValue(property.tenantEmail),isActive:property.rentalStatus==='rented'};
+  requirePropertyMember(user,{ownerUID:stringValue(property.ownerUID),tenants:(tenants.some(t=>isRecord(t)&&t.isActive===true)?tenants:[legacy]) as Parameters<typeof requirePropertyMember>[1]['tenants']});
   return property;
 }
 export const collections=COLLECTIONS;

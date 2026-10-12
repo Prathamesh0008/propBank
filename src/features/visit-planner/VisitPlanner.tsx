@@ -1,5 +1,6 @@
 "use client";
 
+import { useLocation } from '@/lib/navigation';
 import { useState, useEffect } from "react";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
@@ -18,6 +19,8 @@ import { TimePicker } from "@/ui/time-picker";
 
 
 const VisitPlanner = () => {
+  const location=useLocation();
+  const linkedPropertyId=new URLSearchParams(location.search).get("propertyId")||"";
   const [visits, setVisits] = useState<Visit[]>([]);
   const [isAddingVisit, setIsAddingVisit] = useState(false);
   const [activeTab, setActiveTab] = useState('active');
@@ -51,16 +54,7 @@ const VisitPlanner = () => {
   const loadVisits = async () => {
     try {
       setLoading(true);
-      const [activeVisits, completedVisits] = await Promise.all([
-        visitService.getVisitsByUser(undefined, 'active'),
-        visitService.getVisitsByUser(undefined, 'completed')
-      ]);
-      
-      const allVisits = [
-        ...activeVisits.map(v => ({ ...v, isCompleted: false })),
-        ...completedVisits.map(v => ({ ...v, isCompleted: true }))
-      ];
-      
+      const allVisits = await visitService.getVisitsByUser();
       setVisits(allVisits);
     } catch (error) {
       
@@ -107,6 +101,7 @@ const VisitPlanner = () => {
       
       const visitRequest: CreateVisitRequest = {
         title: formData.title,
+        ...(linkedPropertyId?{propertyId:linkedPropertyId}:{}),
         description: formData.description,
         visitDate: visitDateTime.toISOString(),
         reminderType: formData.reminderType,
@@ -181,16 +176,16 @@ const VisitPlanner = () => {
   const now = new Date();
   const activeVisits = visits.filter(visit => {
     const visitDate = new Date(visit.visitDate);
-    return !visit.isCompleted && visitDate > now;
+    return !visit.isCompleted && (!visit.status || visit.status === "scheduled");
   });
   
   const completedVisits = visits.filter(visit => {
     const visitDate = new Date(visit.visitDate);
-    return visit.isCompleted || visitDate <= now;
+    return visit.status!=="cancelled" && (visit.isCompleted || visit.status==="completed");
   });
 
   const getCurrentVisits = () => {
-    return activeTab === 'active' ? activeVisits : completedVisits;
+    return activeTab === 'active' ? activeVisits : activeTab==='cancelled'?visits.filter(v=>v.status==='cancelled'):completedVisits;
   };
 
   return (
@@ -215,7 +210,7 @@ const VisitPlanner = () => {
         <div className="grid lg:grid-cols-3 gap-4 sm:gap-8">
           <div className="lg:col-span-2 space-y-4 sm:space-y-6">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid grid-cols-2 w-full">
+              <TabsList className="grid grid-cols-3 w-full">
                 <TabsTrigger value="active" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm">
                   <Clock className="h-3 w-3 sm:h-4 sm:w-4" />
                   <span className="hidden sm:inline">Active Visit Planning</span>
@@ -228,6 +223,7 @@ const VisitPlanner = () => {
                   <span className="sm:hidden">Visited</span>
                   ({completedVisits.length})
                 </TabsTrigger>
+                <TabsTrigger value="cancelled">Cancelled ({visits.filter(v=>v.status==="cancelled").length})</TabsTrigger>
               </TabsList>
             </Tabs>
 
@@ -289,7 +285,7 @@ const VisitPlanner = () => {
                                     <Clock className="h-3 w-3 sm:h-4 sm:w-4" />
                                   )}
                                   <span className="text-xs sm:text-sm font-medium">
-                                    {activeTab === 'visited' ? 'Visited' : 'Scheduled'}
+                                    {activeTab === 'visited' ? 'Completed' : activeTab==='cancelled'?'Cancelled':'Scheduled'}
                                   </span>
                                 </div>
                               </div>

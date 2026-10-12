@@ -1,0 +1,11 @@
+import {handle,OPTIONS as corsOptions,unsupported} from '@/lib/server/http';
+import {propertyHub,updatePropertyHub} from '@/lib/server/services/property-hub';
+export const runtime='nodejs';
+export const dynamic='force-dynamic';
+export const GET=handle(propertyHub,'Could not load property hub',true);
+export const PATCH=handle(updatePropertyHub,'Could not update property tracking',true);
+export const OPTIONS=corsOptions;
+export const POST=unsupported;
+export const PUT=unsupported;
+export const DELETE=unsupported;
+export const HEAD=unsupported;

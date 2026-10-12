@@ -82,6 +82,7 @@ const AddTenant = () => {
   const readOnly = searchParams.get('mode') === 'view';
   const { toast } = useToast();
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [propertyOwner,setPropertyOwner]=useState("");
   const [existingTenants, setExistingTenants] = useState<TenantData[]>([]);
   const [propertyTitle, setPropertyTitle] = useState<string>('');
   const [propertyRentSchedule, setPropertyRentSchedule] = useState<any[]>([]);
@@ -138,12 +139,13 @@ const AddTenant = () => {
         if (data.success) {
           const property = data.property;
           setPropertyTitle(property.title);
+          setPropertyOwner(property.ownerUID);
           if (property.rentSchedule) {
             setPropertyRentSchedule(property.rentSchedule);
           }
 
           if (property.tenants && property.tenants.length > 0) {
-            setExistingTenants(property.tenants.map((tenant: any) => ({
+            setExistingTenants(property.tenants.filter((tenant: any)=>tenant.isActive===true).map((tenant: any) => ({
               id: tenant.id,
               firstName: tenant.firstName,
               lastName: tenant.lastName,
@@ -265,6 +267,7 @@ const AddTenant = () => {
       if (tenant.id === tenantId) {
         const updated = { ...tenant, [field]: value };
 
+        if (field === 'email') {updated.userUID=undefined;updated.userInfo=null;}
         if (field === 'phone') {
           updated.userInfo = null;
           updated.userUID = undefined;
@@ -460,16 +463,6 @@ const AddTenant = () => {
       toast({
         title: "Error",
         description: "Please fill in all required fields (Name, Email, Phone) for all tenants",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    const tenantsWithSearchError = tenants.filter(tenant => tenant.searchError);
-    if (tenantsWithSearchError.length > 0) {
-      toast({
-        title: "User Not Found",
-        description: "Some tenants are not registered on the platform. Please ask them to sign up before adding them as tenants.",
         variant: "destructive"
       });
       return;
@@ -803,7 +796,7 @@ const AddTenant = () => {
           </div>
         )}
 
-        {existingTenants.length === 0 && !readOnly && (
+        {!readOnly && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>

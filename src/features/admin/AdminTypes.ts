@@ -17,6 +17,7 @@ export interface OwnerReviewPart {
 }
 
 export interface AdminNotification {
+  relatedId?:string;
   id: string;
   type: string;
   title: string;

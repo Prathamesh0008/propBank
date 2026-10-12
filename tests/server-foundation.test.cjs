@@ -25,6 +25,65 @@ function load(name, dependencies = {}, env = {}, globals = {}) {
 }
 
 
+test('HTTP errors preserve ApiError and AccessError statuses without leaking unexpected errors', async () => {
+  const auth=load('auth',{'./firebase-admin':{},'./firestore':{}});
+  const http=load('http',{'./auth':auth});
+  for(const error of [new http.ApiError(409,'Version conflict'),new http.ApiError(400,'Invalid request'),new auth.AccessError(401,'Token required'),new auth.AccessError(403,'Access denied')]) {
+    for(const json of [false,true]) {
+      const response=await http.handle(async()=>{throw error;},'Safe failure',json)();
+      assert.equal(response.status,error.status);
+      assert.deepEqual(await response.json(),{success:false,message:error.message});
+    }
+  }
+  const error=new Error('private SDK credential detail');
+  for(const json of [false,true]) {
+    const response=await http.handle(async()=>{throw error;},'Safe failure',json)();
+    assert.equal(response.status,500);
+    if(json)assert.deepEqual(await response.json(),{success:false,message:'Safe failure'});
+    else assert.equal(await response.text(),'Safe failure\n');
+  }
+});
+
+test('negotiations collection mapping is additive and has no startup database calls', () => {
+  let calls=0;
+  const firestore=load('firestore',{'./firebase-admin':{getFirebaseAdminFirestore:()=>{calls++;}}});
+  assert.deepEqual(JSON.parse(JSON.stringify(firestore.COLLECTIONS)),{
+    users:'users',properties:'properties',negotiations:'negotiations',tenants:'tenants',visits:'visits',services:'services',serviceRequests:'service_requests',documents:'documents',reviews:'reviews',inspectionReports:'inspection_reports',adminNotifications:'admin_notifications',siteSettings:'siteSettings',
+  });
+  assert.equal(calls,0);
+});
+
+test('email helpers escape HTML and add optional provider idempotency without changing delivery payload', async () => {
+  const requests=[];
+  let ok=true;
+  const env={RESEND_API_KEY:'isolated-key',FROM_EMAIL:'sender@test.invalid'};
+  const effects=load('services/property-effects',{'node:crypto':{},'next/server':{},'../firestore':{},'./contracts':{},'./users':{},'./property-email-templates':{}},env,{
+    fetch:async(url,init)=>{requests.push({url,init});return {ok};},
+  });
+  assert.equal(effects.escapeHtml('&<>"\''),'&amp;&lt;&gt;&quot;&#39;');
+  assert.equal(effects.escapeHtml('<script>alert("x")</script>'), '&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;');
+  assert.equal(effects.escapeHtml('Hello, tenant!'),'Hello, tenant!');
+  const mail={to:'tenant@test.invalid',subject:'Existing subject',html:'<p>connectpropbank@gmail.com</p>'};
+  await effects.sendEmail(mail);
+  await effects.sendEmail(mail,'visit-P-generation');
+  assert.equal(requests.length,2);
+  for(const {url,init} of requests) {
+    assert.equal(url,'https://api.resend.com/emails');assert.equal(init.method,'POST');
+    assert.equal(init.headers.Authorization,'Bearer isolated-key');
+    assert.equal(init.headers['Content-Type'],'application/json');
+    assert.deepEqual(JSON.parse(init.body),{from:'Propbank <sender@test.invalid>',to:[mail.to],subject:mail.subject,html:'<p>sender@test.invalid</p>'});
+    assert.ok(init.signal instanceof AbortSignal);
+  }
+  assert.equal(Object.hasOwn(requests[0].init.headers,'Idempotency-Key'),false);
+  assert.equal(requests[1].init.headers['Idempotency-Key'],'visit-P-generation');
+  ok=false;
+  await assert.rejects(effects.sendEmail(mail),/Property email delivery failed/);
+  await effects.sendEmail({...mail,to:''},'unused');
+  delete env.RESEND_API_KEY;
+  await effects.sendEmail(mail,'unused');
+  assert.equal(requests.length,3);
+});
+
 test('Firebase Auth and Data apps initialize lazily, stay separate and reuse named apps', () => {
   const apps = [];
   let initialized = 0;
@@ -126,7 +185,7 @@ test('token failures distinguish expired credentials from service/configuration 
 test('agent role grants no arbitrary admin or property rights; tenant/owner/admin relationships are checked', () => {
   class AccessError extends Error { constructor(status, message) { super(message); this.status = status; } }
   const permissions = load('permissions', { './auth': { AccessError } });
-  const agent = { uid: 'agent-1', role: 'agent', email: 'a@example.com', phoneNumber: '123' };
+  const agent = { uid: 'agent-1', role: 'agent', email: 'a@example.com', phoneNumber: '123', token:{email:'a@example.com',email_verified:true} };
   assert.throws(() => permissions.requireAdmin(agent), error => error.status === 403);
   assert.throws(() => permissions.requireOwnerOrAdmin(agent, { ownerUID: 'someone-else' }), error => error.status === 403);
   permissions.requireOwnerOrAdmin(agent, { ownerUID: agent.uid });

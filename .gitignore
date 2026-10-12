@@ -12,6 +12,10 @@ firebase-service-account.json
 # Next.js
 node_modules/
 .next/
+.next-*/
+.client-acceptance-results/
+test-results/
+playwright-report/
 out/
 .vercel/
 

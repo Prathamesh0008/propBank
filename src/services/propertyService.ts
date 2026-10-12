@@ -2,6 +2,10 @@ import { apiFetch } from '@/lib/api-client';
 import { API_BASE_URL } from '../utils/config';
 
 interface Property {
+  createdAs?:'owner'|'tenant';
+  submittedByUID?:string;
+  ownershipVerification?:string;
+  reportedOwner?:Record<string,string>;
   rentSchedule: any;
   id: string;
   title: string;

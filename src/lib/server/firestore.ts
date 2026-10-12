@@ -6,6 +6,7 @@ import { getFirebaseAdminFirestore } from './firebase-admin';
 export const COLLECTIONS = {
   users: 'users',
   properties: 'properties',
+  negotiations: 'negotiations',
   tenants: 'tenants',
   visits: 'visits',
   services: 'services',
