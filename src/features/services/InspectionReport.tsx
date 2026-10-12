@@ -1,5 +1,6 @@
 "use client";
 
+import InspectionReportList from './InspectionReportList';
 import { apiFetch } from '@/lib/api-client';
 
 import { useParams, useNavigate } from "@/lib/navigation";
@@ -550,6 +551,7 @@ const InspectionReport = () => {
             </form>
           </CardContent>
         </Card>
+        {propertyId && user && <InspectionReportList propertyId={String(propertyId)}/> }
       </div>
     </>
   );

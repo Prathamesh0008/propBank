@@ -2,7 +2,7 @@
 
 import { apiFetch } from '@/lib/api-client';
 
-import { useParams, useNavigate } from "@/lib/navigation";
+import { useParams, useNavigate, useLocation } from "@/lib/navigation";
 import { ArrowLeft, FileText, Loader2, Upload, X, Eye, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/card";
@@ -30,6 +30,14 @@ interface Document {
   fileUrl: string;
   description?: string;
   createdAt: string;
+  userId?: string;
+  status?: string;
+  financialYear?: string;
+  period?: string;
+  amount?: string;
+  receiptDate?: string;
+  adminComment?: string;
+  statusHistory?: {status:string;comment:string;at:string}[];
 }
 
 const DOCUMENT_TYPES = [
@@ -37,11 +45,17 @@ const DOCUMENT_TYPES = [
   "Receipt",
   "Invoice",
   "Certificate",
-  "Other"
+  "Other",
+  "tds_report",
+  "payment_receipt"
 ];
 
 const AttachDocuments = () => {
   const { propertyId } = useParams();
+  const location=useLocation();
+  const reportType=new URLSearchParams(location.search).get("type")||"";
+  const [metadata,setMetadata]=useState({financialYear:"",period:"",amount:"",receiptDate:""});
+  const [loadError,setLoadError]=useState("");
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -54,11 +68,12 @@ const AttachDocuments = () => {
 
   // Form state
   const [documentName, setDocumentName] = useState<string>("");
-  const [documentType, setDocumentType] = useState<string>("");
+  const [documentType, setDocumentType] = useState<string>(reportType);
   const [fileUrl, setFileUrl] = useState<string>("");
   const [description, setDescription] = useState<string>("");
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
 
+  const visibleDocuments=documents.filter(doc=>!reportType||doc.documentType===reportType);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -87,6 +102,7 @@ const AttachDocuments = () => {
       try {
         // Fetch property
         const propertyResponse = await apiFetch(`${API_BASE_URL}/properties/${propertyId}`);
+        if(!propertyResponse.ok)throw new Error("Could not load property. Check your access and try again.");
         if (propertyResponse.ok) {
           const propertyData = await propertyResponse.json();
           if (propertyData.success && propertyData.property) {
@@ -96,13 +112,14 @@ const AttachDocuments = () => {
 
         // Fetch documents
         const documentsResponse = await apiFetch(`${API_BASE_URL}/documents/property/${propertyId}`);
+        if(!documentsResponse.ok)throw new Error("Could not load documents. Check your access and try again.");
         if (documentsResponse.ok) {
           const documentsData = await documentsResponse.json();
           if (documentsData.success && documentsData.documents) {
             setDocuments(documentsData.documents);
           }
         }
-      } catch (error) { /* Preserve existing best-effort behavior. */ } finally {
+      } catch (error) { setLoadError(error instanceof Error?error.message:"Could not load documents"); } finally {
         setLoading(false);
       }
     };
@@ -198,6 +215,7 @@ const AttachDocuments = () => {
         documentType: documentType,
         fileUrl: fileUrl,
         description: description.trim(),
+        ...metadata,
       };
 
       const response = await apiFetch(`${API_BASE_URL}/documents`, {
@@ -266,7 +284,7 @@ const AttachDocuments = () => {
         });
         // Reset form
         setDocumentName("");
-        setDocumentType("");
+        setDocumentType(reportType);
         setFileUrl("");
         setDescription("");
         setShowAddForm(false);
@@ -368,7 +386,7 @@ const AttachDocuments = () => {
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5" />
-                  Attach Documents
+                  {reportType === "tds_report" ? "TDS Updation Report" : "Documents and receipts"}
                 </CardTitle>
                 <CardDescription className="mt-2">
                   {property && `Property: ${property.title || property.id}`}
@@ -381,7 +399,9 @@ const AttachDocuments = () => {
             </div>
           </CardHeader>
           <CardContent>
-            {documents.length === 0 ? (
+            {loadError && <p role="alert" className="text-destructive">{loadError}</p>}
+            {reportType === "tds_report" && <p className="mb-4">TDS tracking records supplied amounts and documents. No tax computation is performed.</p>}
+            {visibleDocuments.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                 <p>No documents attached yet</p>
@@ -392,7 +412,7 @@ const AttachDocuments = () => {
               </div>
             ) : (
               <div className="space-y-4">
-                {documents.map((doc) => (
+                {visibleDocuments.map((doc) => (
                   <Card key={doc.id} className="border-l-4 border-l-blue-500">
                     <CardContent className="pt-6">
                       <div className="flex items-start justify-between">
@@ -401,6 +421,10 @@ const AttachDocuments = () => {
                           <p className="text-sm text-muted-foreground mt-1">
                             Type: {doc.documentType}
                           </p>
+                          <p className="text-sm">Status: {doc.status || "submitted"} · {doc.financialYear} {doc.period} {doc.amount && ` · Reported amount: ₹${doc.amount}`}</p>
+                          {doc.adminComment && <p>Admin response: {doc.adminComment}</p>}
+                          <details><summary>Status history</summary>{doc.statusHistory?.map((event,index)=><p key={index}>{event.status} · {new Date(event.at).toLocaleString()} {event.comment}</p>)}</details>
+                          {property?.userRole === "admin" && <div className="flex flex-wrap gap-2">{["verified","rejected","submitted"].map(status=><Button key={status} size="sm" variant="outline" onClick={async()=>{try{const comment=window.prompt("Report review comment");if(comment===null)return;const response=await apiFetch(`${API_BASE_URL}/documents/${doc.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status,comment})});if(!response.ok)throw new Error("Could not update report");setDocuments(current=>current.map(item=>item.id===doc.id?{...item,status,adminComment:comment}:item));}catch(error){setLoadError(error instanceof Error?error.message:"Update failed");}}}>{status}</Button>)}</div>}
                           {doc.description && (
                             <p className="text-sm mt-2">{doc.description}</p>
                           )}
@@ -412,6 +436,7 @@ const AttachDocuments = () => {
                           <Button
                             variant="outline"
                             size="sm"
+                            aria-label={`Open ${doc.documentName}`}
                             onClick={() => setViewingDocument(doc)}
                           >
                             <Eye className="h-4 w-4" />
@@ -419,6 +444,8 @@ const AttachDocuments = () => {
                           <Button
                             variant="outline"
                             size="sm"
+                            aria-label={`Delete ${doc.documentName}`}
+                            disabled={user?.uid!==doc.userId && user?.uid!==property?.ownerUID && property?.userRole!=="admin"}
                             onClick={() => handleDelete(doc.id)}
                           >
                             <Trash2 className="h-4 w-4" />
@@ -435,7 +462,7 @@ const AttachDocuments = () => {
 
         {/* Add Document Dialog */}
         <Dialog open={showAddForm} onOpenChange={setShowAddForm}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add Document</DialogTitle>
               <DialogDescription>
@@ -470,6 +497,7 @@ const AttachDocuments = () => {
                 </Select>
               </div>
 
+              {["tds_report","payment_receipt"].includes(documentType) && <div className="grid gap-3 sm:grid-cols-2">{Object.entries(metadata).map(([key,value])=><div key={key}><Label htmlFor={key}>{({financialYear:"Financial year",period:"Period",amount:"Reported amount",receiptDate:"Receipt date"} as Record<string,string>)[key]}</Label><Input id={key} type={key==="receiptDate"?"date":"text"} value={value} onChange={e=>setMetadata({...metadata,[key]:e.target.value})}/></div>)}</div>}
               <div className="space-y-2">
                 <Label htmlFor="file">File *</Label>
                 {fileUrl ? (

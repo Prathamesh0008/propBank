@@ -1,6 +1,13 @@
 import 'server-only';
 import { AccessError } from './auth';
 
+export class ApiError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-User-ID' };
 export function jsonResponse(body: unknown, status = 200) {
   return new Response(`${JSON.stringify(body)}\n`, { status, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -14,7 +21,7 @@ export function handle<T extends unknown[]>(fn: (...args:T)=>Promise<Response>, 
   return async (...args:T) => {
     try { return await fn(...args); }
     catch (error) {
-      if (error instanceof AccessError) return jsonResponse({success:false,message:error.message},error.status);
+      if (error instanceof AccessError || error instanceof ApiError) return jsonResponse({success:false,message:error.message},error.status);
       // Do not expose SDK configuration, credentials or customer data in errors.
       return json ? jsonResponse({success:false,message},500) : plainError(message,500);
     }

@@ -1,6 +1,7 @@
 import 'server-only';
 import { AccessError, verifyFirebaseIdentity } from '../auth';
 import { COLLECTIONS, getDatabase } from '../firestore';
+import { getFirebaseAdminAuth } from '../firebase-admin';
 import { jsonResponse } from '../http';
 import { model, storeModel, stringValue, wireModel, type RecordData, isRecord } from './contracts';
 
@@ -10,19 +11,33 @@ const userCollection = () => getDatabase().collection(COLLECTIONS.users);
 export async function getUser(uid: string): Promise<RecordData | null> {
   const doc = await userCollection().doc(uid).get();
   if (!doc.exists) return null;
-  const user = model('User',doc.data() || {});
-  if (!user.uid) user.uid = doc.id;
+  const raw=doc.data()||{};
+  const user:RecordData = {...raw,...model('User',raw),isActive:raw.isActive!==false};
+  user.uid = doc.id;
   return user;
 }
 export async function findUser(field: 'phoneNumber' | 'email', value: string): Promise<RecordData | null> {
   const docs = await userCollection().where(field,'==',value).limit(1).get();
   if (!docs.docs.length) return null;
   const user = model('User',docs.docs[0].data());
-  if (!user.uid) user.uid = docs.docs[0].id;
+  user.uid = docs.docs[0].id;
   return user;
 }
 export async function saveUser(user: RecordData) {
-  await userCollection().doc(stringValue(user.uid)).set(storeModel('User',user));
+  await userCollection().doc(stringValue(user.uid)).set({...user,...storeModel('User',user)},{merge:true});
+}
+// Resolve tenant links against Firebase Auth, never editable profile contacts.
+export async function resolveTenantIdentity(email:string,uid=''):Promise<string> {
+  try {
+    const account=uid?await getFirebaseAdminAuth().getUser(uid):await getFirebaseAdminAuth().getUserByEmail(email);
+    if(account.disabled || !account.email || account.email.toLowerCase()!==email.toLowerCase())throw new AccessError(403,'Tenant UID and Firebase email must match');
+    const profile=await getUser(account.uid);
+    if(!profile || profile.isActive===false) {if(uid)throw new AccessError(403,'Active tenant profile required');return '';}
+    return account.uid;
+  } catch(error) {
+    if((error as {code?:string}).code==='auth/user-not-found') {if(uid)throw new AccessError(403,'Tenant account not found');return '';}
+    throw error;
+  }
 }
 export async function userIdentity(request: Request, target?: string) {
   const token = await verifyFirebaseIdentity(request);
@@ -54,6 +69,7 @@ async function checkPhone(uid:string,phone:string) {
   return !!other && other.uid !== uid;
 }
 function checkRole(admin:boolean,requested:unknown,existing:RecordData|null) {
+  if (!admin && requested === 'agent' && existing?.role !== 'agent') throw new AccessError(403,'Administrator access required to assign agent role');
   if (!admin && requested === 'admin' && existing?.role !== 'admin') throw new AccessError(403,'Administrator access required to assign admin role');
   if (!admin && existing?.role === 'admin' && requested && requested !== existing.role) throw new AccessError(403,'Administrator access required to change admin role');
 }
@@ -69,8 +85,9 @@ export async function listUsers(request:Request) {
   return jsonResponse({success:true,message:'Users fetched successfully',...(users.length?{data:users}:{})});
 }
 export async function readUser(request:Request,uid:string) {
-  await userIdentity(request);
+  const identity=await userIdentity(request);
   const user=await getUser(uid);
+  if(user && !identity.admin && uid!==identity.token.uid)return jsonResponse({success:true,message:'User fetched successfully',user:{uid:user.uid,name:user.name,photoURL:user.photoURL,role:user.role}});
   return user ? success('User fetched successfully',user) : jsonResponse({success:false,message:'User not registered'});
 }
 export async function searchUser(request:Request) {
@@ -78,6 +95,11 @@ export async function searchUser(request:Request) {
   const phone = new URL(request.url).searchParams.get('phone') || '';
   if (!phone) return fail('Phone number is required',400);
   const user=await findUser('phoneNumber',normalizePhone(phone));
+  if(user) {
+    const account=await getFirebaseAdminAuth().getUser(stringValue(user.uid));
+    if(account.disabled)return fail('User account is inactive',404);
+    user.email=account.email||'';
+  }
   return user ? success('User found successfully',user) : fail('User is not found. Please ask to sign up with our platform to continue.',404);
 }
 
@@ -89,13 +111,15 @@ export async function createUser(request:Request,authRegistration=false) {
   const uid=stringValue(req.uid);
   if (uid!==identity.token.uid && !identity.admin) throw new AccessError(403,'Access denied');
   req.role ||= 'individual';
-  if (authRegistration && !['admin','agent','individual'].includes(stringValue(req.role))) return fail("Invalid role. Must be 'admin', 'agent', or 'individual'",400);
+  if (!['admin','agent','individual'].includes(stringValue(req.role))) return fail("Invalid role. Must be 'admin', 'agent', or 'individual'",400);
   const existing=await getUser(uid);
   checkRole(identity.admin,req.role,existing);
+  if(uid===identity.token.uid && stringValue(req.email).toLowerCase()!==identity.token.email?.toLowerCase())return fail('Email must match Firebase identity',400);
   const phone=normalizePhone(stringValue(req.phoneNumber));
   if (phone && await checkPhone(uid,phone)) return fail(duplicateMessage,409);
   const now=new Date();
-  const user=model('User',{...req,phoneNumber:phone,isActive:true,createdAt:now,updatedAt:now});
+  const user={...existing,...model('User',{...req,phoneNumber:phone,isActive:existing?.isActive!==false,createdAt:existing?.createdAt||now,updatedAt:now})};
+  if(!identity.admin && existing?.role)user.role=existing.role;
   if (authRegistration && existing) {
     user.createdAt=existing.createdAt;
     if (existing.phoneNumber && existing.role) { user.phoneNumber=existing.phoneNumber; user.role=existing.role; }
@@ -108,8 +132,10 @@ export async function updateUser(request:Request,uid:string) {
   const identity=await userIdentity(request,uid);
   const req=await parseUser(request);
   if (!req) return fail('Invalid JSON',400);
+  if (req.role && !['admin','agent','individual'].includes(stringValue(req.role))) return fail("Invalid role. Must be 'admin', 'agent', or 'individual'",400);
   const existing=await getUser(uid);
   checkRole(identity.admin,req.role,existing);
+  if(req.email && (uid!==identity.token.uid || stringValue(req.email).toLowerCase()!==identity.token.email?.toLowerCase()))return fail('Email must match Firebase identity',400);
   if (!existing) {
     if (!req.name) return fail('Creating new user requires a name',400);
     if (!req.email) return fail('Creating new user requires an email',400);

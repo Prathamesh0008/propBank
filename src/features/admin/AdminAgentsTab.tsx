@@ -1,5 +1,9 @@
 "use client";
 
+import {useState} from 'react';
+import {useQueryClient} from '@tanstack/react-query';
+import {workflowRequest} from '@/lib/client-workflows';
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
@@ -18,8 +22,17 @@ export const AdminAgentsTab = ({
   agents,
   handleViewUserDetails
 }: AdminAgentsTabProps) => {
+  const cache=useQueryClient();const [failure,setFailure]=useState('');const [busy,setBusy]=useState('');
+  async function changeRole(uid:string,role:string) {
+    if(!window.confirm(`Change this user's role to ${role}?`))return;
+    setBusy(uid);setFailure('');
+    try{await workflowRequest(`users/${uid}`,{role},'PATCH');await cache.invalidateQueries({queryKey:['allUsers']});}
+    catch(error){setFailure(error instanceof Error?error.message:'Could not update user role');}finally{setBusy('');}
+  }
   return (
     <div className="space-y-6">
+      {failure&&<p role="alert" className="text-destructive">{failure}</p>}
+      <Card><CardHeader><CardTitle>User roles</CardTitle><CardDescription>Owner and tenant access comes from property relationships. Agent access is assigned by an administrator.</CardDescription></CardHeader><CardContent className="space-y-3">{agents.filter(user=>user.role!=='admin').map(user=><div key={user.uid} className="flex flex-wrap items-center justify-between gap-3 border rounded p-3"><span className="min-w-0 break-words">{user.name} · {user.email}</span><Button variant="outline" disabled={busy===user.uid} onClick={()=>void changeRole(user.uid,user.role==='agent'?'individual':'agent')}>{user.role==='agent'?'Remove agent role':'Assign agent role'}: {user.name}</Button></div>)}</CardContent></Card>
       {loading ? (
         <Card>
           <CardContent className="pt-6">

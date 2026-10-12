@@ -1,284 +1,36 @@
 "use client";
+import {useState, type ComponentProps} from 'react';
+import {useAuth} from '@/contexts/AuthContext';
+import {useQueryClient} from '@tanstack/react-query';
+import {useNavigate} from '@/lib/navigation';
+import {workflowRequest} from '@/lib/client-workflows';
+import {readFile} from '@/features/services/ServiceRequestWorkflow';
+import {Button} from '@/ui/button';
+import {Input} from '@/ui/input';
+import {FurnishedChecklistModal} from './FurnishedChecklistModal';
 
-import { apiFetch } from "@/lib/api-client";
-
-import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Building2, CheckCircle2, Key, Loader2 } from "lucide-react";
-import { onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
-import { Button } from "@/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
-import { Input } from "@/ui/input";
-import { Label } from "@/ui/label";
-import { Textarea } from "@/ui/textarea";
-import { useNavigate, useSearchParams } from "@/lib/navigation";
-import { useToast } from "@/hooks/use-toast";
-import { auth } from "../../firebase";
-import { API_BASE_URL } from "../../utils/config";
-
-const TenantPropertyForm = () => {
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const propertyType = searchParams.get("type") || "";
-  const propertyTypeLabel = useMemo(
-    () => propertyType ? propertyType.charAt(0).toUpperCase() + propertyType.slice(1) : "Property",
-    [propertyType]
-  );
-  const { toast } = useToast();
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
-  const [formData, setFormData] = useState({
-    propertyName: "",
-    location: "",
-    unitNumber: "",
-    ownerName: "",
-    ownerPhone: "",
-    monthlyRent: "",
-    agreementStartDate: "",
-    notes: "",
-  });
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => setCurrentUser(user));
-    return () => unsubscribe();
-  }, []);
-
-  const updateField = (field: keyof typeof formData, value: string) => {
-    setFormData((current) => ({ ...current, [field]: value }));
-  };
-
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!currentUser) {
-      toast({
-        title: "Authentication Required",
-        description: "Please sign in before submitting the tenant form.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!formData.propertyName.trim() || !formData.location.trim()) {
-      toast({
-        title: "Missing Property Details",
-        description: "Please enter the property name and location.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const response = await apiFetch(`${API_BASE_URL}/admin/notifications`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          type: "tenant_property_registration",
-          title: "Tenant Property Form Submitted",
-          message: `${currentUser.displayName || currentUser.email || "A tenant"} submitted a ${propertyTypeLabel} tenant property form for ${formData.propertyName}.`,
-          userId: currentUser.uid,
-          userName: currentUser.displayName || currentUser.email || "Tenant",
-          userEmail: currentUser.email || "",
-          userPhone: currentUser.phoneNumber || "",
-          propertyTitle: formData.propertyName,
-          propertyAddress: formData.location,
-          propertyListingType: "rent",
-          tenantName: currentUser.displayName || currentUser.email || "Tenant",
-          propertyType: propertyTypeLabel,
-          ownerName: formData.ownerName,
-          ownerPhone: formData.ownerPhone,
-          monthlyRent: formData.monthlyRent,
-          unitNumber: formData.unitNumber,
-          agreementStartDate: formData.agreementStartDate,
-          notes: formData.notes,
-          timestamp: new Date().toISOString(),
-          isRead: false,
-          priority: "medium",
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.message || "Failed to submit tenant form");
-      }
-
-      setIsSuccess(true);
-      toast({
-        title: "Tenant form submitted",
-        description: "Your tenant property details have been sent to admin.",
-      });
-
-      setTimeout(() => {
-        navigate("/manage-property");
-      }, 1200);
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to submit tenant form. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <main className="container mx-auto py-8 px-4">
-      <>
-        <title>Tenant Form — ShoPROP</title>
-        <meta name="description" content="Submit tenant property details for admin review." />
-        <link rel="canonical" href="/tenant-property" />
-      </>
-
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-8">
-          <Button variant="ghost" onClick={() => navigate("/select-property-type?role=tenant")} className="mb-4">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Property Type Selection
-          </Button>
-
-          <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <Key className="h-8 w-8" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold">Tenant Form</h1>
-              <p className="text-lg text-muted-foreground">
-                Add tenant property details
-                <span className="ml-2 px-2 py-1 text-sm bg-primary/10 text-primary rounded-md">
-                  {propertyTypeLabel}
-                </span>
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Building2 className="h-5 w-5" />
-              Tenant Property Details
-            </CardTitle>
-            <CardDescription>
-              Fill out the details for the property where you are staying or planning to stay as a tenant.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="space-y-2">
-                  <Label htmlFor="propertyName">Property Name <span className="text-red-500">*</span></Label>
-                  <Input
-                    id="propertyName"
-                    value={formData.propertyName}
-                    onChange={(event) => updateField("propertyName", event.target.value)}
-                    placeholder="Enter property name"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="unitNumber">Unit / Flat / Shop No.</Label>
-                  <Input
-                    id="unitNumber"
-                    value={formData.unitNumber}
-                    onChange={(event) => updateField("unitNumber", event.target.value)}
-                    placeholder="Enter unit number"
-                  />
-                </div>
-
-                <div className="md:col-span-2 space-y-2">
-                  <Label htmlFor="location">Location <span className="text-red-500">*</span></Label>
-                  <Input
-                    id="location"
-                    value={formData.location}
-                    onChange={(event) => updateField("location", event.target.value)}
-                    placeholder="Enter property address or location"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="ownerName">Owner Name</Label>
-                  <Input
-                    id="ownerName"
-                    value={formData.ownerName}
-                    onChange={(event) => updateField("ownerName", event.target.value)}
-                    placeholder="Enter owner name"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="ownerPhone">Owner Phone</Label>
-                  <Input
-                    id="ownerPhone"
-                    value={formData.ownerPhone}
-                    onChange={(event) => updateField("ownerPhone", event.target.value)}
-                    placeholder="Enter owner phone"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="monthlyRent">Monthly Rent</Label>
-                  <Input
-                    id="monthlyRent"
-                    value={formData.monthlyRent}
-                    onChange={(event) => updateField("monthlyRent", event.target.value)}
-                    placeholder="Enter monthly rent"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="agreementStartDate">Agreement Start Date</Label>
-                  <Input
-                    id="agreementStartDate"
-                    type="date"
-                    value={formData.agreementStartDate}
-                    onChange={(event) => updateField("agreementStartDate", event.target.value)}
-                  />
-                </div>
-
-                <div className="md:col-span-2 space-y-2">
-                  <Label htmlFor="notes">Notes</Label>
-                  <Textarea
-                    id="notes"
-                    value={formData.notes}
-                    onChange={(event) => updateField("notes", event.target.value)}
-                    placeholder="Add agreement, rent, or contact details"
-                    rows={4}
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4">
-                <Button type="button" variant="outline" onClick={() => navigate("/manage-property")}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={isSubmitting || isSuccess}>
-                  {isSuccess ? (
-                    <>
-                      <CheckCircle2 className="h-4 w-4 mr-2" />
-                      Submitted
-                    </>
-                  ) : isSubmitting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Submitting...
-                    </>
-                  ) : (
-                    "Submit Tenant Form"
-                  )}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
-    </main>
-  );
-};
-
-export default TenantPropertyForm;
+const fields=[['propertyTitle','Property title',true],['buildingName','Building name'],['unitNumber','Flat / Office / Shop / Unit / Plot number'],['floor','Floor'],['location','Location / address',true],['configuration','Configuration / Structure',true],['carpetArea','Carpet area'],['constructedArea','Built-up / Constructed area'],['plotArea','Plot area'],['monthlyRent','Monthly finalized rent',true],['securityDeposit','Security deposit'],['paymentDueDate','Payment due day (1–31)',true],['escalationPercentage','Rent escalation percentage'],['escalationAmount','Rent escalation fixed amount'],['agreementPeriod','Agreement period (months)',true],['agreementStartDate','Agreement start date',true],['agreementEndDate','Agreement end date',true],['noticePeriod','Notice / Early termination period (months)'],['lockInPeriod','Lock-in period (months)']] as const;
+const ownerFields=[['companyName','Flat owner / Company name'],['personName','Owner person name'],['phone','Owner contact number'],['alternatePhone','Owner alternate contact number'],['email','Owner email'],['workingProfile','Owner working profile']] as const;
+export default function TenantPropertyForm({category}:{category:string}) {
+ const {user}=useAuth(),navigate=useNavigate(),cache=useQueryClient();
+ const [values,setValues]=useState<Record<string,string>>({propertyType:category||'residential',propertyCategory:category||'residential',listingType:'rent',rentalStatus:'rented',areaUnit:'sq ft',carpetAreaUnit:'sq ft',constructedAreaUnit:'sq ft',plotAreaUnit:'sq m'});
+ const [rentSchedule,setRentSchedule]=useState<Array<{year:string;months:string;amount:string;fromDate:string;toDate:string}>>([]);
+ const [owner,setOwner]=useState<Record<string,string>>({}),[images,setImages]=useState<string[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState(false),[uploading,setUploading]=useState(false),[checklist,setChecklist]=useState<NonNullable<ComponentProps<typeof FurnishedChecklistModal>['initialChecklist']>>([]),[showChecklist,setShowChecklist]=useState(false);
+ const change=(key:string,value:string)=>setValues(before=>({...before,[key]:value}));
+ async function submit(event:React.FormEvent){event.preventDefault();setError('');if(!user)return setError('Please sign in.');if(!owner.companyName?.trim()&&!owner.personName?.trim())return setError('Enter the owner or company name.');if(!owner.phone?.trim())return setError('Enter the owner contact number.');if(values.agreementEndDate<values.agreementStartDate)return setError('Agreement end date must follow its start date.');setBusy(true);try{await workflowRequest('properties',{...values,createdAs:'tenant',rentSchedule,reportedOwner:owner,tenantFirstName:user.displayName||'Tenant',tenantLastName:'',tenantEmail:user.email||'',images,furnishedChecklist:checklist.filter(item=>item.checked)});await cache.invalidateQueries({queryKey:['userProperties']});await cache.invalidateQueries({queryKey:['allProperties']});navigate('/manage-property?tab=tenant');}catch(err){setError(err instanceof Error?err.message:'Could not save property.');}finally{setBusy(false);}}
+ return <main className="mx-auto max-w-5xl px-4 py-8"><Button variant="ghost" onClick={()=>navigate('/select-property-type')}>Back</Button><h1 className="text-2xl font-bold my-4">Add Property as a Tenant</h1><p className="mb-6 text-muted-foreground">Record the home you rent. Owner details are supplied by you and await verification; this does not claim ownership or link another account.</p><form onSubmit={submit} className="space-y-6">
+ <fieldset className="grid gap-4 sm:grid-cols-2"><legend className="font-semibold mb-3">Property details and rental terms</legend>
+ <label>Property category<select aria-label="Property category" className="border rounded w-full h-10 px-3" value={values.propertyCategory} onChange={e=>setValues(v=>({...v,propertyCategory:e.target.value,propertyType:e.target.value,structure:'',configuration:''}))}>{['residential','commercial','industrial'].map(v=><option key={v}>{v}</option>)}</select></label>
+ <label>Property type<select aria-label="Property type" required className="border rounded w-full h-10 px-3" value={values.structure||''} onChange={e=>change('structure',e.target.value)}><option value="">Choose type</option>{(values.propertyCategory==='residential'?['Flat','Bungalow']:values.propertyCategory==='commercial'?['Office','Shop']:['Unit','RCC Shed','Land']).map(v=><option key={v}>{v}</option>)}</select></label>
+ {fields.map(([key,label,required])=><label key={key}>{label}{required?' *':''}<Input required={!!required} type={key.startsWith('agreement')&&key.endsWith('Date')?'date':key==='paymentDueDate'?'number':'text'} min={key==='paymentDueDate'?1:undefined} max={key==='paymentDueDate'?31:undefined} value={values[key]||''} onChange={e=>change(key,e.target.value)}/></label>)}
+ {(['carpetAreaUnit','constructedAreaUnit','plotAreaUnit'] as const).map(key=><label key={key}>{key==='carpetAreaUnit'?'Carpet area unit':key==='plotAreaUnit'?'Plot area unit':'Built-up area unit'}<select className="border rounded w-full h-10 px-3" value={values[key]} onChange={e=>change(key,e.target.value)}>{['sq ft','sq m','sq yd','acre','hectare'].map(v=><option key={v}>{v}</option>)}</select></label>)}
+ <label>Unit condition<select className="border rounded w-full h-10 px-3" value={values.unitCondition||''} onChange={e=>change('unitCondition',e.target.value)}><option value="">Choose condition</option>{['unfurnished','semi-furnished','furnished'].map(v=><option key={v}>{v}</option>)}</select></label>
+ <label>Maintenance paid by<select className="border rounded w-full h-10 px-3" value={values.maintenanceToBePaidBy||''} onChange={e=>change('maintenanceToBePaidBy',e.target.value)}><option value="">Choose payer</option><option value="owner">Owner</option><option value="tenant">Tenant</option></select></label>
+ </fieldset><section className="space-y-3"><h2 className="font-semibold">Year-wise agreed rent (optional)</h2>{rentSchedule.map((row,index)=><div key={index} className="grid gap-3 sm:grid-cols-4 border rounded p-3">{(['amount','months','fromDate','toDate'] as const).map(key=><label key={key}>{`Year ${index+1} ${key==='amount'?'rent':key==='fromDate'?'from':key==='toDate'?'to':'months'}`}<Input required type={key.includes('Date')?'date':'number'} min={key.includes('Date')?undefined:1} value={row[key]} onChange={e=>setRentSchedule(rows=>rows.map((r,i)=>i===index?{...r,[key]:e.target.value}:r))}/></label>)}</div>)}<Button type="button" variant="outline" disabled={rentSchedule.length>=10} onClick={()=>setRentSchedule(rows=>[...rows,{year:`${rows.length+1} year`,months:'12',amount:'',fromDate:'',toDate:''}])}>Add next rent year</Button>{rentSchedule.length>0&&<Button type="button" variant="ghost" onClick={()=>setRentSchedule(rows=>rows.slice(0,-1))}>Remove last rent year</Button>}</section><Button type="button" variant="outline" onClick={()=>setShowChecklist(true)}>Furnishing item checklist</Button>
+ <fieldset className="grid gap-4 sm:grid-cols-2"><legend className="font-semibold mb-3">Owner details (tenant supplied)</legend>{ownerFields.map(([key,label])=><label key={key}>{label}<Input required={key==='phone'} type={key==='email'?'email':key.includes('Phone')||key==='phone'?'tel':'text'} maxLength={500} value={owner[key]||''} onChange={e=>setOwner(v=>({...v,[key]:e.target.value}))}/></label>)}</fieldset>
+ <label className="block">Your working profile<Input value={values.tenantEmploymentStatus||''} onChange={e=>change('tenantEmploymentStatus',e.target.value)}/></label>
+ <label className="block">Images (up to 10)<Input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={async e=>{setError('');const files=Array.from(e.target.files||[]);if(files.length>10||files.some(f=>f.size>5*1024*1024||!['image/png','image/jpeg','image/webp'].includes(f.type)))return setError('Choose up to 10 PNG/JPEG/WebP images, each under 5 MB.');setUploading(true);try{setImages(await Promise.all(files.map(readFile)));}catch{setError('Could not read images.');}finally{setUploading(false);}}}/></label><p>{images.length} image(s) selected</p>
+ <label className="block">Specific comments<textarea className="border rounded w-full p-3" rows={4} value={values.specificComments||''} onChange={e=>change('specificComments',e.target.value)}/></label>
+ {error&&<p role="alert" className="text-destructive">{error}</p>}<Button disabled={busy||uploading} type="submit">{busy?'Saving…':'Submit Tenant Property'}</Button></form>
+ <FurnishedChecklistModal isOpen={showChecklist} onClose={()=>setShowChecklist(false)} initialChecklist={checklist} propertyType={values.propertyCategory as 'residential'|'commercial'|'industrial'} onSave={setChecklist}/></main>;
+}

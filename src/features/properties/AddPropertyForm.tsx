@@ -1,5 +1,6 @@
 "use client";
 
+import ClientPropertyFields, {clientPropertySchema} from './ClientPropertyFields';
 import { apiFetch } from '@/lib/api-client';
 
 import { useForm, useFieldArray } from "react-hook-form";
@@ -27,6 +28,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 const formSchema = z.object({
+  ...clientPropertySchema,
   // Property Basic Details
   propertyTitle: z.string().min(1, "Property title is required"),
   propertyType: z.string().min(1, "Property type is required"),
@@ -408,6 +410,7 @@ const AddPropertyForm = () => {
     defaultValues: {
       propertyTitle: "",
       propertyType: selectedPropertyType,
+      propertyCategory:selectedPropertyType,
       configuration: "",
       listingType: "",
       unitNumber: "",
@@ -541,7 +544,7 @@ const AddPropertyForm = () => {
       // Sync and validate pre-leased properties
       if (data.listingType === "sell" && data.isPreLeased) {
         data.projectCondition = "Preleased";
-        
+
         if (!data.preLeasedType) {
           toast({
             title: "Missing Pre-leased Type",
@@ -693,7 +696,7 @@ const AddPropertyForm = () => {
         furnishedChecklist: checkedFurnishedItems, // Only include checked items
         ownerUID: currentUser.uid,
       };
-      console.log("Submitting property data:", propertyData);
+
 
       // Send to backend API
       const response = await apiFetch(`${API_BASE_URL}/properties`, {
@@ -708,11 +711,11 @@ const AddPropertyForm = () => {
 
       if (result.success) {
         const listingTypeText = data.listingType === "rent" ? "rental property" : "property for sale";
-        
+
         // Invalidate property queries so they refetch the newly added property
         queryClient.invalidateQueries({ queryKey: ['userProperties'] });
         queryClient.invalidateQueries({ queryKey: ['allProperties'] });
-        
+
         toast({
           title: `${data.propertyTitle} added successfully!`,
           description: `Your ${listingTypeText} has been saved and is now listed.`,
@@ -826,6 +829,7 @@ const AddPropertyForm = () => {
                   variant: "destructive",
                 });
               })} className="space-y-8">
+                <ClientPropertyFields form={form}/>
 
                 {/* Basic Property Information */}
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 p-4 border rounded-lg">
@@ -887,6 +891,7 @@ const AddPropertyForm = () => {
                           <SelectContent>
                             <SelectItem value="rent">For Rent</SelectItem>
                             <SelectItem value="sell">For Sale</SelectItem>
+                            <SelectItem value="manage">To Manage</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />

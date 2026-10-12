@@ -1,5 +1,8 @@
 "use client";
 
+import NegotiationPanel from '@/features/negotiations/NegotiationPanel';
+import {ServiceRequestHistory} from '@/features/services/ServiceRequestWorkflow';
+import ReviewHistory from '@/features/services/ReviewHistory';
 import { apiFetch } from '@/lib/api-client';
 
 import { useParams, useNavigate } from "@/lib/navigation";
@@ -35,6 +38,8 @@ import { usePropertyDetails } from "../../hooks/useProperties";
 // Raised Request interface for service requests, inspection reports, etc.
 interface RaisedRequest {
   ownerEmail: string;
+  userRole?: string;
+  isSold?: boolean;
   tenantEmail: string;
   id: string;
   type: string;
@@ -125,6 +130,8 @@ interface BuyerInfo {
 }
 
 interface Property {
+  userRole?:string;
+  isSold?:boolean;
   id: string;
   title: string;
   propertyType: string;
@@ -323,9 +330,10 @@ const PropertyDetails = () => {
 
   useEffect(() => {
     if (propertyId) {
-      fetchRaisedRequests(propertyId);
+      if(user && ["owner","tenant","admin"].includes(property?.userRole||""))fetchRaisedRequests(propertyId);
+      else setRaisedRequests([]);
     }
-  }, [propertyId]);
+  }, [propertyId,user,property?.userRole]);
 
   const fetchRaisedRequests = async (id: string) => {
     setLoadingRequests(true);
@@ -441,11 +449,7 @@ const PropertyDetails = () => {
   };
 
   // Check if current user is a tenant
-  const isTenant = user && property && (
-    (property.tenants && property.tenants.some((t: any) => t.isActive && (t.email === user.email || t.phone === user.phoneNumber))) ||
-    (property.tenantEmail === user.email) ||
-    (property.mobileNumber === user.phoneNumber)
-  );
+  const isTenant = !!user && property?.userRole === "tenant";
 
   const isOwner = user && property && user.uid === property.ownerUID;
 
@@ -1152,8 +1156,9 @@ const PropertyDetails = () => {
                 )}
               </CardContent>
             </Card>
-            <InspectionReportList propertyId={property.id} />
-          </div >
+            {(isOwner || isTenant || currentUserRole === "admin") && <><ReviewHistory propertyId={property.id}/><ServiceRequestHistory propertyId={property.id}/><InspectionReportList propertyId={property.id} /></>}
+            {user && <NegotiationPanel propertyId={property.id} canOffer={!isOwner && !isTenant && property.rentalStatus !== "rented" && !property.isSold}/>}
+      </div >
 
           <div className="space-y-6">
             {/* Pricing */}
@@ -1209,7 +1214,7 @@ const PropertyDetails = () => {
                     <label className="text-xs font-medium text-muted-foreground">{property.ownerRole === "agent" ? "Agent Name" : "Owner Name"}</label>
                     <p className="text-sm font-medium">{property.ownerName}</p>
                   </div>
-                  {(currentUserRole === 'admin' || (user && user.uid === property.ownerUID)) ? (
+                  {(currentUserRole === 'admin' || isOwner || isTenant) ? (
                     <div className="space-y-2">
                       <div>
                         <label className="text-xs font-medium text-muted-foreground">{property.ownerRole === "agent" ? "Agent Email" : "Owner Email"}</label>

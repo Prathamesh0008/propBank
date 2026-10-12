@@ -1,15 +1,15 @@
 import 'server-only';
-import { createHmac, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { AccessError, verifyFirebaseIdentity } from '../auth';
 import { COLLECTIONS, getDatabase, SITE_SETTINGS_DOCUMENT } from '../firestore';
-import { requireAdmin, requireSelfOrAdmin } from '../permissions';
-import { jsonResponse, plainError } from '../http';
-import { model, storeModel, wireModel, stringValue as s, type RecordData } from './contracts';
-import { identity, readObject, readModel, knownFields, getRecords, getRecord } from './domain-contracts';
+import { requireAdmin, requireSelfOrAdmin, isPropertyTenant } from '../permissions';
+import { ApiError, jsonResponse, plainError } from '../http';
+import { model, storeModel, wireModel, wireValue, isRecord, stringValue as s, type RecordData } from './contracts';
+import { identity, propertyMember, readObject, readModel, knownFields, getRecords, getRecord } from './domain-contracts';
 import { getUser } from './users';
 import { getProperty } from './properties';
 import { createNotification } from './notifications';
-import { bestEffort } from './property-effects';
+import { bestEffort, queueEmail, escapeHtml } from './property-effects';
 import { uploadBase64 } from './r2-storage';
 
 const fail = (message:string,status:number) => jsonResponse({success:false,message},status);
@@ -25,31 +25,30 @@ export async function login(request:Request) {
   if(tokenIdentity.uid!==req.uid)throw new AccessError(403,'Access denied');
   const profile=await getUser(s(req.uid));if(!profile)return fail('User not found',401);
   if(profile.isActive===false)throw new AccessError(403,'Active user profile required');
-  const secret=process.env.JWT_SECRET;
-  // Go never registered this endpoint. The migrated frontend's apiFetch always
-  // uses Firebase identity, overriding its old localStorage JWT. Preserve the
-  // login envelope without requiring a legacy signing secret for native auth.
-  if(!secret)return jsonResponse({success:true,token:request.headers.get('authorization')!.replace(/^Bearer\s+/i,''),user:wireModel('User',profile),message:'Login successful'});
-  const iat=Math.floor(Date.now()/1000);
-  const encode=(value:unknown)=>Buffer.from(JSON.stringify(value)).toString('base64url');
-  const payload=`${encode({alg:'HS256',typ:'JWT'})}.${encode({uid:profile.uid,role:profile.role,iat,exp:iat+48*3600})}`;
-  const token=`${payload}.${createHmac('sha256',secret).update(payload).digest('base64url')}`;
-  return jsonResponse({success:true,token,user:wireModel('User',profile),message:'Login successful'});
+  // Native APIs accept Firebase ID tokens, never legacy application JWTs.
+  return jsonResponse({success:true,token:request.headers.get('authorization')!.replace(/^Bearer\s+/i,''),user:wireModel('User',profile),message:'Login successful'});
 }
 
+const clientServices=Object.fromEntries([
+  ['plumbing','Plumbing Issue','maintenance'],['leakage','Leakage / Seepage Issue','maintenance'],['fixtures','Fixtures Issue','maintenance'],['painting','Painting Work','maintenance'],['electrical','Electrical Issue','maintenance'],['other','Any Other','maintenance'],
+  ['rent-agreement-registration','Rent Agreement Registration','legal'],['sale-agreement-procedure','Sale Agreement Procedure','legal'],['legal-consultation','Other Legal Work / Consultation','legal'],['society-procedure','Society Procedure / Service','related'],['pre-rental','Pre-rental Services','related'],
+].map(([id,name,category])=>[id,model('Service',{id,name,category,isActive:true})]));
 export async function listServices() {
-  // Go's iterator ends on any read error and returns its accumulated slice.
-  const data=await bestEffort(()=>getRecords(getDatabase().collection(COLLECTIONS.services).where('isActive','==',true),'Service'))||[];
+  const stored=await getRecords(getDatabase().collection(COLLECTIONS.services),'Service',true);
+  const data=[...new Map([...Object.values(clientServices),...stored].map(service=>[s(service.id),service])).values()].filter(service=>service.isActive===true);
   return jsonResponse({success:true,message:'Services fetched successfully',...(data.length?{data:data.map(v=>wireModel('Service',v))}:{})});
 }
 export async function listServiceRequests(request:Request) {
   const user=await identity(request),params=new URL(request.url).searchParams;
   let query:FirebaseFirestore.Query=getDatabase().collection(COLLECTIONS.serviceRequests);
-  if(params.get('admin')==='true')requireAdmin(user);
+  if(params.get('propertyId')) {const property=await propertyMember(user,params.get('propertyId')!);if(!property)return fail('Property not found',404);query=query.where('propertyId','==',params.get('propertyId'));}
+  else if(params.get('admin')==='true')requireAdmin(user);
   else if(params.get('userUID')) {requireSelfOrAdmin(user,params.get('userUID')!);query=query.where('userUID','==',params.get('userUID'));}
   else return fail('Missing userUID parameter or admin access',400);
-  const data=await bestEffort(()=>getRecords(query.orderBy('createdAt','desc'),'ServiceRequest'))||[];
-  return jsonResponse({success:true,message:'Service requests fetched successfully',...(data.length?{data:data.map(v=>wireModel('ServiceRequest',v))}:{})});
+  const snapshot=await query.get();let records=snapshot.docs.map(doc=>({...doc.data(),id:doc.id} as RecordData));
+  if(params.get('propertyId')&&user.role!=='admin') {const property=await getProperty(params.get('propertyId')!);if(property?.ownerUID!==user.uid)records=records.filter(record=>record.userUID===user.uid);}
+  const data=records.map(wireValue);
+  return jsonResponse({success:true,message:'Service requests fetched successfully',data});
 }
 function notificationContext(property:RecordData|null,user:RecordData,uid:string,propertyId:string) {
   const tenants=(property?.tenants as RecordData[]|null)||[];const tenant=tenants.find(t=>t.isActive)||{};
@@ -64,22 +63,36 @@ export async function createServiceRequest(request:Request) {
   if(!req.userUID||!req.serviceId)return fail('Missing required fields: userUID, serviceId',400);
   requireSelfOrAdmin(user,s(req.userUID));
   const profile=await getUser(s(req.userUID));if(!profile)return fail('User not found',404);
-  const service=await getRecord(COLLECTIONS.services,s(req.serviceId),'Service');if(!service)return fail('Service not found',404);
+  const service=await getRecord(COLLECTIONS.services,s(req.serviceId),'Service')||clientServices[s(req.serviceId)];if(!service)return fail('Service not found',404);
+  if(service.isActive===false)return fail('Service is inactive',400);
+  const property=req.propertyId?await propertyMember(user,s(req.propertyId)):null;
+  if(req.propertyId&&!property)return fail('Property not found',404);
   let image='';if(req.image)image=await bestEffort(async()=>{
-    const value=s(req.image);return /^https?:\/\//.test(value)?value:uploadBase64(value,`service-requests/${randomUUID()}`,'image');
+    const value=s(req.image);return /^https?:\/\//.test(value)?value:uploadBase64(value,`uploads/${user.uid}/service-requests`,'image');
   })||'';
   const now=new Date();const value=model('ServiceRequest',{...req,id:randomUUID(),userName:profile.name,userEmail:profile.email,userPhone:profile.phoneNumber,serviceName:service.name,image,status:'pending',createdAt:now,updatedAt:now});
-  await getDatabase().collection(COLLECTIONS.serviceRequests).doc(s(value.id)).set(storeModel('ServiceRequest',value));
+  await getDatabase().collection(COLLECTIONS.serviceRequests).doc(s(value.id)).create({...storeModel('ServiceRequest',value),history:[{status:'pending',actorUID:user.uid,at:now}]});
   await bestEffort(async()=>{
-    const property=await getProperty(s(req.propertyId));
-    await createNotification({...notificationContext(property,profile,s(req.userUID),s(req.propertyId)),type:'service_request',title:'New Service Request',message:`Service request from ${s(profile.name)} for ${s(service.name)}`,serviceType:service.name,serviceComment:req.message,serviceImage:image});
+    await createNotification({...notificationContext(property,profile,s(req.userUID),s(req.propertyId)),relatedId:value.id,type:'service_request',title:'New Service Request',message:`Service request from ${s(profile.name)} for ${s(service.name)}`,serviceType:service.name,serviceComment:req.message,serviceImage:image});
   });
   return jsonResponse({success:true,message:'Service request created successfully. One of our members will reach out to you soon!',serviceRequest:wireModel('ServiceRequest',value)},201);
 }
 export async function updateServiceRequest(request:Request,id:string) {
-  requireAdmin(await identity(request));let req:RecordData;
-  try{req=await strings(request,['status','adminNotes']);}catch{return fail('Invalid request body',400);}
-  await getDatabase().collection(COLLECTIONS.serviceRequests).doc(id).update({status:req.status,updatedAt:new Date(),...(req.adminNotes?{adminNotes:req.adminNotes}:{})});
+  const user=await identity(request);requireAdmin(user);let req:RecordData;
+  try{req=await strings(request,['status','adminNotes','resolutionReport','adminImage','action']);}catch{return fail('Invalid request body',400);}
+  if(req.status&&!['pending','in_progress','completed','cancelled','resolved'].includes(s(req.status)))return fail('Invalid service request status',400);
+  if(req.action&&!['archive','unarchive'].includes(s(req.action)))return fail('Invalid archive action',400);
+  const ref=getDatabase().collection(COLLECTIONS.serviceRequests).doc(id);let updated:RecordData={};
+  await getDatabase().runTransaction(async tx=>{
+    const snapshot=await tx.get(ref);if(!snapshot.exists)throw new ApiError(404,'Service request not found');
+    const before=snapshot.data()!,now=new Date();const updates:RecordData={updatedAt:now};
+    for(const key of ['status','adminNotes','resolutionReport','adminImage'])if(req[key])updates[key]=req[key];
+    if(req.action)updates.isArchived=req.action==='archive';
+    if(['completed','resolved'].includes(s(req.status)))updates.completedAt=now;
+    updates.history=[...(Array.isArray(before.history)?before.history:[]),{status:req.status||before.status,action:req.action||'update',actorUID:user.uid,comment:req.adminNotes,at:now}];
+    tx.update(ref,updates);updated={...before,...updates};
+  });
+  const profile=await getUser(s(updated.userUID));if(profile?.email)queueEmail({to:s(profile.email),subject:'Service request updated',html:`<p>${escapeHtml(s(updated.serviceName))}: ${escapeHtml(s(updated.status))}</p><p>${escapeHtml(s(updated.adminNotes))}</p>`});
   return jsonResponse({success:true,message:'Service request updated successfully'});
 }
 
@@ -90,9 +103,14 @@ export async function createReportOrReview(request:Request,kind:'report'|'review
   if(kind==='review'&&!['tenant','owner'].includes(s(req.reviewerType)))return plainError("Invalid reviewer type. Must be 'tenant' or 'owner'",400);
   const profile=await getUser(user.uid);if(!profile)return plainError('User not found',404);
   const property=await getProperty(s(req.propertyId));if(!property)return plainError('Property not found',404);
-  // The Go handlers allow any registered user to submit; retain that permission.
+  await propertyMember(user,s(req.propertyId));
+  if(kind==='review') {
+    const reviewerType=user.uid===property.ownerUID?'owner':'tenant';
+    if(user.role!=='admin'&&req.reviewerType!==reviewerType)return plainError('Reviewer relationship does not match property',403);
+  }
   const now=new Date(),name=kind==='report'?'InspectionReport':'Review',collection=kind==='report'?COLLECTIONS.inspectionReports:COLLECTIONS.reviews;
-  const tenant=((property.tenants as RecordData[]|null)||[])[0]||{};
+  const active=((property.tenants as RecordData[]|null)||[]).filter(t=>t.isActive===true);
+  const tenant=active.find(t=>t.userUID===user.uid)||active[0]||{};
   const value=model(name,{...req,id:randomUUID(),propertyTitle:property.title,createdAt:now,updatedAt:now,
     ...(kind==='report'?{userId:user.uid,userName:profile.name,userEmail:profile.email,userPhone:profile.phoneNumber}:
       {reviewerId:user.uid,reviewerName:profile.name,reviewerEmail:profile.email,reviewerPhone:profile.phoneNumber,ownerId:property.ownerUID,ownerName:property.ownerName,ownerEmail:property.ownerEmail,ownerPhone:property.primaryNo,tenantId:s(tenant.id),tenantName:tenant.firstName?`${s(tenant.firstName)} ${s(tenant.lastName)}`:''})});
@@ -115,10 +133,19 @@ export async function createReportOrReview(request:Request,kind:'report'|'review
 }
 export async function listReports(request:Request,field:'propertyId'|'userId',id:string) {
   const user=await identity(request);
-  // Original read handlers are available to registered users, including admin dialogs.
   if(field==='userId')requireSelfOrAdmin(user,id);
-  const data=await getRecords(getDatabase().collection(COLLECTIONS.inspectionReports).where(field,'==',id).orderBy('createdAt','desc'),'InspectionReport');
+  else if(!await propertyMember(user,id))return plainError('Property not found',404);
+  let data=await getRecords(getDatabase().collection(COLLECTIONS.inspectionReports).where(field,'==',id).orderBy('createdAt','desc'),'InspectionReport');
+  if(field==='userId'&&user.role!=='admin') {
+    const visible:RecordData[]=[];for(const report of data) {try{if(await propertyMember(user,s(report.propertyId)))visible.push(report);}catch(error){if(!(error instanceof AccessError))throw error;}}data=visible;
+  }
   return jsonResponse({success:true,reports:data.length?data.map(v=>wireModel('InspectionReport',v)):null});
+}
+export async function listReviews(request:Request) {
+  const user=await identity(request),id=new URL(request.url).searchParams.get('propertyId')||'';
+  if(!id)return fail('Property ID required',400);if(!await propertyMember(user,id))return fail('Property not found',404);
+  const reviews=await getRecords(getDatabase().collection(COLLECTIONS.reviews).where('propertyId','==',id),'Review');
+  return jsonResponse({success:true,reviews:reviews.map(review=>wireModel('Review',review))});
 }
 
 export async function siteSettings(request:Request) {

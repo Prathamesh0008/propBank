@@ -397,12 +397,6 @@ const GoogleAuth: React.FC<GoogleAuthProps> = () => {
                           <span className="text-xs text-gray-500">Property owner, buyer, or tenant</span>
                         </div>
                       </SelectItem>
-                      <SelectItem value="agent">
-                        <div className="flex flex-col text-left">
-                          <span className="text-sm font-medium">Real Estate Agent</span>
-                          <span className="text-xs text-gray-500">Professional property agent or broker</span>
-                        </div>
-                      </SelectItem>
                     </SelectContent>
                   </Select>
                   {hasAttemptedSubmit && !userRole && (

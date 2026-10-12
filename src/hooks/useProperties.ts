@@ -1,3 +1,4 @@
+import {useAuth} from '@/contexts/AuthContext';
 import { apiFetch } from '@/lib/api-client';
 import { useQuery } from '@tanstack/react-query';
 import { User } from 'firebase/auth';
@@ -26,46 +27,11 @@ export const useUserProperties = (currentUser: User | null) => {
           .map((p: any) => ({ ...p, userRole: 'owner' }));
       }
 
-      // Fetch properties where user is a tenant
-      let userEmail = currentUser.email || "";
-
-      if (!userEmail) {
-        const match = document.cookie.match(new RegExp('(^| )userEmail=([^;]+)'));
-        if (match) {
-          userEmail = match[2];
-        }
-      }
-
-      if (!userEmail) {
-        try {
-          const userProfileResponse = await apiFetch(`${API_BASE_URL}/users/${currentUser.uid}`);
-          if (userProfileResponse.ok) {
-            const userProfile = await userProfileResponse.json();
-            if (userProfile.email) {
-              userEmail = userProfile.email;
-            }
-          }
-        } catch (e) {
-          console.error("Failed to fetch user profile for email lookup", e);
-        }
-      }
-
-      let tenant: any[] = [];
-      if (userEmail) {
-        const tenantResponse = await apiFetch(`${API_BASE_URL}/properties/tenant/?userEmail=${userEmail}`);
-        if (tenantResponse.ok) {
-          const tenantData = await tenantResponse.json();
-          if (tenantData.success) {
-            tenant = (tenantData.properties || [])
-              .filter((p: any) => {
-                const isActive = (p.status === 'active' || (!p.status && p.isActive !== false));
-                const notOwnedByUser = p.ownerUID !== currentUser.uid;
-                return isActive && notOwnedByUser;
-              })
-              .map((p: any) => ({ ...p, userRole: 'tenant' }));
-          }
-        }
-      }
+      if(!ownedResponse.ok)throw new Error(ownedData.message||'Could not load properties');
+      const tenantResponse=await apiFetch(API_BASE_URL+'/properties/tenant?tenantUID='+encodeURIComponent(ownerUID));
+      const tenantData=await tenantResponse.json();
+      if(!tenantResponse.ok)throw new Error(tenantData.message||'Could not load rented properties');
+      const tenant=(tenantData.properties||[]).filter((p:any)=>p.ownerUID!==ownerUID&&p.isActive!==false&&p.status!=='inactive').map((p:any)=>({...p,userRole:'tenant'}));
 
       return { owned, tenant };
     },
@@ -78,8 +44,9 @@ export const useAllProperties = () => {
   return useQuery({
     queryKey: ['allProperties'],
     queryFn: async () => {
-      const response = await apiFetch(`${API_BASE_URL}/properties?all=true`);
+      const response = await apiFetch(`${API_BASE_URL}/properties?admin=true`);
       const data = await response.json();
+      if(!response.ok||!data.success)throw new Error(data.message||'Could not load administrator properties');
       if (data.success) {
         return data.properties || [];
       }
@@ -107,8 +74,9 @@ export const useArchivedProperties = (ownerUID: string | undefined) => {
 };
 
 export const usePropertyDetails = (propertyId: string | undefined) => {
+  const {user,loading:authLoading}=useAuth();
   return useQuery({
-    queryKey: ['property', propertyId],
+    queryKey: ['property', propertyId,user?.uid||'public'],
     queryFn: async () => {
       if (!propertyId) return null;
       const response = await apiFetch(`${API_BASE_URL}/properties/${propertyId}`);
@@ -144,7 +112,7 @@ export const usePropertyDetails = (propertyId: string | undefined) => {
       }
       throw new Error(data.message || 'Failed to fetch property details');
     },
-    enabled: !!propertyId,
+    enabled: !!propertyId&&!authLoading,
     staleTime: 5 * 60 * 1000,
   });
 };

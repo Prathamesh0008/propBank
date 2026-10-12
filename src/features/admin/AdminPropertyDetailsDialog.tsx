@@ -1,8 +1,10 @@
 "use client";
 
+import {Link} from '@/lib/navigation';
 import { apiFetch } from '@/lib/api-client';
 
 import React from "react";
+import OwnerVerification from './OwnerVerification';
 import {
     Dialog,
     DialogContent,
@@ -149,6 +151,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-[100vw] w-screen h-[100dvh] max-h-[100dvh] sm:max-w-[100vw] sm:rounded-none border-0 p-0 flex flex-col gap-0 overflow-hidden bg-slate-50">
                 <DialogHeader className="p-6 pb-6 border-b shrink-0 bg-white shadow-sm z-10 relative">
+                    {property.createdAs==='tenant'&&<section className="max-w-6xl mx-auto mb-4 p-3 border rounded bg-amber-50"><p className="font-semibold">Tenant-submitted property · Owner verification {property.ownershipVerification}</p><p>Submitted by: {property.submittedByUID}</p><dl className="grid sm:grid-cols-2 gap-2 text-sm">{Object.entries(property.reportedOwner||{}).map(([key,value])=><div key={key} className="break-words"><dt className="font-medium">{({companyName:'Owner company',personName:'Owner person',phone:'Owner contact',alternatePhone:'Alternate contact',email:'Owner email',workingProfile:'Working profile'} as Record<string,string>)[key]||key}</dt><dd>{value||'Not supplied'}</dd></div>)}</dl></section>}
                     <div className="max-w-6xl mx-auto w-full flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pr-6">
                         <div>
                             <DialogTitle className="text-3xl font-bold mb-2 text-slate-800 tracking-tight">{property.title}</DialogTitle>
@@ -187,6 +190,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                 </DialogHeader>
 
                 <ScrollArea className="flex-1 p-6 md:p-10 overflow-y-auto">
+                    {property.createdAs==='tenant'&&property.ownershipVerification==='pending'&&<OwnerVerification key={property.id} propertyId={property.id}/>}
                     <div className="max-w-6xl mx-auto w-full flex flex-col gap-8 pb-16">
 
                         {/* Basic Info */}
@@ -485,6 +489,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                             </div>
                         )}
 
+                        <div className="flex flex-wrap gap-4 mt-6"><Link to={`/attach-documents/${property.id}`}>Documents, receipts and report verification</Link><Link to={`/inspection-report/${property.id}`}>Inspection history</Link><Link to={`/review/${property.id}`}>Review history</Link></div>
                         {/* Timestamps */}
                         <div className="mt-8 pt-6 border-t border-gray-300 flex justify-between text-xs font-bold text-slate-400 uppercase tracking-widest">
                             <span>Created: {formatDate(property.createdAt)}</span>

@@ -1,5 +1,6 @@
 "use client";
 
+import ReviewHistory from './ReviewHistory';
 import { apiFetch } from '@/lib/api-client';
 
 import { useParams, useNavigate } from "@/lib/navigation";
@@ -384,6 +385,7 @@ const Review = () => {
             </form>
           </CardContent>
         </Card>
+        {user && propertyId && <ReviewHistory propertyId={String(propertyId)}/> }
       </div>
     </>
   );

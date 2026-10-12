@@ -1,59 +1,35 @@
 "use client";
 
 import { useNavigate, useSearchParams } from "@/lib/navigation";
+import {useState} from "react";
+import {Button} from "@/ui/button";
 import PropertyTypeSelector from "./PropertyTypeSelector";
-
-type PropertyRole = "owner" | "tenant";
-type PropertyType = "residential" | "commercial" | "industrial";
 
 const SelectPropertyType = () => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [params] = useSearchParams();
+  const [relationship,setRelationship]=useState<"owner"|"tenant"|null>(() => {
+    const choice = params.get("as");
+    return choice === "owner" || choice === "tenant" ? choice : null;
+  });
 
-  const role: PropertyRole =
-    searchParams.get("role") === "tenant" ? "tenant" : "owner";
-
-  const handlePropertyTypeSelect = (propertyType: PropertyType) => {
-    navigate(`/add-property?type=${propertyType}&role=${role}`);
+  const handlePropertyTypeSelect = (propertyType: string) => {
+    navigate(`/add-property?type=${propertyType}&as=${relationship}`);
   };
 
   return (
     <main>
       <>
-        <title>
-          {role === "tenant"
-            ? "Select Tenant Property Type"
-            : "Select Owner Property Type"}
-        </title>
-
-        <meta
-          name="description"
-          content={
-            role === "tenant"
-              ? "Choose between residential, commercial, or industrial property types for your tenant property form."
-              : "Choose between residential, commercial, or industrial property types for your owner property form."
-          }
-        />
-
-        <link
-          rel="canonical"
-          href={`/select-property-type?role=${role}`}
-        />
+        <title>Select Property Type — Add Property</title>
+        <meta name="description" content="Choose between residential, commercial, or industrial property types to add your property listing." />
+        <link rel="canonical" href="/select-property-type" />
       </>
 
-      <PropertyTypeSelector
+      {!relationship?<section className="mx-auto max-w-3xl px-4 py-12"><h1 className="text-3xl font-bold mb-4">Add Property</h1><p className="text-muted-foreground mb-8">Are you adding a property you own or a home you rent?</p><div className="grid sm:grid-cols-2 gap-4"><Button size="lg" onClick={()=>setRelationship("owner")}>As an Owner</Button><Button size="lg" variant="outline" onClick={()=>setRelationship("tenant")}>As a Tenant</Button></div></section>:<><div className="mx-auto max-w-5xl px-4 pt-6"><Button variant="ghost" onClick={()=>setRelationship(null)}>Change owner / tenant choice</Button></div><PropertyTypeSelector
         onSelect={handlePropertyTypeSelect}
-        title={
-          role === "tenant"
-            ? "Select Tenant Property Type"
-            : "Select Owner Property Type"
-        }
-        description={
-          role === "tenant"
-            ? "Choose the type of property you are occupying as a tenant."
-            : "Choose the type of property you want to add as an owner."
-        }
-      />
+        title="What kind of property would you like to add today?"
+        description="Choose the type of property you want to include in your portfolio."
+      /></>}
     </main>
   );
 };

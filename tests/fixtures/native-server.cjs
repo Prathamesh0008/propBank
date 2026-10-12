@@ -2,15 +2,16 @@ const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),cryp
 class Timestamp{constructor(seconds,nanoseconds){this.seconds=seconds;this.nanoseconds=nanoseconds;}toDate(){return new Date(this.seconds*1000+this.nanoseconds/1e6);}}
 const clone=v=>v instanceof Timestamp?new Timestamp(v.seconds,v.nanoseconds):v instanceof Date?new Date(v):Buffer.isBuffer(v)?Buffer.from(v):Array.isArray(v)?v.map(clone):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).map(([key,value])=>[key,clone(value)])):v;
 function isolated(seed={}) {
- const state=clone(seed),writes=[],reads=[],emails=[],queued=[],verified=[],objects=[];
+ const state=clone(seed),writes=[],reads=[],emails=[],emailKeys=[],queued=[],verified=[],objects=[],claims={};
  let failure=false,r2Failure=false;
  const env={RESEND_API_KEY:'isolated-mail-key',CLOUDFLARE_ACCOUNT_ID:'existing-account',CLOUDFLARE_R2_ACCESS_KEY_ID:'isolated-key',CLOUDFLARE_R2_SECRET_ACCESS_KEY:'isolated-secret',CLOUDFLARE_R2_BUCKET_NAME:'propbank',CLOUDFLARE_R2_PUBLIC_URL:'https://existing-r2.test'};
  class Query {
   constructor(collection,filters=[],limit=Infinity,order=null){this.collection=collection;this.filters=filters;this.count=limit;this.order=order;}
-  where(field,_op,value){return new Query(this.collection,[...this.filters,[field,value]],this.count,this.order);}
+  where(field,op,value){return new Query(this.collection,[...this.filters,[field,value,op]],this.count,this.order);}
   limit(count){return new Query(this.collection,this.filters,count,this.order);}
+  startAfter(id){const query=new Query(this.collection,this.filters,this.count,this.order);query.after=id;return query;}
   orderBy(field,direction){return new Query(this.collection,this.filters,this.count,[field,direction]);}
-  async get(){reads.push({collection:this.collection,filters:this.filters,order:this.order});if(failure)throw new Error('isolated database outage');let rows=Object.entries(state[this.collection]||{}).sort(([a],[b])=>a.localeCompare(b)).filter(([,data])=>this.filters.every(([field,value])=>data[field]===value));if(this.order){const [key,dir]=this.order;rows=rows.filter(([,data])=>data[key]!==undefined).sort(([,a],[,b])=>(+new Date(a[key])-+new Date(b[key]))*(dir==='desc'?-1:1));}return {docs:rows.slice(0,this.count).map(([id,data])=>({id,exists:true,data:()=>clone(data)}))};}
+  async get(){reads.push({collection:this.collection,filters:this.filters,order:this.order});if(failure)throw new Error('isolated database outage');let rows=Object.entries(state[this.collection]||{}).sort(([a],[b])=>a.localeCompare(b)).filter(([,data])=>this.filters.every(([field,value,op])=>op==='>='?data[field]>=value:op==='<='?data[field]<=value:data[field]===value));if(this.order){const [key,dir]=this.order;rows=rows.filter(([id,data])=>key==='__name__'||data[key]!==undefined).sort(([,a],[,b])=>(key==='__name__'?0:+new Date(a[key])-+new Date(b[key]))*(dir==='desc'?-1:1));}return {docs:rows.filter(([id])=>!this.after||id>this.after).slice(0,this.count).map(([id,data])=>({id,ref:this.doc(id),exists:true,data:()=>clone(data)}))};}
   doc(id=crypto.randomUUID()) {
    const collection=this.collection;
    const write=async(data,create=false,merge=false)=>{if(failure)throw new Error('isolated database outage');state[collection]||={};if(create&&state[collection][id])throw new Error('already exists');state[collection][id]=merge?{...state[collection][id],...clone(data)}:clone(data);writes.push({kind:create?'create':merge?'merge':'set',collection,id,data:clone(data)});};
@@ -22,6 +23,13 @@ function isolated(seed={}) {
   }
  }
  const db={collection:name=>new Query(name)},cache=new Map(),root=path.resolve('src');
+ let transactionTail=Promise.resolve();
+ db.runTransaction=async callback=>{
+  const previous=transactionTail;let release;transactionTail=new Promise(resolve=>{release=resolve;});await previous;
+  const operations=[];const tx={get:ref=>ref.get(),update:(ref,data)=>operations.push(()=>ref.update(data)),set:(ref,data,options)=>operations.push(()=>ref.set(data,options)),create:(ref,data)=>operations.push(()=>ref.create(data)),delete:ref=>operations.push(()=>ref.delete())};
+  const before=clone(state),writeCount=writes.length;
+  try{const result=await callback(tx);for(const operation of operations)await operation();return result;}catch(error){for(const key of Object.keys(state))delete state[key];Object.assign(state,before);writes.splice(writeCount);throw error;}finally{release();}
+ };
  class PutObjectCommand{constructor(input){this.input=input;}}
  class DeleteObjectCommand{constructor(input){this.input=input;}}
  class S3Client{async send(command){objects.push({operation:command.constructor.name,...command.input,Body:command.input.Body?Buffer.from(command.input.Body):undefined});if(r2Failure)throw new Error('isolated R2 outage');}}
@@ -29,18 +37,18 @@ function isolated(seed={}) {
   'server-only':{},'node:crypto':crypto,'@aws-sdk/client-s3':{PutObjectCommand,DeleteObjectCommand,S3Client},
   'firebase-admin/firestore':{Timestamp,FieldValue:{arrayUnion:(...values)=>({__arrayUnion:true,values})}},
   'next/server':{after:fn=>queued.push(fn)},
-  [path.join(root,'lib/server/firebase-admin.ts')]:{getFirebaseAdminAuth:()=>({verifyIdToken:async(token,revoked)=>{verified.push({token,revoked});if(token.startsWith('expired'))throw {code:'auth/id-token-expired'};return {uid:token,email:`${token}@test.invalid`};}})},
-  [path.join(root,'lib/server/firestore.ts')]:{getDatabase:()=>db,COLLECTIONS:{users:'users',properties:'properties',visits:'visits',tenants:'tenants',documents:'documents',services:'services',serviceRequests:'service_requests',reviews:'reviews',inspectionReports:'inspection_reports',siteSettings:'siteSettings',adminNotifications:'admin_notifications'},SITE_SETTINGS_DOCUMENT:'main_settings'},
+  [path.join(root,'lib/server/firebase-admin.ts')]:{getFirebaseAdminStorage:()=>({bucket:()=>({name:'existing-bucket',file:filename=>({save:async(bytes,options)=>writes.push({kind:'storage',filename,bytes:Buffer.from(bytes),options}),makePublic:async()=>{}})})}),getFirebaseAdminAuth:()=>({verifyIdToken:async(token,revoked)=>{verified.push({token,revoked});if(token.startsWith('expired'))throw {code:'auth/id-token-expired'};return {uid:token,email:`${token}@test.invalid`,email_verified:true,...claims[token]};},getUser:async uid=>{if(!state.users?.[uid])throw {code:'auth/user-not-found'};return {uid,email:`${uid}@test.invalid`,...claims[uid]};},getUserByEmail:async email=>{const uid=Object.keys(state.users||{}).find(uid=>(claims[uid]?.email||`${uid}@test.invalid`).toLowerCase()===email.toLowerCase());if(!uid)throw {code:'auth/user-not-found'};return {uid,email,...claims[uid]};}})},
+  [path.join(root,'lib/server/firestore.ts')]:{getDatabase:()=>db,COLLECTIONS:{users:'users',properties:'properties',negotiations:'negotiations',visits:'visits',tenants:'tenants',documents:'documents',services:'services',serviceRequests:'service_requests',reviews:'reviews',inspectionReports:'inspection_reports',siteSettings:'siteSettings',adminNotifications:'admin_notifications'},SITE_SETTINGS_DOCUMENT:'main_settings'},
  };
  function load(file) {
   let resolved=file.startsWith('@/')?path.join(root,file.slice(2)):path.resolve(file);if(!resolved.endsWith('.ts'))resolved+='.ts';
   if(stubs[resolved])return stubs[resolved];if(cache.has(resolved))return cache.get(resolved);
   const exports={};cache.set(resolved,exports);
   const compiled=ts.transpileModule(fs.readFileSync(resolved,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
-  const context=vm.createContext({exports,Date,Error,Buffer,URL,Headers,Request,Response,FormData,File,AbortSignal,process:{env},fetch:async(_url,init)=>{emails.push(JSON.parse(init.body));return new Response('{}',{status:200});},require:name=>stubs[name]||load(name.startsWith('@/')?name:path.resolve(path.dirname(resolved),name))});
+  const context=vm.createContext({exports,Date,Error,Buffer,URL,Headers,Request,Response,FormData,File,AbortSignal,process:{env},fetch:async(_url,init)=>{emails.push(JSON.parse(init.body));emailKeys.push(init.headers['Idempotency-Key']);return new Response('{}',{status:env.TEST_MAIL_FAIL?503:200});},require:name=>stubs[name]||load(name.startsWith('@/')?name:path.resolve(path.dirname(resolved),name))});
   vm.runInContext(compiled,context,{filename:resolved});return exports;
  }
- return {load,state,writes,reads,emails,verified,objects,env,outage:()=>{failure=true;},r2Outage:()=>{r2Failure=true;},flush:async()=>{for(const task of queued.splice(0))await task();}};
+ return {load,state,writes,reads,emails,emailKeys,claims,verified,objects,env,outage:()=>{failure=true;},r2Outage:()=>{r2Failure=true;},flush:async()=>{for(const task of queued.splice(0))await task();}};
 }
 const defaults={createdAt:new Date('2024-01-02T03:04:05Z'),updatedAt:new Date('2024-01-02T03:04:05Z'),isActive:true};
 const users={owner:{...defaults,uid:'owner',email:'owner@test.invalid',name:'Owner',role:'individual',phoneNumber:'+91123'},tenant:{...defaults,uid:'tenant',email:'tenant@test.invalid',name:'Tenant',role:'individual',phoneNumber:'456'},other:{...defaults,uid:'other',email:'other@test.invalid',name:'Other',role:'individual'},admin:{...defaults,uid:'admin',email:'admin@test.invalid',name:'Admin',role:'admin'}};

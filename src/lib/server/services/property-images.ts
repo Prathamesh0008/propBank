@@ -1,5 +1,6 @@
 import 'server-only';
 import { getFirebaseAdminStorage } from '../firebase-admin';
+import { randomUUID } from 'node:crypto';
 
 // Legacy Go property base64 uploads use GCS; ordinary frontend uploads use R2.
 export async function uploadPropertyImages(images:string[],propertyID:string):Promise<string[] | null> {
@@ -12,7 +13,7 @@ export async function uploadPropertyImages(images:string[],propertyID:string):Pr
     if (parts.length!==2 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(parts[1].replace(/[\r\n]/g,''))) continue;
     const extension=['png','gif','webp'].find(ext=>parts[0].includes(`image/${ext}`)) || 'jpg';
     const contentType=extension==='jpg'?'image/jpeg':`image/${extension}`;
-    const filename=`properties/${propertyID}/image_${index+1}_${Math.floor(Date.now()/1000)}.${extension}`;
+    const filename=`properties/${propertyID}/image_${index+1}_${randomUUID()}.${extension}`;
     try {
       const bucketName=process.env.FIREBASE_DATA_STORAGE_BUCKET||process.env.STORAGE_BUCKET||process.env.FIREBASE_STORAGE_BUCKET;
       const bucket=getFirebaseAdminStorage().bucket(bucketName);

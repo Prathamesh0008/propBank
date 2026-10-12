@@ -57,7 +57,7 @@ export const AdminPropertiesTab = ({
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground mt-2">
-                        {property.ownerRole === "agent" ? "Agent" : "Owner"}: {property.ownerName} • {property.ownerEmail} {property.ownerPhone && `• ${property.ownerPhone}`}
+                        {property.createdAs==='tenant'?`Tenant supplied · Owner verification pending · ${property.reportedOwner?.personName||property.reportedOwner?.companyName||''}`:<>{property.ownerRole === "agent" ? "Agent" : "Owner"}: {property.ownerName} • {property.ownerEmail} {property.ownerPhone && `• ${property.ownerPhone}`}</>}
                       </p>
                     </div>
                     <Button
