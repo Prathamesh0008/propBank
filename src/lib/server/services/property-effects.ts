@@ -7,14 +7,18 @@ import { getUser, saveUser } from './users';
 import { templates } from './property-email-templates';
 
 export interface Email { to:string; subject:string; html:string }
+export function escapeHtml(value:string):string {
+  const entities:Record<string,string>={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
+  return value.replace(/[&<>"']/g,character=>entities[character]);
+}
 export function formatTemplate(template:string,values:string[]) {
   let index=0;
-  return template.replace(/%%|%s|%d/g,token=>token==='%%'?'%':values[index++] ?? '');
+  return template.replace(/%%|%s|%d/g,token=>token==='%%'?'%':escapeHtml(values[index++] ?? ''));
 }
-export async function sendEmail(mail:Email) {
+export async function sendEmail(mail:Email,idempotencyKey?:string) {
   if (!mail.to || !process.env.RESEND_API_KEY) return;
   const from=process.env.FROM_EMAIL || 'connect@propbank.shop';
-  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({from:`Propbank <${from}>`,to:[mail.to],subject:mail.subject,html:mail.html.replaceAll('connectpropbank@gmail.com',from)}),signal:AbortSignal.timeout(30000)});
+  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json',...(idempotencyKey!==undefined?{'Idempotency-Key':idempotencyKey}:{})},body:JSON.stringify({from:`Propbank <${from}>`,to:[mail.to],subject:mail.subject,html:mail.html.replaceAll('connectpropbank@gmail.com',from)}),signal:AbortSignal.timeout(30000)});
   if (!response.ok) throw new Error('Property email delivery failed');
 }
 export async function bestEffort<T>(action:()=>Promise<T>):Promise<T|null> {
@@ -37,7 +41,7 @@ async function notify(property:RecordData,type:'property_added'|'want_to_sell'|'
   const notification=model('AdminNotification',{
     id:randomUUID(),type,
     title:added?'New Property Added':cancelled?'Property Owner Cancelled Sell Request':'Property Owner Wants to Sell',
-    message:added?`New property "${s(property.title)}" has been added by owner: ${s(property.ownerName)}`:cancelled?`Property owner ${s(property.ownerName)} has cancelled the request to sell property: ${s(property.title)}`:`Property owner ${s(property.ownerName)} wants to sell property: ${s(property.title)}`,
+    message:added&&property.createdAs==='tenant'?`Tenant supplied rental property "${s(property.title)}"; owner details await verification.`:added?`New property "${s(property.title)}" has been added by owner: ${s(property.ownerName)}`:cancelled?`Property owner ${s(property.ownerName)} has cancelled the request to sell property: ${s(property.title)}`:`Property owner ${s(property.ownerName)} wants to sell property: ${s(property.title)}`,
     propertyId:property.id,ownerId:property.ownerUID,ownerName:property.ownerName,
     ownerPhone:added?property.ownerPhone:owner?.phoneNumber||'',
     ownerEmail:added?property.ownerEmail:property.ownerEmail||owner?.email||'',ownerRole:owner?.role||'',
@@ -74,6 +78,7 @@ async function tenantAddedEmails(property:RecordData,previous:RecordData[],tenan
 export async function propertyCreatedEffects(property:RecordData) {
   await bestEffort(()=>notify(property,'property_added'));
   const tenants=entries(property.tenants);
+  if(property.createdAs==='tenant')return;
   if (tenants.length) {
     await bestEffort(()=>tenantAddedEmails(property,[],tenants));
     await linkUsers(property,tenants);

@@ -1,11 +1,13 @@
 "use client";
 
+import {ProductDashboard} from './PropertyHub';
+import { propertyCategoryMatches } from '@/lib/client-workflows';
 import { apiFetch } from '@/lib/api-client';
 
 import { Building2, Plus, Edit3, MessageSquare, MoreVertical, Users, UserPlus, Eye, Edit, Archive, Wrench, Filter, Home, X, FileText, Star, Scale, Paperclip, RefreshCw, XCircle, Key } from "lucide-react";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
-import { useNavigate } from "@/lib/navigation";
+import { useNavigate, useSearchParams } from "@/lib/navigation";
 import { useEffect, useState, useMemo } from "react";
 import { auth } from "../../firebase";
 import { User, onAuthStateChanged } from "firebase/auth";
@@ -87,6 +89,7 @@ interface BuyerInfo {
 }
 
 interface Property {
+  createdAs?:string;
   id: string;
   title: string;
   description: string;
@@ -116,6 +119,10 @@ interface Property {
   createdAt: string;
   updatedAt: string;
   unitNumber?: string;
+  buildingName?: string;
+  propertyCategory?: string;
+  agreementStatus?: string;
+  agreementRequest?: {kind:string;status:string};
   userRole?: string; // 'owner' or 'tenant' - indicates the current user's relationship to the property
 }
 
@@ -155,7 +162,7 @@ const ManageProperty = () => {
   const queryClient = useQueryClient();
   
   const [user, setUser] = useState<User | null>(null);
-  const { data: propertiesData, isLoading: loading } = useUserProperties(user);
+  const { data: propertiesData, isLoading: loading, error: propertyError } = useUserProperties(user);
 
   const ownedProperties = useMemo(() => propertiesData?.owned || [], [propertiesData?.owned]);
   const tenantProperties = useMemo(() => propertiesData?.tenant || [], [propertiesData?.tenant]);
@@ -169,7 +176,8 @@ const ManageProperty = () => {
   const [selectedListingType, setSelectedListingType] = useState<string>("");
 
   // View toggle state - 'owned' or 'tenant'
-  const [activeView, setActiveView] = useState<'owned' | 'tenant'>('owned');
+  const [params]=useSearchParams();
+  const [activeView, setActiveView] = useState<'owned' | 'tenant'>(params.get('tab')==='tenant'?'tenant':'owned');
 
   // Toggle states for "Want to Sell" - default false for all properties
   const [wantToSellToggles, setWantToSellToggles] = useState<{ [key: string]: boolean }>({});
@@ -211,14 +219,14 @@ const ManageProperty = () => {
       // Filter by property type
       if (selectedPropertyType && selectedPropertyType !== "all") {
         filtered = filtered.filter(property =>
-          property.propertyType?.toLowerCase() === selectedPropertyType.toLowerCase()
+          (property.propertyCategory || property.propertyType)?.toLowerCase() === selectedPropertyType.toLowerCase()
         );
       }
 
       // Filter by listing type
       if (selectedListingType && selectedListingType !== "all") {
         filtered = filtered.filter(property =>
-          property.listingType?.toLowerCase() === selectedListingType.toLowerCase()
+          propertyCategoryMatches(property,selectedListingType)
         );
       }
 
@@ -344,8 +352,7 @@ const ManageProperty = () => {
       const updateData = {
         ownerUID: user.uid,
         status: isInactive ? 'inactive' : 'active', // Set status to 'inactive' or 'active'
-        // isActive remains unchanged - keep independent from status
-        rentalStatus: isInactive ? 'inactive' : 'available'
+        isActive: !isInactive
       };
 
 
@@ -398,8 +405,7 @@ const ManageProperty = () => {
         body: JSON.stringify({
           ownerUID: user.uid,
           status: 'inactive', // Set status to 'inactive'
-          // isActive remains unchanged - keep independent from status
-          rentalStatus: 'inactive'
+          isActive: false
         }),
       });
 
@@ -611,13 +617,23 @@ const ManageProperty = () => {
             </div>
             
             <div className="flex-shrink-0 w-full sm:w-auto flex flex-col sm:flex-row gap-3 mt-4 sm:mt-0">
-              <Button
-                className="w-full sm:w-auto px-6 shadow-sm"
-                onClick={() => navigate("/select-property-type")}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Property
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button className="w-full sm:w-auto px-6 shadow-sm">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Property
+                    <span aria-hidden="true" className="ml-2 text-xs">▾</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  <DropdownMenuItem onSelect={() => navigate("/select-property-type?as=owner")}>
+                    <Home className="mr-2 h-4 w-4" />As an Owner
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => navigate("/select-property-type?as=tenant")}>
+                    <Key className="mr-2 h-4 w-4" />As a Tenant
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button
                 className="w-full sm:w-auto px-6 shadow-sm"
                 variant="outline"
@@ -630,6 +646,7 @@ const ManageProperty = () => {
           </div>
         </div>
 
+        <ProductDashboard/>
         {/* Filters Card */}
         <Card className="mb-8 border shadow-sm">
           <CardContent className="p-4 sm:p-6">
@@ -692,7 +709,10 @@ const ManageProperty = () => {
                      </SelectTrigger>
                      <SelectContent>
                        <SelectItem value="all">All Listings</SelectItem>
-                       <SelectItem value="rent">For Rent</SelectItem>
+                       <SelectItem value="rent">For Rent ? All</SelectItem>
+                       <SelectItem value="available">Available For Rent</SelectItem>
+                       <SelectItem value="rented">Already Rented Out</SelectItem>
+                       <SelectItem value="manage">To Manage</SelectItem>
                        <SelectItem value="sell">For Sale</SelectItem>
                      </SelectContent>
                    </Select>
@@ -736,6 +756,7 @@ const ManageProperty = () => {
               </div>
               <div className="mt-2">
                 <p className="text-xs sm:text-sm text-muted-foreground">
+                  {propertyError && <span role="alert" className="text-destructive">{propertyError.message}</span>}
                   Showing {activeView === 'owned' ? filteredOwnedProperties.length : filteredTenantProperties.length} of {activeView === 'owned' ? ownedProperties.length : tenantProperties.length} properties
                 </p>
               </div>
@@ -799,6 +820,8 @@ const ManageProperty = () => {
                                             <h3 className="font-semibold text-sm sm:text-lg leading-tight text-gray-900 break-words">
                                               {property.title}
                                               {property.unitNumber ? ` (${property.unitNumber})` : ""}
+                                              {property.buildingName && <span className="block text-sm font-normal">{property.buildingName}</span>}
+                                              <span className="block text-xs font-normal">Property ID: {property.id}{property.createdAs==="tenant" ? " - Owner verification pending" : ""}{property.agreementStatus ? ` · ${property.agreementStatus.replaceAll("_"," ")}` : ""}{property.agreementRequest?.status==="pending" ? ` · Pending ${property.agreementRequest.kind}` : ""}</span>
                                               {property.address ? `, ${property.address}` : ""}
                                             </h3>
                                             <Badge
@@ -837,6 +860,7 @@ const ManageProperty = () => {
                                           </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end" className="w-48">
+<DropdownMenuItem onClick={()=>navigate(`/manage-property/${property.id}`)}>Property 360</DropdownMenuItem>
                                           <DropdownMenuItem onClick={() => handleView(property.id)}>
                                             <Eye className="h-4 w-4 mr-2" />
                                             View Details
@@ -873,6 +897,9 @@ const ManageProperty = () => {
                                             <FileText className="h-4 w-4 mr-2" />
                                             Inspection Report
                                           </DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => navigate(`/attach-documents/${property.id}?type=tds_report`)}>
+                                            <FileText className="h-4 w-4 mr-2" />TDS Updation Report
+                                          </DropdownMenuItem>
                                           <DropdownMenuItem onClick={() => navigate(`/review/${property.id}`)}>
                                             <Star className="h-4 w-4 mr-2" />
                                             Review
@@ -890,7 +917,7 @@ const ManageProperty = () => {
                                             <Paperclip className="h-4 w-4 mr-2" />
                                             Attach Documents
                                           </DropdownMenuItem>
-                                          <DropdownMenuItem onClick={() => navigate(`/edit-property/${property.id}?mode=renewal`)}>
+                                          <DropdownMenuItem onClick={() => navigate(`/renew-agreement/${property.id}`)}>
                                             <RefreshCw className="h-4 w-4 mr-2" />
                                             Go for Renewal
                                           </DropdownMenuItem>
@@ -1086,6 +1113,8 @@ const ManageProperty = () => {
                                             <h3 className="font-semibold text-sm sm:text-lg leading-tight text-gray-900 break-words">
                                               {property.title}
                                               {property.unitNumber ? ` (${property.unitNumber})` : ""}
+                                              {property.buildingName && <span className="block text-sm font-normal">{property.buildingName}</span>}
+                                              <span className="block text-xs font-normal">Property ID: {property.id}{property.agreementStatus ? ` ? ${property.agreementStatus.replaceAll("_"," ")}` : ""}{property.agreementRequest?.status==="pending" ? ` ? Pending ${property.agreementRequest.kind}` : ""}</span>
                                               {property.address ? `, ${property.address}` : ""}
                                             </h3>
                                             <Badge
@@ -1111,6 +1140,7 @@ const ManageProperty = () => {
                                           </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end" className="w-48">
+<DropdownMenuItem onClick={()=>navigate(`/manage-property/${property.id}`)}>Property 360</DropdownMenuItem>
                                           <DropdownMenuItem onClick={() => handleView(property.id)}>
                                             <Eye className="h-4 w-4 mr-2" />
                                             View Details
@@ -1123,6 +1153,9 @@ const ManageProperty = () => {
                                           <DropdownMenuItem onClick={() => navigate(`/inspection-report/${property.id}`)}>
                                             <FileText className="h-4 w-4 mr-2" />
                                             Inspection Report
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => navigate(`/attach-documents/${property.id}?type=tds_report`)}>
+                                            <FileText className="h-4 w-4 mr-2" />TDS Updation Report
                                           </DropdownMenuItem>
                                           <DropdownMenuItem onClick={() => navigate(`/review/${property.id}`)}>
                                             <Star className="h-4 w-4 mr-2" />

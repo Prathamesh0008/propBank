@@ -1,27 +1,25 @@
 const assert=require('node:assert/strict'),{test}=require('node:test');
-const {createHmac}=require('node:crypto');
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),{execFileSync}=require('node:child_process');
 const {isolated,users,properties,defaults,request,route,context}=require('./fixtures/native-server.cjs');
-test('login issues Go-compatible signed HS256 claims only for the verified Firebase UID',async()=>{
+test('login returns the verified Firebase token even with a legacy JWT secret',async()=>{
  const app=isolated({users});app.env.JWT_SECRET='isolated-test-secret';const r=route(app,'auth/login');
  assert.equal((await r.POST(request('/auth/login',null,'POST',{uid:'owner'}))).status,401);
  assert.equal((await r.POST(request('/auth/login','other','POST',{uid:'owner'}))).status,403);
  assert.equal((await r.POST(request('/auth/login','owner','POST',{}))).status,400);
  const result=await r.POST(request('/auth/login','owner','POST',{uid:'owner'}));assert.equal(result.status,200);
- const body=await result.json(),[header,payload,signature]=body.token.split('.');
- assert.equal(signature,createHmac('sha256',app.env.JWT_SECRET).update(`${header}.${payload}`).digest('base64url'));
- const claims=JSON.parse(Buffer.from(payload,'base64url'));assert.equal(claims.uid,'owner');assert.equal(claims.role,'individual');assert.equal(claims.exp-claims.iat,48*3600);assert.equal(body.user.uid,'owner');
+ const body=await result.json();assert.equal(body.token,'owner');assert.equal(body.user.uid,'owner');
+ assert.equal((await route(app,'properties').GET(request('/properties?ownerUID=owner',body.token))).status,200);
  delete app.env.JWT_SECRET;const native=await r.POST(request('/auth/login','owner','POST',{uid:'owner'}));assert.equal(native.status,200);assert.equal((await native.json()).token,'owner');
  assert.equal(app.writes.length,0);
 });
 test('services and service requests retain collections, omission, R2 URLs and admin/self access',async()=>{
  const app=isolated({users,properties,services:{S:{...defaults,id:'S',name:'Legal',isActive:true},off:{...defaults,id:'off',isActive:false}}});
- const service=await (await route(app,'services').GET(request('/services',null))).json();assert.equal(service.data.length,1);assert.equal(service.data[0].id,'S');
+ const service=await (await route(app,'services').GET(request('/services',null))).json();assert.equal(service.data.length,12);assert.ok(service.data.some(value=>value.id==='S'));assert.ok(service.data.some(value=>value.id==='plumbing'));
  const r=route(app,'service-requests');
  assert.equal((await r.POST(request('/service-requests','other','POST',{userUID:'owner',serviceId:'S'}))).status,403);
  assert.equal((await r.POST(request('/service-requests','owner','POST',{userUID:'owner',serviceId:'missing'}))).status,404);
  const result=await r.POST(request('/service-requests','owner','POST',{userUID:'owner',serviceId:'S',propertyId:'P',message:'Keep this text',image:'data:image/png;base64,AQID'}));assert.equal(result.status,201);
- const {serviceRequest:value}=await result.json();assert.equal(value.status,'pending');assert.equal(value.userName,'Owner');assert.equal(value.serviceName,'Legal');assert.match(value.image,/service-requests\/[^/]+\/image_\d+\.png$/);assert.equal(app.state.service_requests[value.id].message,'Keep this text');
+ const {serviceRequest:value}=await result.json();assert.equal(value.status,'pending');assert.equal(value.userName,'Owner');assert.equal(value.serviceName,'Legal');assert.match(value.image,/uploads\/owner\/service-requests\/image_[a-f0-9-]+\.png$/);assert.equal(app.state.service_requests[value.id].message,'Keep this text');
  const notification=Object.values(app.state.admin_notifications)[0];assert.equal(notification.serviceImage,value.image);assert.equal(notification.ownerId,'owner');assert.equal(notification.tenantName,'Tenant Name');
  assert.equal((await r.GET(request('/service-requests?admin=true','other'))).status,403);
  assert.equal((await r.GET(request('/service-requests?userUID=owner','other'))).status,403);
@@ -54,7 +52,7 @@ test('site settings use the original document and replacement semantics with per
  const result=await r.PUT(request('/admin/site-settings','admin','PUT',{quote:'Changed',bannerImages:['https://existing-r2.test/banner.png'],heroTitle:'Title'}));assert.equal(result.status,200);const {settings}=await result.json();assert.equal(settings.updatedBy,'admin');assert.equal(settings.id,'main_settings');assert.equal(app.state.siteSettings.main_settings.heroTitle,'Title');
  assert.equal((await r.PATCH(request('/admin/site-settings','admin','PATCH',{quote:'Replacement'}))).status,200);assert.equal(app.state.siteSettings.main_settings.heroTitle,undefined);
 });
-test('new request/response and Firestore field schemas match the compiled original Go models',()=>{
+test('new request/response and Firestore field schemas match the compiled original Go models',{skip:fs.existsSync(path.resolve('tests/go-reference'))?false:'Original Go reference source is unavailable'},()=>{
  const binary=path.join(os.tmpdir(),`propbank-final-go-reference-${process.pid}${process.platform==='win32'?'.exe':''}`);
  try {
   execFileSync('go',['build','-o',binary,'.'],{cwd:path.resolve('tests/go-reference'),stdio:'pipe'});

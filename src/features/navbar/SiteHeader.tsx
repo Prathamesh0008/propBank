@@ -12,7 +12,7 @@ import { MobileNav } from "./MobileNav";
 
 const SiteHeader = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [user, setUser] = useState<User | null>(auth.currentUser);
+  const [user, setUser] = useState<User | null>(null);
   const [userPhone, setUserPhone] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string>("");
   const [userName, setUserName] = useState<string>("");
@@ -41,6 +41,7 @@ const SiteHeader = () => {
         })).entries()),
       });
 
+      if(auth.currentUser?.uid!==uid)return;
       if (response.status === 200) {
         const data = response.data;
         if (data.user) {

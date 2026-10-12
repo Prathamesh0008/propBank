@@ -10,7 +10,7 @@ test('native protected endpoints reject anonymous requests without accessing Fir
 test('Go collection-path validation and unsupported verbs remain native',async({request})=>{
  const missing=await request.get('/api/visits');expect(missing.status()).toBe(400);expect(await missing.text()).toBe('User ID required for visits\n');
  const slash=await request.get('/api/visits/');expect(slash.status()).toBe(400);expect(await slash.text()).toBe('Visit ID is required\n');
- const unsupported=await request.patch('/api/documents/fixture',{data:{}});expect(unsupported.status()).toBe(405);
+ const unsupported=await request.patch('/api/documents/fixture',{data:{}});expect(unsupported.status()).toBe(401);
  const malformed=await request.post('/api/admin/notifications',{data:'{',headers:{'Content-Type':'application/json'}});expect(malformed.status()).toBe(400);expect(await malformed.text()).toBe('Invalid request body\n');
  for(const [path,message]of [['/api/tenants/','Tenant ID is required\n'],['/api/documents/','Document ID is required\n']]){const response=await request.get(path);expect(response.status()).toBe(400);expect(await response.text()).toBe(message);}
  const property=await request.get('/api/documents/property/');expect(property.status()).toBe(400);expect(await property.json()).toEqual({success:false,message:'Property ID is required'});

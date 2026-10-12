@@ -1,5 +1,6 @@
 "use client";
 
+import ClientPropertyFields, {clientPropertySchema} from './ClientPropertyFields';
 import { apiFetch } from '@/lib/api-client';
 
 import { useParams, useNavigate, useLocation } from "@/lib/navigation";
@@ -27,6 +28,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 
 const formSchema = z.object({
+  ...clientPropertySchema,
   propertyTitle: z.string().min(1, "Property title is required"),
   propertyType: z.string().min(1, "Property type is required"),
   configuration: z.string().min(1, "Configuration is required"),
@@ -44,6 +46,8 @@ const formSchema = z.object({
   monthlyRent: z.string().optional(),
   sellingPrice: z.string().optional(),
   paymentDueDate: z.string().optional(),
+  escalationPercentage:z.string().optional(),
+  escalationAmount:z.string().optional(),
   monthlyRent1stYear: z.string().optional(),
   monthlyRent2ndYear: z.string().optional(),
   monthlyRent3rdYear: z.string().optional(),
@@ -79,6 +83,7 @@ const formSchema = z.object({
 type FormData = z.infer<typeof formSchema>;
 
 interface Property {
+  userRole?:string;
   id: string;
   title: string;
   propertyType: string;
@@ -213,12 +218,13 @@ const EditProperty = () => {
       let activeTenant = null;
       if (propertyData.tenants && propertyData.tenants.length > 0) {
         // Assuming the last tenant in the list is the active one
-        activeTenant = propertyData.tenants[propertyData.tenants.length - 1];
+        activeTenant = [...propertyData.tenants].reverse().find(tenant=>tenant.isActive===true)||null;
       }
 
       const formData = {
         propertyTitle: propertyData.title || "",
         propertyType: propertyData.propertyType || "",
+        ...Object.fromEntries(Object.keys(clientPropertySchema).map(key=>[key,propertyData[key]|| (key==="propertyCategory"?propertyData.propertyType:"")])),
         configuration: propertyData.configuration || "",
         listingType: propertyData.listingType || "",
         unitNumber: propertyData.unitNumber || "",
@@ -232,6 +238,8 @@ const EditProperty = () => {
 
         // Pricing Details - Prefer active tenant data for lease details
         monthlyRent: activeTenant?.monthlyRent || propertyData.monthlyRent || "",
+        escalationPercentage:propertyData.escalationPercentage||"",
+        escalationAmount:propertyData.escalationAmount||"",
         sellingPrice: propertyData.sellingPrice || "",
         paymentDueDate: activeTenant?.paymentDueDate || propertyData.paymentDueDate || "",
         monthlyRent1stYear: propertyData.monthlyRent1stYear || "",
@@ -461,7 +469,7 @@ const EditProperty = () => {
       const { propertyTitle, ...restData } = data;
 
       // Update the active tenant in the tenants array if it exists
-      const updatedTenants = property?.tenants || [];
+      const updatedTenants = (property?.tenants || []).map(tenant=>tenant.isActive!==true?tenant:{...tenant,monthlyRent:data.monthlyRent,securityDeposit:data.securityDeposit,paymentDueDate:data.paymentDueDate,leaseStartDate:data.agreementStartDate,leaseEndDate:data.agreementEndDate,noticePeriod:data.noticePeriod,lockInPeriod:data.lockInPeriod,escalationPercentage:data.escalationPercentage,escalationAmount:data.escalationAmount});
 
 
 
@@ -508,7 +516,7 @@ const EditProperty = () => {
       }
 
       const updateData = {
-        ...safeRestData,
+        ...Object.fromEntries(Object.entries(safeRestData).filter(([key])=>!["saleStatus","buyerFirstName","buyerLastName","buyerPhone"].includes(key))),
         title: propertyTitle, 
         images: uploadedImages,
         furnishedChecklist: checkedFurnishedItems,
@@ -557,40 +565,8 @@ const EditProperty = () => {
     }
   };
 
-  const isPropertyEditable = () => {
-    if (!property) return false;
-
-    // Check if property is already rented or sold
-    const hasActiveTenant = property.tenantName && property.tenantName.trim() !== "";
-    const hasValidActiveTenantInArray = property.tenants && property.tenants.some((t: any) => 
-      t.isActive && (t.firstName || t.lastName || t.phone || t.email)
-    );
-    const hasActiveAgreement = property.agreementStartDate && property.agreementEndDate;
-    const isCurrentlyRented = property.isRented || hasActiveTenant || hasValidActiveTenantInArray || hasActiveAgreement;
-    const isCurrentlySold = property.isSold;
-
-    // Disallow editing for both rented and sold properties
-    return !isCurrentlySold && !isCurrentlyRented;
-  };
-
-  const getPropertyStatusMessage = () => {
-    if (!property) return "";
-
-    const hasActiveTenant = property.tenantName && property.tenantName.trim() !== "";
-    const hasValidActiveTenantInArray = property.tenants && property.tenants.some((t: any) => 
-      t.isActive && (t.firstName || t.lastName || t.phone || t.email)
-    );
-    const isCurrentlyRented = property.isRented || hasActiveTenant || hasValidActiveTenantInArray;
-    const isCurrentlySold = property.isSold;
-
-    if (isCurrentlySold) {
-      return "This property has been sold and cannot be edited.";
-    }
-    if (isCurrentlyRented) {
-      return "This property is currently rented and cannot be edited.";
-    }
-    return "";
-  };
+  const isPropertyEditable = () => !!property && (property.ownerUID === auth.currentUser?.uid || property.userRole === 'admin');
+  const getPropertyStatusMessage = () => 'Only the property owner or an administrator can edit these details.';
 
   if (loading) {
     return (
@@ -670,6 +646,8 @@ const EditProperty = () => {
           <CardContent>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+                <ClientPropertyFields form={form} disabled={!isPropertyEditable()}/>
+                <div className="grid gap-4 sm:grid-cols-2">{(["escalationPercentage","escalationAmount"] as const).map(name=><FormField key={name} control={form.control} name={name} render={({field})=><FormItem><FormLabel>{name==="escalationPercentage"?"Rent escalation percentage":"Rent escalation fixed amount"}</FormLabel><FormControl><Input {...field} value={field.value||""}/></FormControl><FormMessage/></FormItem>}/>)}</div>
 
                 {/* Basic Property Information */}
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 p-6 border rounded-lg">
@@ -735,6 +713,7 @@ const EditProperty = () => {
                           <SelectContent>
                             <SelectItem value="rent">For Rent</SelectItem>
                             <SelectItem value="sell">For Sale</SelectItem>
+                            <SelectItem value="manage">To Manage</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />

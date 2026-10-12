@@ -12,6 +12,7 @@ interface InspectionReportListProps {
 
 const InspectionReportList: React.FC<InspectionReportListProps> = ({ propertyId }) => {
     const [inspectionReports, setInspectionReports] = useState<any[]>([]);
+    const [failure,setFailure]=useState("");
     const [loadingReports, setLoadingReports] = useState(false);
 
     useEffect(() => {
@@ -21,11 +22,11 @@ const InspectionReportList: React.FC<InspectionReportListProps> = ({ propertyId 
     }, [propertyId]);
 
     const fetchInspectionReports = async () => {
-        setLoadingReports(true);
+        setLoadingReports(true);setFailure("");
         try {
             const response = await apiFetch(`${API_BASE_URL}/inspection-reports/property/${propertyId}`);
             if (!response.ok) {
-                console.error(`Failed to fetch inspection reports: ${response.status} ${response.statusText}`);
+                setFailure("Could not load inspection history. Check your access and try again.");
                 return;
             }
             const data = await response.json();
@@ -33,7 +34,7 @@ const InspectionReportList: React.FC<InspectionReportListProps> = ({ propertyId 
                 setInspectionReports(data.reports || []);
             }
         } catch (error) {
-            console.error("Failed to fetch inspection reports:", error);
+            setFailure("Could not load inspection history. Please try again.");
         } finally {
             setLoadingReports(false);
         }
@@ -43,8 +44,9 @@ const InspectionReportList: React.FC<InspectionReportListProps> = ({ propertyId 
         return <p className="text-sm text-muted-foreground">Loading reports...</p>;
     }
 
+    if(failure)return <p role="alert" className="text-destructive">{failure}</p>;
     if (inspectionReports.length === 0) {
-        return null;
+        return <p className="mt-4 text-sm text-muted-foreground">No inspection reports yet.</p>;
     }
 
     return (

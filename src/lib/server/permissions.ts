@@ -23,9 +23,8 @@ export function requireOwnerOrAdmin(user: AuthenticatedUser, property: PropertyR
 
 export function isPropertyTenant(user: AuthenticatedUser, property: PropertyRelationships) {
   return (property.tenants || []).some(tenant => tenant.isActive === true && (
-    tenant.userUID === user.uid
-    || (!!user.email && tenant.email?.toLowerCase() === user.email.toLowerCase())
-    || (!!user.phoneNumber && tenant.phone === user.phoneNumber)
+    tenant.userUID ? tenant.userUID === user.uid
+      : user.token?.email_verified === true && !!user.token.email && tenant.email?.toLowerCase() === user.token.email.toLowerCase()
   ));
 }
 
