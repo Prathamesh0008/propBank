@@ -101,6 +101,7 @@ interface Property {
   sellingPrice: string;
   squareFeet: number;
   images: string[];
+  internalImages?: string[];
   tenants?: TenantInfo[];
   buyers?: BuyerInfo[];
   isSold?: boolean;
@@ -170,6 +171,7 @@ const ManageProperty = () => {
 
   // View toggle state - 'owned' or 'tenant'
   const [activeView, setActiveView] = useState<'owned' | 'tenant'>('owned');
+  const [showAddPropertyOptions, setShowAddPropertyOptions] = useState(false);
 
   // Toggle states for "Want to Sell" - default false for all properties
   const [wantToSellToggles, setWantToSellToggles] = useState<{ [key: string]: boolean }>({});
@@ -324,6 +326,10 @@ const ManageProperty = () => {
       return <Badge variant="secondary" className="bg-green-100 text-green-800">For Sale</Badge>;
     }
     return <Badge variant="outline">Unknown</Badge>;
+  };
+
+  const getPropertyThumbnail = (property: Property) => {
+    return property.images?.find(Boolean) || property.internalImages?.find(Boolean) || "";
   };
 
   const handleEdit = (propertyId: string) => {
@@ -611,13 +617,42 @@ const ManageProperty = () => {
             </div>
             
             <div className="flex-shrink-0 w-full sm:w-auto flex flex-col sm:flex-row gap-3 mt-4 sm:mt-0">
-              <Button
-                className="w-full sm:w-auto px-6 shadow-sm"
-                onClick={() => navigate("/select-property-type")}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Property
-              </Button>
+              <div className="relative w-full sm:w-auto">
+                <Button
+                  className="w-full sm:w-auto px-6 shadow-sm"
+                  aria-expanded={showAddPropertyOptions}
+                  onClick={() => setShowAddPropertyOptions((open) => !open)}
+                >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Property
+                </Button>
+                {showAddPropertyOptions && (
+                  <div className="absolute right-0 top-full z-50 mt-2 w-full min-w-[12rem] overflow-hidden rounded-md border bg-background p-1 text-foreground shadow-lg sm:w-48">
+                    <button
+                      type="button"
+                      className="flex w-full items-center rounded-sm px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus:outline-none"
+                      onClick={() => {
+                        setShowAddPropertyOptions(false);
+                        navigate("/select-property-type?role=owner");
+                      }}
+                    >
+                      <Building2 className="h-4 w-4 mr-2" />
+                      As a Owner
+                    </button>
+                    <button
+                      type="button"
+                      className="flex w-full items-center rounded-sm px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus:outline-none"
+                      onClick={() => {
+                        setShowAddPropertyOptions(false);
+                        navigate("/select-property-type?role=tenant");
+                      }}
+                    >
+                      <Key className="h-4 w-4 mr-2" />
+                      As a Tenant
+                    </button>
+                  </div>
+                )}
+              </div>
               <Button
                 className="w-full sm:w-auto px-6 shadow-sm"
                 variant="outline"
@@ -775,9 +810,9 @@ const ManageProperty = () => {
                               <div className="flex flex-col sm:flex-row">
                                 {/* Property Image Thumbnail - Always show with fallback */}
                                 <div className="w-full sm:w-40 h-32 sm:h-auto flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 relative overflow-hidden flex items-center justify-center">
-                                  {property.images && property.images.length > 0 && property.images[0] ? (
+                                  {getPropertyThumbnail(property) ? (
                                     <img
-                                      src={property.images[0]}
+                                      src={getPropertyThumbnail(property)}
                                       alt={property.title}
                                       className="w-full h-full object-cover absolute inset-0"
                                       onError={(e) => {
@@ -1062,9 +1097,9 @@ const ManageProperty = () => {
                               <div className="flex flex-col sm:flex-row">
                                 {/* Property Image Thumbnail - Always show with fallback */}
                                 <div className="w-full sm:w-40 h-32 sm:h-auto flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 relative overflow-hidden flex items-center justify-center">
-                                  {property.images && property.images.length > 0 && property.images[0] ? (
+                                  {getPropertyThumbnail(property) ? (
                                     <img
-                                      src={property.images[0]}
+                                      src={getPropertyThumbnail(property)}
                                       alt={property.title}
                                       className="w-full h-full object-cover absolute inset-0"
                                       onError={(e) => {
