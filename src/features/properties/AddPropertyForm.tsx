@@ -175,6 +175,7 @@ const AddPropertyForm = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const selectedPropertyType = searchParams.get('type') || '';
+  const selectedRole = searchParams.get('role') || 'owner';
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [uploadedInternalImages, setUploadedInternalImages] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -673,6 +674,8 @@ const AddPropertyForm = () => {
 
       // Filter furnished checklist to only include checked items (saves DB space)
       const checkedFurnishedItems = furnishedChecklist.filter(item => item.checked);
+      const buildingImages = data.images?.length ? data.images : uploadedImages;
+      const interiorImages = data.internalImages?.length ? data.internalImages : uploadedInternalImages;
 
       // Prepare property data for backend API
       const propertyData = {
@@ -688,7 +691,8 @@ const AddPropertyForm = () => {
         buyerLastName: data.buyerLastName,
         buyerPhone: data.buyerPhone,
 
-        images: uploadedImages, // Ensure images from state are included
+        images: buildingImages, // Ensure images from the latest form state are included
+        internalImages: interiorImages,
         furnishedChecklist: checkedFurnishedItems, // Only include checked items
         ownerUID: currentUser.uid,
       };
@@ -784,7 +788,7 @@ const AddPropertyForm = () => {
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <Button variant="ghost" onClick={() => navigate("/select-property-type")} className="mb-4">
+          <Button variant="ghost" onClick={() => navigate(`/select-property-type?role=${selectedRole}`)} className="mb-4">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Property Type Selection
           </Button>
@@ -794,7 +798,7 @@ const AddPropertyForm = () => {
               <Building2 className="h-8 w-8 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold">Add Property</h1>
+              <h1 className="text-3xl font-bold">Owner Form</h1>
               <p className="text-lg text-muted-foreground">
                 Comprehensive Property Details
                 {selectedPropertyType && (
@@ -810,7 +814,7 @@ const AddPropertyForm = () => {
 
         <Card>
           <CardHeader>
-            <CardTitle>Property Listing Form</CardTitle>
+            <CardTitle>Owner Property Listing Form</CardTitle>
             <CardDescription>
               Fill out the form below to add your property to the listings.
             </CardDescription>
@@ -2045,8 +2049,9 @@ const AddPropertyForm = () => {
                   <Button
                     type="submit"
                     className="px-8 bg-primary hover:bg-primary/90"
+                    disabled={isUploading || isInternalUploading}
                   >
-                    SUBMIT
+                    {isUploading || isInternalUploading ? 'UPLOADING...' : 'SUBMIT'}
                   </Button>
                 </div>
               </form>

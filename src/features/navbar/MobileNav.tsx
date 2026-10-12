@@ -1,6 +1,6 @@
 "use client";
 
-import { Link, NavLink, useNavigate } from "@/lib/navigation";
+import { Link, NavLink } from "@/lib/navigation";
 import { Menu, LogOut, LogIn, Shield, Mail } from "lucide-react";
 import { User } from "firebase/auth";
 import { Button } from "@/ui/button";
@@ -27,27 +27,6 @@ export const MobileNav = ({
   isOpen,
   setIsOpen,
 }: MobileNavProps) => {
-  const navigate = useNavigate();
-
-  const handleContactUs = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsOpen(false);
-    if (window.location.pathname === "/") {
-      const element = document.getElementById("quick-inquiry");
-      if (element) {
-        element.scrollIntoView({ behavior: "smooth" });
-      }
-    } else {
-      navigate("/");
-      setTimeout(() => {
-        const element = document.getElementById("quick-inquiry");
-        if (element) {
-          element.scrollIntoView({ behavior: "smooth" });
-        }
-      }, 200);
-    }
-  };
-
   return (
     <div className="flex md:hidden items-center gap-2">
       <Sheet open={isOpen} onOpenChange={setIsOpen}>
@@ -147,14 +126,20 @@ export const MobileNav = ({
               </NavLink>
 
               {/* Contact Us */}
-              <a
-                href="#quick-inquiry"
-                className="px-3 py-3 rounded-md transition-colors text-left flex items-center gap-3 hover:bg-accent hover:text-accent-foreground"
-                onClick={handleContactUs}
+              <NavLink
+                to="/contact"
+                onClick={() => setIsOpen(false)}
+                className={({ isActive }) =>
+                  `px-3 py-3 rounded-md transition-colors text-left flex items-center gap-3 ${
+                    isActive
+                      ? "bg-accent text-accent-foreground"
+                      : "hover:bg-accent hover:text-accent-foreground"
+                  }`
+                }
               >
                 <Mail className="w-5 h-5" />
                 Contact Us
-              </a>
+              </NavLink>
 
               <div className="border-t pt-4 mt-4">
                 {user ? (
