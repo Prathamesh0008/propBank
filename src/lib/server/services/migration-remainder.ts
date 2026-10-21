@@ -9,8 +9,7 @@ import { identity, propertyMember, readObject, readModel, knownFields, getRecord
 import { getUser } from './users';
 import { getProperty } from './properties';
 import { createNotification } from './notifications';
-import { bestEffort, escapeHtml } from './property-effects';
-import { queueUserEvent } from './transactional-email';
+import { bestEffort, queueEmail, escapeHtml } from './property-effects';
 import {prepareFile,saveMediaRecord,prepareMediaBindings,restoreFileReferences} from './media';
 import {fileFields} from '../file-projection';
 
@@ -96,7 +95,7 @@ export async function updateServiceRequest(request:Request,id:string) {
     updated={...before,...updates};const bind=await prepareMediaBindings(tx,user,COLLECTIONS.serviceRequests,id,s(before.propertyId),updated,before);
     bind();tx.update(ref,updates);
   });
-  queueUserEvent({eventType:'service_request.updated',eventId:`${id}:${s(updated.updatedAt)}:${s(updated.status)}`,recipientUIDs:[s(updated.userUID)],propertyId:s(updated.propertyId),recordId:id,templateId:'service-request-update',subject:'Service request updated',title:'Service request updated',bodyHtml:`<p>${escapeHtml(s(updated.serviceName))}: ${escapeHtml(s(updated.status))}</p><p>${escapeHtml(s(updated.adminNotes))}</p>`,bodyText:`${s(updated.serviceName)}: ${s(updated.status)}. ${s(updated.adminNotes)}`});
+  const profile=await getUser(s(updated.userUID));if(profile?.email)queueEmail({to:s(profile.email),subject:'Service request updated',html:`<p>${escapeHtml(s(updated.serviceName))}: ${escapeHtml(s(updated.status))}</p><p>${escapeHtml(s(updated.adminNotes))}</p>`});
   return jsonResponse({success:true,message:'Service request updated successfully'});
 }
 

@@ -1,4 +1,5 @@
 "use client";
+import styles from "./AdminUserDetailsDialog.module.css";
 
 import { apiFetch } from '@/lib/api-client';
 
@@ -54,7 +55,7 @@ const AdminUserDetailsDialog: React.FC<AdminUserDetailsDialogProps> = ({
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-3xl max-h-[90vh]">
+            <DialogContent className={`${styles.userDialog} max-w-3xl max-h-[90vh]`}>
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2 text-xl">
                         <UserIcon className="w-6 h-6 text-primary" />

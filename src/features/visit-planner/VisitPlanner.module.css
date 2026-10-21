@@ -1,0 +1,25 @@
+/* Scoped visit workspace, with compact lists instead of decorative card grids. */
+.page{background:var(--pb-chalk);color:var(--pb-ink);font-family:var(--pb-ui);min-height:75svh;padding:clamp(1.75rem,4vw,4rem) clamp(1rem,4vw,3rem)}
+.shell{max-width:1240px;margin:0 auto}
+.intro{border-bottom:1px solid var(--pb-line);padding-bottom:1.7rem;margin-bottom:2rem;text-align:left}
+.intro>div{justify-content:flex-start}
+.intro h1{font-family:var(--pb-editorial);font-size:clamp(2.5rem,4vw,4rem);font-weight:400;letter-spacing:-.035em;color:var(--pb-ink)}
+.intro p{font-size:1rem;color:var(--pb-slate);max-width:640px;margin-top:.75rem;line-height:1.6}
+.intro>div>div:first-child{background:var(--pb-ink);border-radius:3px}
+.workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(290px,360px);align-items:start;gap:clamp(1.5rem,4vw,4rem)}
+.results,.scheduler{min-width:0}
+.scheduler{position:sticky;top:104px;border-left:1px solid var(--pb-line);padding-left:clamp(1rem,3vw,2rem)}
+.scheduler>button{background:var(--pb-ink);color:var(--pb-chalk);border-radius:3px;min-height:48px}
+.scheduler>button:hover{background:var(--pb-clay)}
+.scheduler>div{margin-top:1rem;border-color:var(--pb-line);border-radius:3px;box-shadow:none}
+.scheduler input,.scheduler textarea,.scheduler button[role="combobox"]{font-size:16px;min-width:0}
+.visitList{display:grid;gap:0;margin-top:1.25rem}
+.visitRecord{border:0;border-bottom:1px solid var(--pb-line);border-radius:0;box-shadow:none;background:transparent;transition:background-color .18s}
+.visitRecord:hover{background:rgba(230,225,214,.22)}
+.visitRecord h3{color:var(--pb-ink)}
+.emptyState{text-align:center;padding:3rem 1rem;background:#fffdf8;border:1px solid var(--pb-line);margin-top:1.5rem}
+.emptyState>svg{margin:0 auto 1rem;color:var(--pb-sage);width:34px;height:34px}
+.page button:focus-visible,.page a:focus-visible{outline:3px solid var(--pb-focus);outline-offset:3px}
+@media(max-width:900px){.workspace{grid-template-columns:minmax(0,1fr)}.scheduler{position:static;border-left:0;border-top:1px solid var(--pb-line);padding:1.75rem 0 0}.results{order:2}.scheduler{order:1}}
+@media(max-width:520px){.page{padding:1.25rem .9rem}.intro h1{font-size:2.5rem}.intro>div>div:first-child{display:none}.visitRecord>div{padding:1rem .5rem}.emptyState{padding:2rem .75rem}}
+@media(prefers-reduced-motion:reduce){.visitRecord{transition:none}}

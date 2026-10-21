@@ -1,25 +1,33 @@
 "use client";
 
-import React from 'react';
-import GoogleAuth from './GoogleAuth';
+import React from "react";
+import GoogleAuth from "./GoogleAuth";
+import BrandLogo from "../brand/BrandLogo";
+import styles from "./Auth.module.css";
 
-const Auth: React.FC = () => {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="w-full max-w-md mx-auto">
-        <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-            <div className="mb-4 px-6 pt-6 pb-4 text-center bg-gradient-to-b from-white to-gray-50">
-              <div className="mx-auto w-14 h-14 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center mb-3 shadow-lg">
-                <span className="text-xl font-bold text-white">PB</span>
-              </div>
-              <h1 className="text-2xl font-bold text-gray-900 mb-1">Welcome to Propbank</h1>
-              <p className="text-gray-600 text-sm">Sign in to continue to your account</p>
-            </div>
-            <div className="px-6 pb-6"><GoogleAuth /></div>
+const Auth: React.FC = () => (
+  <main className={styles.page}>
+    <div className={styles.layout}>
+      <section className={styles.intro} aria-labelledby="auth-intro-title">
+        <BrandLogo />
+        <p className={styles.kicker}>Your property workspace</p>
+        <h1 id="auth-intro-title" className={styles.heading}>One place for every property decision.</h1>
+        <p className={styles.description}>
+          Discover homes, manage listings and keep property conversations organised, all from one account.
+        </p>
+        <div className={styles.divider} aria-hidden="true" />
+        <p className={styles.note}>Sign in securely with Google to continue. New members can complete their profile after sign-in.</p>
+      </section>
+      <section className={styles.formArea} aria-label="PropBank account sign-in">
+        <div className={styles.formHeader}>
+          <span className={styles.eyebrow}>Access your account</span>
+          <h2>Welcome to PropBank</h2>
+          <p>Use your Google account to sign in or register.</p>
         </div>
-      </div>
+        <GoogleAuth />
+      </section>
     </div>
-  );
-};
+  </main>
+);
 
 export default Auth;

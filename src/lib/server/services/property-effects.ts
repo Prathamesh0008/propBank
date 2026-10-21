@@ -5,10 +5,8 @@ import { COLLECTIONS, getDatabase } from '../firestore';
 import { model, storeModel, wireModel, parsePrice, isRecord, stringValue as s, type RecordData } from './contracts';
 import { getUser, saveUser } from './users';
 import { templates } from './property-email-templates';
-import { queueUserEvent } from './transactional-email';
-import { sendEmail, type Email } from './resend';
-export { sendEmail, type Email } from './resend';
 
+export interface Email { to:string; subject:string; html:string }
 export function escapeHtml(value:string):string {
   const entities:Record<string,string>={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
   return value.replace(/[&<>"']/g,character=>entities[character]);
@@ -16,6 +14,12 @@ export function escapeHtml(value:string):string {
 export function formatTemplate(template:string,values:string[]) {
   let index=0;
   return template.replace(/%%|%s|%d/g,token=>token==='%%'?'%':escapeHtml(values[index++] ?? ''));
+}
+export async function sendEmail(mail:Email,idempotencyKey?:string) {
+  if (!mail.to || !process.env.RESEND_API_KEY) return;
+  const from=process.env.FROM_EMAIL || 'connect@propbank.shop';
+  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json',...(idempotencyKey!==undefined?{'Idempotency-Key':idempotencyKey}:{})},body:JSON.stringify({from:`Propbank <${from}>`,to:[mail.to],subject:mail.subject,html:mail.html.replaceAll('connectpropbank@gmail.com',from)}),signal:AbortSignal.timeout(30000)});
+  if (!response.ok) throw new Error('Property email delivery failed');
 }
 export async function bestEffort<T>(action:()=>Promise<T>):Promise<T|null> {
   try { return await action(); } catch { return null; }
@@ -73,7 +77,6 @@ async function tenantAddedEmails(property:RecordData,previous:RecordData[],tenan
 }
 export async function propertyCreatedEffects(property:RecordData) {
   await bestEffort(()=>notify(property,'property_added'));
-  if(property.createdAs!=='tenant')queueUserEvent({eventType:property.createdByUID&&property.createdByUID!==property.ownerUID?'property.admin_created':'property.created',eventId:`property:${s(property.id)}:created`,recipients:[{uid:s(property.ownerUID),role:'owner'},{role:'admin',email:process.env.ADMIN_EMAIL}],propertyId:s(property.id),recordId:s(property.id),templateId:'property-created',subject:'Property submitted to PropBank',title:'Property submitted for review',bodyHtml:`<p><strong>${escapeHtml(s(property.title))}</strong> was added successfully.</p><p>Public sale and rental listings remain private until an administrator approves them.</p>`,bodyText:`${s(property.title)} was added successfully. Public sale and rental listings remain private until an administrator approves them.`,action:{label:'View property',path:`/manage-property/${encodeURIComponent(s(property.id))}`}});
   const tenants=entries(property.tenants);
   if(property.createdAs==='tenant')return;
   if (tenants.length) {
@@ -88,7 +91,7 @@ export async function propertyUpdatedEffects(before:RecordData,property:RecordDa
     const tenant=tenants.find(t=>t.isActive===true && t.email);
     const email=s(property.tenantEmail)||s(tenant?.email);
     const name=s(property.tenantName)||(tenant?fullName(tenant):'');
-    queueUserEvent({eventType:'tenancy.rental_terms_updated',eventId:`property:${s(property.id)}:terms:${String(property.updatedAt)}`,recipients:[{uid:s(property.ownerUID),role:'owner'},...(tenant?.userUID?[{uid:s(tenant.userUID),role:'tenant'}]:[])],propertyId:s(property.id),recordId:s(property.id),templateId:'rental-terms-updated',subject:'Rental terms updated',title:'Rental terms changed',bodyHtml:`<p>The monthly rent for <strong>${escapeHtml(s(property.title))}</strong> changed from ${escapeHtml(s(before.monthlyRent))} to ${escapeHtml(s(updates.monthlyRent))}.</p>`,bodyText:`The monthly rent for ${s(property.title)} changed from ${s(before.monthlyRent)} to ${s(updates.monthlyRent)}.`,action:{label:'View rental details',path:`/manage-property/${encodeURIComponent(s(property.id))}`}});
+    queue({to:email,subject:'📈 Rent Update Notice - Propbank',html:formatTemplate(templates.RentUpdate,[name,s(property.title),s(before.monthlyRent),updates.monthlyRent,s(property.location)])});
   }
   if (Array.isArray(updates.tenants)) {
     const raw=entries(updates.tenants);

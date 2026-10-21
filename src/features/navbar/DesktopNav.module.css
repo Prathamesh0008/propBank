@@ -11,3 +11,5 @@
 @media(max-width:1199px) { .links { gap:14px; } .root { gap:18px; } .link { font-size:var(--pb-text-xs); } }
 @media(max-width:1023px) { .root { display:none; } }
 @media(prefers-reduced-motion:reduce) { .link,.link::after,.login { transition:none; } }
+/* Comfortable reading size, while retaining the existing 81px header geometry. */
+@media(min-width:1200px) { .links { gap:24px; } .link { font-size:14px; } .root { gap:25px; } }

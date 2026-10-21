@@ -1,5 +1,7 @@
 "use client";
 
+import styles from "./PropertyDetails.module.css";
+
 import NegotiationPanel from '@/features/negotiations/NegotiationPanel';
 import {ServiceRequestHistory} from '@/features/services/ServiceRequestWorkflow';
 import ReviewHistory from '@/features/services/ReviewHistory';
@@ -482,25 +484,25 @@ const PropertyDetails = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-12">
+    <div className={styles.page}>
       <>
         <title>{property.title} | PropBank</title>
       </>
 
       {/* Hero Section */}
-      <div className="relative h-[400px] md:h-[500px] bg-gray-900 group">
+      <div className={styles.hero}>
         {property.images && property.images.length > 0 ? (
           <img
             src={property.images[0]}
             alt={property.title}
-            className="w-full h-full object-cover opacity-60"
+            className={styles.heroImage}
           />
         ) : (
-          <div className="w-full h-full bg-gradient-to-r from-gray-800 to-gray-900 opacity-90" />
+          <div className={styles.heroFallback} />
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-gray-900/50 to-transparent" />
+        <div className={styles.heroOverlay} />
 
-        <div className="absolute inset-0 container mx-auto px-4 flex flex-col justify-end pb-8 md:pb-12">
+        <div className={styles.heroContent}>
           <div className="max-w-4xl space-y-4">
             <div className="flex flex-wrap items-center gap-3">
               <Badge className="bg-blue-600 hover:bg-blue-700 text-white border-0 px-3 py-1 text-sm font-medium capitalize">
@@ -549,7 +551,7 @@ const PropertyDetails = () => {
         </Button>
       </div>
 
-      <div className="container mx-auto px-4 -mt-16 relative z-10">
+      <div className={styles.content}>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             <Card>

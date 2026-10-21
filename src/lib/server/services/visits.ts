@@ -7,8 +7,7 @@ import {AccessError} from '../auth';
 import { ApiError, jsonResponse, plainError } from '../http';
 import { model, storeModel, wireModel, wireValue, stringValue as s, type RecordData } from './contracts';
 import { identity, propertyMember, readModel, readObject, getRecord, getRecords, epoch, parseRFC3339, firestoreTime, goTimeString } from './domain-contracts';
-import { bestEffort } from './property-effects';
-import { queueUserEvent } from './transactional-email';
+import { bestEffort, queueEmail, escapeHtml } from './property-effects';
 import { getUser } from './users';
 import { getProperty } from './properties';
 import { createNotification } from './notifications';
@@ -32,8 +31,8 @@ function validateVisit(req:RecordData) {
 async function notifyVisit(visit:RecordData,uid:string) {
   if(!visit.propertyId)return;
   const property=await getProperty(s(visit.propertyId));if(!property)return;
-  const recipientUIDs=[s(property.ownerUID),uid].filter(Boolean);
-  queueUserEvent({eventType:`visit.${s(visit.status)||'updated'}`,eventId:`${s(visit.id)}:${s(visit.updatedAt)||s(visit.visitDate)}:${s(visit.status)}`,recipientUIDs,propertyId:s(property.id),recordId:s(visit.id),templateId:'visit-update',subject:`Property visit updated: ${s(property.title)}`,title:'Property visit updated',bodyHtml:`<p>${s(property.title)}</p><p>${s(visit.status)}: ${String(visit.visitDate)}</p>`,bodyText:`${s(property.title)}. ${s(visit.status)}: ${String(visit.visitDate)}`});
+  const owner=property.ownerUID?await getUser(s(property.ownerUID)):null;
+  if(owner?.email)queueEmail({to:s(owner.email),subject:'Property visit updated',html:`<p>${escapeHtml(s(property.title))}</p><p>${escapeHtml(s(visit.status))}: ${escapeHtml(String(visit.visitDate))}</p>`});
   await bestEffort(()=>createNotification({type:'visit_update',title:'Property Visit Update',message:`Visit ${s(visit.status)} for ${s(property.title)}`,propertyId:property.id,ownerId:property.ownerUID,userId:uid}));
 }
 export async function createVisit(request:Request) {

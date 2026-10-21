@@ -1,4 +1,5 @@
 "use client";
+import styles from "./DocumentWorkspace.module.css";
 
 import { apiFetch } from '@/lib/api-client';
 
@@ -371,7 +372,7 @@ const AttachDocuments = () => {
       <>
         <title>Attach Documents | PropBank</title>
       </>
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
+      <div className={`container mx-auto px-4 py-8 max-w-5xl ${styles.workspace}`}>
         <Button
           variant="ghost"
           onClick={() => navigate(-1)}
@@ -381,7 +382,7 @@ const AttachDocuments = () => {
           Back
         </Button>
 
-        <Card>
+        <Card className={styles.panel}>
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
@@ -414,7 +415,7 @@ const AttachDocuments = () => {
             ) : (
               <div className="space-y-4">
                 {visibleDocuments.map((doc) => (
-                  <Card key={doc.id} className="border-l-4 border-l-blue-500">
+                  <Card key={doc.id} className={styles.documentRow}>
                     <CardContent className="pt-6">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">

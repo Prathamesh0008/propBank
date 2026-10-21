@@ -1,0 +1,7 @@
+/* Scoped admin people directory */
+.directory{color:#242b28;font-family:var(--font-manrope),sans-serif}
+.intro,.section{background:transparent;border:0;border-bottom:1px solid #dedbd2;border-radius:0;box-shadow:none}
+.intro{padding-bottom:12px}.section{padding-bottom:20px}
+.personRow{padding:15px 2px;border:0;border-top:1px solid #e5e0d7;border-radius:0;background:transparent;min-width:0}
+.personRow:hover{background:#f1eee7}.personRow h3{color:#242b28;letter-spacing:-.01em}
+@media(max-width:650px){.personRow{align-items:flex-start;flex-direction:column;gap:12px}.personRow>div{max-width:100%;min-width:0;flex-wrap:wrap}.directory{overflow-wrap:anywhere}}

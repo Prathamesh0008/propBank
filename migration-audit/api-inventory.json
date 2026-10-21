@@ -1,8 +1,8 @@
 {
-  "callSites": 115,
-  "sourceOperations": 71,
-  "activeOperations": 70,
-  "uniqueActiveMethodPaths": 62,
+  "callSites": 111,
+  "sourceOperations": 69,
+  "activeOperations": 68,
+  "uniqueActiveMethodPaths": 60,
   "rows": [
     {
       "method": "GET",
@@ -26,9 +26,9 @@
       "callers": [
         "features/landing-page/GeneralInquiryForm.tsx:103",
         "features/landing-page/useLandingProperties.ts:315",
-        "features/properties/ManageProperty.tsx:542",
-        "features/search/SearchResults.tsx:204",
-        "features/services/AttachDocuments.tsx:271"
+        "features/properties/ManageProperty.tsx:543",
+        "features/search/SearchResults.tsx:184",
+        "features/services/AttachDocuments.tsx:272"
       ],
       "route": "app/api/admin/notifications/route.ts",
       "service": "notifications",
@@ -39,10 +39,10 @@
     {
       "method": "GET",
       "endpoint": "/api/admin/notifications?propertyId=:propertyId",
-      "caller": "features/properties/PropertyDetails.tsx:341",
+      "caller": "features/properties/PropertyDetails.tsx:343",
       "reachable": true,
       "callers": [
-        "features/properties/PropertyDetails.tsx:341"
+        "features/properties/PropertyDetails.tsx:343"
       ],
       "route": "app/api/admin/notifications/route.ts",
       "service": "notifications",
@@ -93,21 +93,6 @@
       "before": "NATIVE"
     },
     {
-      "method": "POST",
-      "endpoint": "/api/admin/properties/:id/tenancy",
-      "caller": "features/services/AddTenant.tsx:553",
-      "reachable": true,
-      "callers": [
-        "features/services/AddTenant.tsx:553",
-        "features/services/AddTenant.tsx:597"
-      ],
-      "route": "app/api/admin/properties/[id]/tenancy/route.ts",
-      "service": "tenants",
-      "status": "NATIVE",
-      "nativeImplemented": true,
-      "before": "NATIVE"
-    },
-    {
       "method": "GET",
       "endpoint": "/api/admin/site-settings",
       "caller": "features/admin/AdminPortal.tsx:159",
@@ -137,25 +122,11 @@
     },
     {
       "method": "GET",
-      "endpoint": "/api/admin/users/search?q=:query",
-      "caller": "features/admin/AdminPropertyOperations.tsx:23",
-      "reachable": true,
-      "callers": [
-        "features/admin/AdminPropertyOperations.tsx:23"
-      ],
-      "route": "app/api/admin/users/search/route.ts",
-      "service": "users",
-      "status": "NATIVE",
-      "nativeImplemented": true,
-      "before": "NATIVE"
-    },
-    {
-      "method": "GET",
       "endpoint": "/api/admin/visits?status=:filter&dateFrom=:filter&dateTo=:filter&propertyId=:propertyId",
-      "caller": "features/admin/AdminVisits.tsx:28",
+      "caller": "features/admin/AdminVisits.tsx:29",
       "reachable": true,
       "callers": [
-        "features/admin/AdminVisits.tsx:28"
+        "features/admin/AdminVisits.tsx:29"
       ],
       "route": "app/api/admin/visits/route.ts",
       "service": "visits",
@@ -166,10 +137,10 @@
     {
       "method": "POST",
       "endpoint": "/api/agreements/renew",
-      "caller": "features/services/AgreementWorkflow.tsx:29",
+      "caller": "features/services/AgreementWorkflow.tsx:30",
       "reachable": true,
       "callers": [
-        "features/services/AgreementWorkflow.tsx:29"
+        "features/services/AgreementWorkflow.tsx:30"
       ],
       "route": "app/api/agreements/renew/route.ts",
       "service": "agreements",
@@ -180,10 +151,10 @@
     {
       "method": "POST",
       "endpoint": "/api/agreements/request-renewal",
-      "caller": "features/services/AgreementWorkflow.tsx:29",
+      "caller": "features/services/AgreementWorkflow.tsx:30",
       "reachable": true,
       "callers": [
-        "features/services/AgreementWorkflow.tsx:29"
+        "features/services/AgreementWorkflow.tsx:30"
       ],
       "route": "app/api/agreements/request-renewal/route.ts",
       "service": "agreements",
@@ -194,11 +165,11 @@
     {
       "method": "POST",
       "endpoint": "/api/agreements/request-termination",
-      "caller": "features/properties/PropertyDetails.tsx:416",
+      "caller": "features/properties/PropertyDetails.tsx:418",
       "reachable": true,
       "callers": [
-        "features/properties/PropertyDetails.tsx:416",
-        "features/services/AgreementWorkflow.tsx:29"
+        "features/properties/PropertyDetails.tsx:418",
+        "features/services/AgreementWorkflow.tsx:30"
       ],
       "route": "app/api/agreements/request-termination/route.ts",
       "service": "agreements",
@@ -209,10 +180,10 @@
     {
       "method": "POST",
       "endpoint": "/api/agreements/terminate",
-      "caller": "features/services/AgreementWorkflow.tsx:29",
+      "caller": "features/services/AgreementWorkflow.tsx:30",
       "reachable": true,
       "callers": [
-        "features/services/AgreementWorkflow.tsx:29"
+        "features/services/AgreementWorkflow.tsx:30"
       ],
       "route": "app/api/agreements/terminate/route.ts",
       "service": "agreements",
@@ -252,10 +223,10 @@
     {
       "method": "POST",
       "endpoint": "/api/documents",
-      "caller": "features/services/AttachDocuments.tsx:222",
+      "caller": "features/services/AttachDocuments.tsx:223",
       "reachable": true,
       "callers": [
-        "features/services/AttachDocuments.tsx:222"
+        "features/services/AttachDocuments.tsx:223"
       ],
       "route": "app/api/documents/route.ts",
       "service": "documents",
@@ -266,10 +237,10 @@
     {
       "method": "DELETE",
       "endpoint": "/api/documents/:id",
-      "caller": "features/services/AttachDocuments.tsx:328",
+      "caller": "features/services/AttachDocuments.tsx:329",
       "reachable": true,
       "callers": [
-        "features/services/AttachDocuments.tsx:328"
+        "features/services/AttachDocuments.tsx:329"
       ],
       "route": "app/api/documents/[id]/route.ts",
       "service": "documents",
@@ -280,10 +251,10 @@
     {
       "method": "PATCH",
       "endpoint": "/api/documents/:id",
-      "caller": "features/services/AttachDocuments.tsx:428",
+      "caller": "features/services/AttachDocuments.tsx:429",
       "reachable": true,
       "callers": [
-        "features/services/AttachDocuments.tsx:428"
+        "features/services/AttachDocuments.tsx:429"
       ],
       "route": "app/api/documents/[id]/route.ts",
       "service": "documents",
@@ -294,13 +265,13 @@
     {
       "method": "GET",
       "endpoint": "/api/documents/property/:propertyId",
-      "caller": "features/admin/AdminPropertyDetailsDialog.tsx:105",
+      "caller": "features/admin/AdminPropertyDetailsDialog.tsx:106",
       "reachable": true,
       "callers": [
-        "features/admin/AdminPropertyDetailsDialog.tsx:105",
-        "features/services/AttachDocuments.tsx:115",
-        "features/services/AttachDocuments.tsx:297",
-        "features/services/AttachDocuments.tsx:340"
+        "features/admin/AdminPropertyDetailsDialog.tsx:106",
+        "features/services/AttachDocuments.tsx:116",
+        "features/services/AttachDocuments.tsx:298",
+        "features/services/AttachDocuments.tsx:341"
       ],
       "route": "app/api/documents/property/[propertyId]/route.ts",
       "service": "documents",
@@ -311,10 +282,10 @@
     {
       "method": "GET",
       "endpoint": "/api/enquiries",
-      "caller": "features/enquiries/EnquiryInbox.tsx:35",
+      "caller": "features/enquiries/EnquiryInbox.tsx:36",
       "reachable": true,
       "callers": [
-        "features/enquiries/EnquiryInbox.tsx:35"
+        "features/enquiries/EnquiryInbox.tsx:36"
       ],
       "route": "app/api/enquiries/route.ts",
       "service": "enquiries",
@@ -325,10 +296,10 @@
     {
       "method": "PATCH",
       "endpoint": "/api/enquiries/:id",
-      "caller": "features/enquiries/EnquiryInbox.tsx:36",
+      "caller": "features/enquiries/EnquiryInbox.tsx:37",
       "reachable": true,
       "callers": [
-        "features/enquiries/EnquiryInbox.tsx:36"
+        "features/enquiries/EnquiryInbox.tsx:37"
       ],
       "route": "app/api/enquiries/[id]/route.ts",
       "service": "enquiries",
@@ -367,10 +338,10 @@
     {
       "method": "GET",
       "endpoint": "/api/inspection-reports/property/:propertyId",
-      "caller": "features/admin/AdminPropertyDetailsDialog.tsx:90",
+      "caller": "features/admin/AdminPropertyDetailsDialog.tsx:91",
       "reachable": true,
       "callers": [
-        "features/admin/AdminPropertyDetailsDialog.tsx:90",
+        "features/admin/AdminPropertyDetailsDialog.tsx:91",
         "features/services/InspectionReportList.tsx:27"
       ],
       "route": "app/api/inspection-reports/property/[propertyId]/route.ts",
@@ -382,10 +353,10 @@
     {
       "method": "GET",
       "endpoint": "/api/inspection-reports/user/:userId",
-      "caller": "features/admin/AdminUserDetailsDialog.tsx:41",
+      "caller": "features/admin/AdminUserDetailsDialog.tsx:42",
       "reachable": true,
       "callers": [
-        "features/admin/AdminUserDetailsDialog.tsx:41"
+        "features/admin/AdminUserDetailsDialog.tsx:42"
       ],
       "route": "app/api/inspection-reports/user/[userId]/route.ts",
       "service": "migration-remainder",
@@ -480,10 +451,10 @@
     {
       "method": "POST",
       "endpoint": "/api/owner-verification",
-      "caller": "features/admin/OwnerVerification.tsx:19",
+      "caller": "features/admin/OwnerVerification.tsx:20",
       "reachable": true,
       "callers": [
-        "features/admin/OwnerVerification.tsx:19"
+        "features/admin/OwnerVerification.tsx:20"
       ],
       "route": "app/api/owner-verification/route.ts",
       "service": "owner-verification",
@@ -509,11 +480,11 @@
     {
       "method": "POST",
       "endpoint": "/api/properties",
-      "caller": "features/properties/AddPropertyForm.tsx:704",
+      "caller": "features/properties/AddPropertyForm.tsx:705",
       "reachable": true,
       "callers": [
-        "features/properties/AddPropertyForm.tsx:704",
-        "features/properties/TenantPropertyForm.tsx:20"
+        "features/properties/AddPropertyForm.tsx:705",
+        "features/properties/TenantPropertyForm.tsx:21"
       ],
       "route": "app/api/properties/route.ts",
       "service": "properties",
@@ -568,14 +539,14 @@
     {
       "method": "GET",
       "endpoint": "/api/properties/:id",
-      "caller": "features/admin/OwnerVerification.tsx:25",
+      "caller": "features/admin/OwnerVerification.tsx:26",
       "reachable": true,
       "callers": [
-        "features/admin/OwnerVerification.tsx:25",
-        "features/services/AddTenant.tsx:139",
-        "features/services/AddTenant.tsx:516",
-        "features/services/AgreementWorkflow.tsx:17",
-        "features/services/AttachDocuments.tsx:105",
+        "features/admin/OwnerVerification.tsx:26",
+        "features/services/AddTenant.tsx:137",
+        "features/services/AddTenant.tsx:500",
+        "features/services/AgreementWorkflow.tsx:18",
+        "features/services/AttachDocuments.tsx:106",
         "features/services/InspectionReport.tsx:70",
         "features/services/Review.tsx:73",
         "hooks/useProperties.ts:82",
@@ -594,7 +565,7 @@
       "reachable": true,
       "callers": [
         "features/properties/ListingModeration.tsx:23",
-        "features/properties/ManageProperty.tsx:528"
+        "features/properties/ManageProperty.tsx:529"
       ],
       "route": "app/api/properties/[id]/route.ts",
       "service": "properties",
@@ -605,14 +576,14 @@
     {
       "method": "PUT",
       "endpoint": "/api/properties/:id",
-      "caller": "features/properties/ArchivedProperties.tsx:79",
+      "caller": "features/properties/ArchivedProperties.tsx:80",
       "reachable": true,
       "callers": [
-        "features/properties/ArchivedProperties.tsx:79",
-        "features/properties/EditProperty.tsx:529",
-        "features/properties/ManageProperty.tsx:367",
-        "features/properties/ManageProperty.tsx:408",
-        "features/properties/ManageProperty.tsx:469"
+        "features/properties/ArchivedProperties.tsx:80",
+        "features/properties/EditProperty.tsx:531",
+        "features/properties/ManageProperty.tsx:368",
+        "features/properties/ManageProperty.tsx:409",
+        "features/properties/ManageProperty.tsx:470"
       ],
       "route": "app/api/properties/[id]/route.ts",
       "service": "properties",
@@ -651,10 +622,10 @@
     {
       "method": "GET",
       "endpoint": "/api/property-hub",
-      "caller": "features/properties/PropertyHub.tsx:16",
+      "caller": "features/properties/PropertyHub.tsx:17",
       "reachable": true,
       "callers": [
-        "features/properties/PropertyHub.tsx:16"
+        "features/properties/PropertyHub.tsx:17"
       ],
       "route": "app/api/property-hub/route.ts",
       "service": "property-hub",
@@ -665,10 +636,10 @@
     {
       "method": "PATCH",
       "endpoint": "/api/property-hub",
-      "caller": "features/properties/PropertyHub.tsx:36",
+      "caller": "features/properties/PropertyHub.tsx:37",
       "reachable": true,
       "callers": [
-        "features/properties/PropertyHub.tsx:36"
+        "features/properties/PropertyHub.tsx:37"
       ],
       "route": "app/api/property-hub/route.ts",
       "service": "property-hub",
@@ -679,10 +650,10 @@
     {
       "method": "GET",
       "endpoint": "/api/property-hub?propertyId=:propertyId",
-      "caller": "features/properties/PropertyHub.tsx:16",
+      "caller": "features/properties/PropertyHub.tsx:17",
       "reachable": true,
       "callers": [
-        "features/properties/PropertyHub.tsx:16"
+        "features/properties/PropertyHub.tsx:17"
       ],
       "route": "app/api/property-hub/route.ts",
       "service": "property-hub",
@@ -721,10 +692,10 @@
     {
       "method": "POST",
       "endpoint": "/api/service-requests",
-      "caller": "features/services/ServiceRequestWorkflow.tsx:60",
+      "caller": "features/services/ServiceRequestWorkflow.tsx:61",
       "reachable": true,
       "callers": [
-        "features/services/ServiceRequestWorkflow.tsx:60",
+        "features/services/ServiceRequestWorkflow.tsx:61",
         "services/serviceApi.ts:67"
       ],
       "route": "app/api/service-requests/route.ts",
@@ -736,10 +707,10 @@
     {
       "method": "GET",
       "endpoint": "/api/service-requests?admin=true",
-      "caller": "features/services/ServiceRequestWorkflow.tsx:18",
+      "caller": "features/services/ServiceRequestWorkflow.tsx:19",
       "reachable": true,
       "callers": [
-        "features/services/ServiceRequestWorkflow.tsx:18",
+        "features/services/ServiceRequestWorkflow.tsx:19",
         "services/serviceApi.ts:98"
       ],
       "route": "app/api/service-requests/route.ts",
@@ -751,10 +722,10 @@
     {
       "method": "GET",
       "endpoint": "/api/service-requests?propertyId=:propertyId",
-      "caller": "features/services/ServiceRequestWorkflow.tsx:18",
+      "caller": "features/services/ServiceRequestWorkflow.tsx:19",
       "reachable": true,
       "callers": [
-        "features/services/ServiceRequestWorkflow.tsx:18"
+        "features/services/ServiceRequestWorkflow.tsx:19"
       ],
       "route": "app/api/service-requests/route.ts",
       "service": "migration-remainder",
@@ -779,10 +750,10 @@
     {
       "method": "PUT",
       "endpoint": "/api/service-requests/:id",
-      "caller": "features/services/ServiceRequestWorkflow.tsx:28",
+      "caller": "features/services/ServiceRequestWorkflow.tsx:29",
       "reachable": true,
       "callers": [
-        "features/services/ServiceRequestWorkflow.tsx:28",
+        "features/services/ServiceRequestWorkflow.tsx:29",
         "services/serviceApi.ts:114"
       ],
       "route": "app/api/service-requests/[id]/route.ts",
@@ -794,10 +765,10 @@
     {
       "method": "GET",
       "endpoint": "/api/services",
-      "caller": "features/services/ServiceRequestWorkflow.tsx:54",
+      "caller": "features/services/ServiceRequestWorkflow.tsx:55",
       "reachable": true,
       "callers": [
-        "features/services/ServiceRequestWorkflow.tsx:54",
+        "features/services/ServiceRequestWorkflow.tsx:55",
         "services/serviceApi.ts:49"
       ],
       "route": "app/api/services/route.ts",
@@ -809,10 +780,10 @@
     {
       "method": "POST",
       "endpoint": "/api/tenants",
-      "caller": "features/services/AddTenant.tsx:553",
+      "caller": "features/services/AddTenant.tsx:537",
       "reachable": true,
       "callers": [
-        "features/services/AddTenant.tsx:553"
+        "features/services/AddTenant.tsx:537"
       ],
       "route": "app/api/tenants/route.ts",
       "service": "tenants",
@@ -879,10 +850,10 @@
     {
       "method": "POST",
       "endpoint": "/api/upload/service-request-image",
-      "caller": "features/services/ServiceRequestWorkflow.tsx:26",
+      "caller": "features/services/ServiceRequestWorkflow.tsx:27",
       "reachable": true,
       "callers": [
-        "features/services/ServiceRequestWorkflow.tsx:26",
+        "features/services/ServiceRequestWorkflow.tsx:27",
         "services/uploadService.ts:144"
       ],
       "route": "app/api/upload/service-request-image/route.ts",
@@ -913,13 +884,12 @@
       "callers": [
         "components/RouteGuard.tsx:22",
         "features/auth/GoogleAuth.tsx:167",
-        "features/enquiries/EnquiryInbox.tsx:47",
+        "features/enquiries/EnquiryInbox.tsx:48",
         "features/landing-page/useLandingProperties.ts:164",
         "features/landing-page/useLandingProperties.ts:263",
         "features/landing-page/useLandingProperties.ts:279",
-        "features/navbar/SiteHeader.tsx:40",
-        "features/properties/PropertyDetails.tsx:314",
-        "features/services/AddTenant.tsx:189"
+        "features/navbar/SiteHeader.tsx:45",
+        "features/properties/PropertyDetails.tsx:316"
       ],
       "route": "app/api/users/[id]/route.ts",
       "service": "users",
@@ -930,10 +900,10 @@
     {
       "method": "PATCH",
       "endpoint": "/api/users/:id",
-      "caller": "features/admin/AdminAgentsTab.tsx:29",
+      "caller": "features/admin/AdminAgentsTab.tsx:30",
       "reachable": true,
       "callers": [
-        "features/admin/AdminAgentsTab.tsx:29"
+        "features/admin/AdminAgentsTab.tsx:30"
       ],
       "route": "app/api/users/[id]/route.ts",
       "service": "users",
@@ -958,11 +928,11 @@
     {
       "method": "GET",
       "endpoint": "/api/users/search?phone=:phone",
-      "caller": "features/properties/AddPropertyForm.tsx:209",
+      "caller": "features/properties/AddPropertyForm.tsx:210",
       "reachable": true,
       "callers": [
-        "features/properties/AddPropertyForm.tsx:209",
-        "features/services/AddTenant.tsx:215"
+        "features/properties/AddPropertyForm.tsx:210",
+        "features/services/AddTenant.tsx:199"
       ],
       "route": "app/api/users/search/route.ts",
       "service": "users",
@@ -1029,11 +999,11 @@
     {
       "method": "PUT",
       "endpoint": "/api/visits/:id",
-      "caller": "features/admin/AdminVisits.tsx:29",
+      "caller": "features/admin/AdminVisits.tsx:30",
       "reachable": true,
       "callers": [
-        "features/admin/AdminVisits.tsx:29",
-        "features/properties/PropertyHub.tsx:51",
+        "features/admin/AdminVisits.tsx:30",
+        "features/properties/PropertyHub.tsx:52",
         "services/visitService.ts:128"
       ],
       "route": "app/api/visits/[id]/route.ts",
@@ -1101,20 +1071,6 @@
       "service": "notifications"
     },
     {
-      "endpoint": "/api/admin/properties/[id]/tenancy",
-      "file": "app/api/admin/properties/[id]/tenancy/route.ts",
-      "methods": {
-        "OPTIONS": "corsOptions",
-        "POST": "handle(async(request:Request,context:{params:Promise<{id:string}>})=>{const {id}=await context.params;return manageAdminTenancy(request,id);},'Failed to update tenancy',true)",
-        "GET": "unsupported",
-        "PUT": "unsupported",
-        "PATCH": "unsupported",
-        "DELETE": "unsupported",
-        "HEAD": "unsupported"
-      },
-      "service": "tenants"
-    },
-    {
       "endpoint": "/api/admin/site-settings",
       "file": "app/api/admin/site-settings/route.ts",
       "methods": {
@@ -1141,20 +1097,6 @@
         "HEAD": "unsupported"
       },
       "service": "media"
-    },
-    {
-      "endpoint": "/api/admin/users/search",
-      "file": "app/api/admin/users/search/route.ts",
-      "methods": {
-        "OPTIONS": "corsOptions",
-        "GET": "handle(async (request:Request)=>searchUsersForAdmin(request),'Failed to search users',true)",
-        "POST": "unsupported",
-        "PUT": "unsupported",
-        "PATCH": "unsupported",
-        "DELETE": "unsupported",
-        "HEAD": "unsupported"
-      },
-      "service": "users"
     },
     {
       "endpoint": "/api/admin/visits",

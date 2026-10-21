@@ -24,6 +24,11 @@ const SiteHeader = () => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
+        // Avoid showing the previous account’s privileged navigation during user changes.
+        setUserRole("");
+        setUserName("");
+        setUserEmail("");
+        setUserPhone("");
         getUserData(firebaseUser.uid);
       } else {
         setUserPhone("");

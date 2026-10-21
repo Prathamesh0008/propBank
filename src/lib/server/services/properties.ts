@@ -13,9 +13,7 @@ import { resolveTenantIdentity, getUser } from './users';
 import { uploadPropertyImages } from './property-images';
 import {prepareMediaBindings,restoreFileReferences} from './media';
 import {readObject} from './domain-contracts';
-import { bestEffort, propertyCreatedEffects, propertyUpdatedEffects, escapeHtml } from './property-effects';
-import { getFirebaseAdminAuth } from '../firebase-admin';
-import { queueUserEvent } from './transactional-email';
+import { bestEffort, propertyCreatedEffects, propertyUpdatedEffects } from './property-effects';
 
 const properties = () => getDatabase().collection(COLLECTIONS.properties);
 function fromDocument(doc:DocumentSnapshot,defaults=true):RecordData {
@@ -177,11 +175,6 @@ export async function createProperty(request:Request) {
   if(!tenantCreated)requireSelfOrAdmin(user,s(req.ownerUID));
   const owner=await getUser(tenantCreated?user.uid:s(req.ownerUID));
   if (!owner) return plainError('Owner not found',400);
-  if(!tenantCreated&&owner.isActive===false)return plainError('Active owner profile required',400);
-  if(!tenantCreated&&user.role==='admin'&&user.uid!==s(req.ownerUID)) {
-    try { if((await getFirebaseAdminAuth().getUser(s(req.ownerUID))).disabled)return plainError('Active owner account required',400); }
-    catch(error) { if((error as {code?:string}).code==='auth/user-not-found')return plainError('Owner account not found',400);throw error; }
-  }
   const id=await generateID();
   const property=model('Property',{});
   for(const key of additiveFields)if(key in req)property[key]=req[key];
@@ -205,12 +198,10 @@ export async function createProperty(request:Request) {
   }
   if(req.isSold) property.buyers=[model('BuyerInfo',{id:`buyer_${BigInt(now.getTime())*1000000n}`,firstName:req.buyerFirstName,lastName:req.buyerLastName,phone:req.buyerPhone,isActive:true,createdAt:now,updatedAt:now})];
   property.createdAt=now;property.updatedAt=now;
-  if(!tenantCreated&&user.role==='admin'&&user.uid!==s(req.ownerUID))Object.assign(property,{createdByUID:user.uid,adminCreatedForUID:req.ownerUID,relationshipHistory:[{action:'owner_property_created',actorUID:user.uid,userUID:req.ownerUID,relationship:'owner',propertyId:id,at:now}]});
   if(!tenantCreated&&['rent','sell'].includes(s(property.listingType)))Object.assign(property,{moderationStatus:'pending_review',moderationRevision:1,moderationSubmittedAt:now,moderationHistory:[{action:'submitted',actorUID:user.uid,at:now,revision:1}]});
   // Atomic create avoids overwriting a property on a race or infrastructure failure.
   const data={...storeModel('Property',property),...Object.fromEntries(additiveFields.filter(key=>key in property).map(key=>[key,property[key]]))};
   if(tenantCreated)for(const key of ['createdAs','submittedByUID','ownershipVerification','reportedOwner'])data[key]=property[key];
-  for(const key of ['createdByUID','adminCreatedForUID','relationshipHistory'])if(key in property)data[key]=property[key];
   for(const key of moderationFields)if(key in property)data[key]=property[key];
   await writeProperty(id,data,user,true);property.tenants=data.tenants;
   await propertyCreatedEffects(property);
@@ -329,6 +320,5 @@ async function moderateListing(req:RecordData,id:string,user:Awaited<ReturnType<
     tx.update(ref,{moderationStatus:status,moderationRevision:revision,moderationReason:reason,updatedAt:at,...(action==='resubmit'?{moderationSubmittedAt:at}:{moderationReviewedAt:at,moderationReviewerUID:user.uid}),moderationHistory:[...history,{action,actorUID:user.uid,reason,at,revision}]});
   });
   const property=await getProperty(id);
-  if(property&&action!=='resubmit')queueUserEvent({eventType:`listing.${action}`,eventId:`property:${id}:moderation:${s(property.moderationRevision)}`,recipients:[{uid:s(property.ownerUID),role:'owner'}],propertyId:id,recordId:id,templateId:'listing-moderation-decision',subject:`Listing ${status.replaceAll('_',' ')}`,title:`Listing ${status.replaceAll('_',' ')}`,bodyHtml:`<p><strong>${escapeHtml(s(property.title))}</strong> was ${escapeHtml(status.replaceAll('_',' '))}.</p>${reason?`<p>Reason: ${escapeHtml(reason)}</p>`:''}`,bodyText:`${s(property.title)} was ${status.replaceAll('_',' ')}.${reason?` Reason: ${reason}`:''}`,action:{label:'Review listing',path:`/manage-property/${encodeURIComponent(id)}`}});
   return jsonResponse({success:true,message:'Listing moderation updated',property:propertyResponse(property!,'normal',user.role==='admin'?'admin':'owner')});
 }

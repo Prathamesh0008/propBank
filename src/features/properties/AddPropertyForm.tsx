@@ -1,5 +1,7 @@
 "use client";
 
+import styles from "./PropertyForm.module.css";
+
 import ClientPropertyFields, {clientPropertySchema} from './ClientPropertyFields';
 import { apiFetch } from '@/lib/api-client';
 
@@ -176,7 +178,6 @@ const AddPropertyForm = () => {
   const [searchParams] = useSearchParams();
   const selectedPropertyType = searchParams.get('type') || '';
   const selectedRole = searchParams.get('role') || 'owner';
-  const adminOwnerUID = searchParams.get('adminOwnerUID') || '';
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [uploadedInternalImages, setUploadedInternalImages] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -696,7 +697,7 @@ const AddPropertyForm = () => {
         images: buildingImages, // Ensure images from the latest form state are included
         internalImages: interiorImages,
         furnishedChecklist: checkedFurnishedItems, // Only include checked items
-        ownerUID: adminOwnerUID || currentUser.uid,
+        ownerUID: currentUser.uid,
       };
 
 
@@ -722,7 +723,7 @@ const AddPropertyForm = () => {
           title: `${data.propertyTitle} added successfully!`,
           description: result.property?.moderationStatus==='pending_review'?'Your listing was submitted for admin review and is not public yet.':`Your ${listingTypeText} has been saved.`,
         });
-        navigate(adminOwnerUID?"/admin":"/manage-property");
+        navigate("/manage-property");
       } else {
         toast({
           title: "Error",
@@ -780,30 +781,29 @@ const AddPropertyForm = () => {
   };
 
   return (
-    <main className="container mx-auto py-8 px-4">
+    <main className={styles.page}>
       <>
         <title>Add Property — Comprehensive Property Details</title>
         <meta name="description" content="Add comprehensive property details including rental terms, tenant information, and agreement details." />
         <link rel="canonical" href="/add-property" />
       </>
 
-      <div className="max-w-6xl mx-auto">
-        {adminOwnerUID&&<div className="mb-4 border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900" role="status">Administrator-assisted creation: this property will belong to the selected registered user and any public listing will remain pending until moderation.</div>}
+      <div className={styles.shell}>
         {/* Header */}
-        <div className="mb-8">
-          <Button variant="ghost" onClick={() => navigate(`/select-property-type?as=${selectedRole}${adminOwnerUID?`&adminOwnerUID=${encodeURIComponent(adminOwnerUID)}`:''}`)} className="mb-4">
+        <div className={styles.pageIntro}>
+          <Button variant="ghost" onClick={() => navigate(`/select-property-type?role=${selectedRole}`)} className="mb-4">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Property Type Selection
           </Button>
 
           <div className="flex items-center gap-4 mb-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-primary shadow-glow">
+            <div className={styles.introIcon}>
               <Building2 className="h-8 w-8 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold">Owner Form</h1>
+              <h1 className={styles.title}>List your property</h1>
               <p className="text-lg text-muted-foreground">
-                Comprehensive Property Details
+                Property details, thoughtfully organized
                 {selectedPropertyType && (
                   <span className="ml-2 px-2 py-1 text-sm bg-primary/10 text-primary rounded-md">
                     {selectedPropertyType.charAt(0).toUpperCase() + selectedPropertyType.slice(1)}
@@ -815,23 +815,28 @@ const AddPropertyForm = () => {
           </div>
         </div>
 
-        <Card>
+        <Card className={styles.formPanel}>
           <CardHeader>
-            <CardTitle>Owner Property Listing Form</CardTitle>
+            <CardTitle>Tell us about the space</CardTitle>
             <CardDescription>
-              Fill out the form below to add your property to the listings.
+              Complete the details below. Your listing will be reviewed before it appears in public search.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
-                console.error("Form validation errors:", errors);
+                const invalidFields = Object.keys(errors);
+                const firstError = errors[invalidFields[0] as keyof typeof errors];
+                const firstMessage = firstError && typeof firstError === "object" && "message" in firstError
+                  ? String(firstError.message || "") : "";
                 toast({
-                  title: "Form Validation Failed",
-                  description: "Please check the form for errors. See console for details.",
+                  title: "Please review the highlighted fields",
+                  description: firstMessage || `${invalidFields.length} field(s) need attention before submission.`,
                   variant: "destructive",
                 });
-              })} className="space-y-8">
+                // React Hook Form focuses the first registered invalid control when possible.
+                // Keep the message useful even for conditional fields without a focusable input.
+              })} className={`${styles.formBody} space-y-8`}>
                 <ClientPropertyFields form={form}/>
 
                 {/* Basic Property Information */}
@@ -2009,7 +2014,7 @@ const AddPropertyForm = () => {
                                     variant="destructive"
                                     size="sm"
                                     onClick={() => removeInternalImage(index)}
-                                    className="absolute top-1 right-1 h-6 w-6 rounded-full p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    className={styles.imageRemoveButton} aria-label={`Remove interior photo ${index + 1}`}
                                   >
                                     <X className="h-3 w-3" />
                                   </Button>

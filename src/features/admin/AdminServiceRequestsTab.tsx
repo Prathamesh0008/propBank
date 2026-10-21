@@ -1,4 +1,5 @@
 "use client";
+import styles from "./AdminServiceRequestsTab.module.css";
 
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/card";
@@ -74,8 +75,8 @@ export const AdminServiceRequestsTab: React.FC<AdminServiceRequestsTabProps> = (
   handleSaveRemarks
 }) => {
   return (
-        <TabsContent value="service-requests" className="mt-6">
-          <Card>
+        <TabsContent value="service-requests" className={`${styles.requests} mt-6`}>
+          <Card className={styles.surface}>
             <CardHeader>
               <CardTitle>Active Service Requests</CardTitle>
               <CardDescription>
@@ -97,7 +98,7 @@ export const AdminServiceRequestsTab: React.FC<AdminServiceRequestsTabProps> = (
               ) : (
                 <div className="space-y-4">
                   {notifications.map((notification) => (
-                    <Card key={notification.id} className={`border-l-4 ${notification.type === "want_to_sell_cancelled" ? "border-l-red-500" : "border-l-blue-500"}`}>
+                    <Card key={notification.id} className={`${styles.entry} ${notification.type === "want_to_sell_cancelled" ? styles.urgent : ""}`}>
                       <CardContent className="pt-6">
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1 space-y-3">

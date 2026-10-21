@@ -1,0 +1,6 @@
+/* Active operational records with restrained status signals. */
+.requests{font-family:var(--font-manrope),sans-serif;color:#242b28}
+.surface{border:0;border-radius:0;background:transparent;box-shadow:none}
+.entry{border:0;border-top:1px solid #ddd9cf;border-radius:0;background:transparent;box-shadow:none;margin:0;padding:8px 0}
+.entry:hover{background:#f3f0e9}.urgent{border-top-color:#a25c42}
+@media(max-width:680px){.requests{min-width:0;overflow-wrap:anywhere}.entry{padding:4px 0}}

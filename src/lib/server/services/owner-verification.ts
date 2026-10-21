@@ -6,8 +6,6 @@ import {COLLECTIONS,getDatabase} from '../firestore';
 import {ApiError,jsonResponse} from '../http';
 import {readObject} from './domain-contracts';
 import {stringValue as s,wireValue,type RecordData} from './contracts';
-import {queueUserEvent} from './transactional-email';
-import {escapeHtml} from './property-effects';
 
 export async function verifyPropertyOwner(request:Request) {
  const actor=await requireUser(request);requireAdmin(actor);
@@ -25,7 +23,7 @@ export async function verifyPropertyOwner(request:Request) {
   try{identity=await getFirebaseAdminAuth().getUser(s(raw.ownerUID));}catch(error){if((error as {code?:string}).code==='auth/user-not-found')throw new ApiError(400,'Owner account does not exist');throw error;}
   if(identity.disabled||!identity.email||!identity.emailVerified)throw new ApiError(400,'Owner requires an active account with verified Firebase email');
  }
- const db=getDatabase(),ref=db.collection(COLLECTIONS.properties).doc(s(raw.propertyId));let verification:RecordData={},notification:RecordData={};
+ const db=getDatabase(),ref=db.collection(COLLECTIONS.properties).doc(s(raw.propertyId));let verification:RecordData={};
  await db.runTransaction(async tx=>{
   const property=await tx.get(ref);if(!property.exists)throw new ApiError(404,'Property not found');const p=property.data()!;
   const reviewer=await tx.get(db.collection(COLLECTIONS.users).doc(actor.uid));
@@ -51,9 +49,8 @@ export async function verifyPropertyOwner(request:Request) {
    Object.assign(event,{ownerUID:identity.uid,evidenceDocumentId:raw.evidenceDocumentId});
    for(const tenant of tenants.docs)tx.update(tenant.ref,{ownerUID:identity.uid,updatedAt:now});
   }
-  tx.update(ref,updates);verification={status,version:version+1,reason:updates.ownershipVerificationReason,history:updates.ownershipVerificationHistory};notification={title:p.title,submittedByUID:p.submittedByUID,ownerUID:identity?.uid};
+  tx.update(ref,updates);verification={status,version:version+1,reason:updates.ownershipVerificationReason,history:updates.ownershipVerificationHistory};
  });
  const message=action==='approve'?'Owner verified and linked. Tenant relationships preserved.':action==='reject'?'Owner verification rejected. Ownership and tenancy unchanged.':'Owner verification reopened for review. No owner has been linked.';
- queueUserEvent({eventType:`owner_verification.${action}`,eventId:`${s(raw.propertyId)}:${s(verification.version)}:${action}`,recipientUIDs:[s(notification.submittedByUID),s(notification.ownerUID)].filter(Boolean),propertyId:s(raw.propertyId),recordId:s(raw.propertyId),templateId:'owner-verification-decision',subject:`Owner verification ${action}`,title:'Owner verification updated',bodyHtml:`<p>${escapeHtml(s(notification.title))}</p><p>${escapeHtml(message)}</p>${reason?`<p>Reason: ${escapeHtml(reason)}</p>`:''}`,bodyText:`${s(notification.title)}. ${message}${reason?` Reason: ${reason}`:''}`});
  return jsonResponse({success:true,message,verification:wireValue(verification)});
 }

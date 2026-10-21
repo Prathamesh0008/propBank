@@ -1,5 +1,6 @@
 "use client";
 
+import workspaceStyles from './ManageProperty.module.css';
 import {OwnerVerificationStatus} from '@/features/admin/OwnerVerification';
 import {BrokerEnquiries} from '@/features/enquiries/EnquiryInbox';
 import ListingModeration from './ListingModeration';
@@ -603,16 +604,16 @@ const ManageProperty = () => {
 
 
   return (
-    <main className="container mx-auto py-4 sm:py-8 px-4">
+    <main className={`${workspaceStyles.workspace} container mx-auto py-4 sm:py-8 px-4`}>
       <>
-        <title>Manage Property — ShoPROP</title>
+        <title>Manage Property — PropBank</title>
         <meta name="description" content="Manage your property listings, update property details, unit numbers, and building information." />
         <link rel="canonical" href="/manage-property" />
       </>
 
-      <div className="max-w-6xl mx-auto">
+      <div className={`${workspaceStyles.content} max-w-6xl mx-auto`}>
         {/* Header */}
-        <div className="mb-6 sm:mb-8">
+        <div className={`${workspaceStyles.pageHeading} mb-6 sm:mb-8`}>
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
             <div className="flex items-center gap-3 sm:gap-4">
               <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-xl bg-primary/10 text-primary flex-shrink-0">
@@ -657,7 +658,7 @@ const ManageProperty = () => {
         <ProductDashboard/>
         <BrokerEnquiries/>
         {/* Filters Card */}
-        <Card className="mb-8 border shadow-sm">
+        <Card className={`${workspaceStyles.filters} mb-8 border shadow-sm`}>
           <CardContent className="p-4 sm:p-6">
             <div className="flex flex-col lg:flex-row gap-6 lg:items-center justify-between">
               
@@ -801,7 +802,7 @@ const ManageProperty = () => {
 
                         {sortedOwnedProperties.length > 0 ? (
                           sortedOwnedProperties.map((property, index) => (
-                            <Card key={property.id} className="hover:shadow-lg transition-shadow overflow-hidden">
+                            <Card key={property.id} className={`${workspaceStyles.propertyRow} transition-shadow overflow-hidden`}>
                               <div className="flex flex-col sm:flex-row">
                                 {/* Property Image Thumbnail - Always show with fallback */}
                                 <div className="w-full sm:w-40 h-32 sm:h-auto flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 relative overflow-hidden flex items-center justify-center">
@@ -1095,7 +1096,7 @@ const ManageProperty = () => {
 
                         {sortedTenantProperties.length > 0 ? (
                           sortedTenantProperties.map((property, index) => (
-                            <Card key={property.id} className="hover:shadow-lg transition-shadow overflow-hidden">
+                            <Card key={property.id} className={`${workspaceStyles.propertyRow} transition-shadow overflow-hidden`}>
                               <div className="flex flex-col sm:flex-row">
                                 {/* Property Image Thumbnail - Always show with fallback */}
                                 <div className="w-full sm:w-40 h-32 sm:h-auto flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 relative overflow-hidden flex items-center justify-center">

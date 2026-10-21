@@ -9,11 +9,13 @@ import { AccessError, type AuthenticatedUser } from '../auth';
 import { requireAdmin } from '../permissions';
 import { identity, readObject } from './domain-contracts';
 import { getProperty } from './properties';
+import { getUser } from './users';
 import { parsePrice, stringValue } from './contracts';
 import {
+  escapeHtml,
+  queueEmail,
   bestEffort,
 } from './property-effects';
-import { queueUserEvent } from './transactional-email';
 import { createNotification } from './notifications';
 import type {
   Negotiation,
@@ -63,8 +65,25 @@ async function notify(n: Negotiation) {
     })
   );
 
-  const recipientUIDs=[...new Set([n.ownerUID,n.customerUID,n.brokerUID].filter(Boolean))];
-  queueUserEvent({eventType:'negotiation.decision_updated',eventId:`${n.id}:${n.version}:${n.status}`,recipientUIDs,propertyId:n.propertyId,recordId:n.id,templateId:'negotiation-update',subject:`Negotiation update: ${n.propertyTitle}`,title:'Negotiation updated',bodyHtml:`<p>${n.propertyTitle}: ${n.status.replaceAll('_',' ')}</p><p>Sign in to review the offer and its history.</p>`,bodyText:`${n.propertyTitle}: ${n.status.replaceAll('_',' ')}. Sign in to review the offer and its history.`});
+  for (
+    const uid of new Set(
+      [n.ownerUID, n.customerUID, n.brokerUID].filter(Boolean)
+    )
+  ) {
+    const user = await bestEffort(() => getUser(uid));
+
+    if (user?.email) {
+      queueEmail({
+        to: stringValue(user.email),
+        subject: `Negotiation update: ${n.propertyTitle}`,
+        html: `<p>${escapeHtml(
+          n.propertyTitle
+        )}: ${escapeHtml(
+          n.status.replaceAll('_', ' ')
+        )}</p><p>Open the property in Propbank to review the offer and its history.</p>`,
+      });
+    }
+  }
 }
 
 export async function createNegotiation(

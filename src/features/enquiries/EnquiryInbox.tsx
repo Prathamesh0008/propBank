@@ -1,4 +1,5 @@
 "use client";
+import styles from './EnquiryInbox.module.css';
 import {useState} from 'react';
 import {useQuery} from '@tanstack/react-query';
 import {useAuth} from '@/contexts/AuthContext';
@@ -13,10 +14,10 @@ interface Agent {uid:string;name:string;role?:string;isActive?:boolean}
 function EnquiryRow({enquiry,admin,agents,onSave}:{enquiry:ManagedEnquiry;admin:boolean;agents:Agent[];onSave:(body:Record<string,unknown>)=>Promise<void>}) {
  const [broker,setBroker]=useState(enquiry.brokerUID),[status,setStatus]=useState<EnquiryStatus>(enquiry.status),[notes,setNotes]=useState(''),[busy,setBusy]=useState(false);
  async function save(action:'assign'|'status') {setBusy(true);try{await onSave({action,expectedVersion:enquiry.version,notes,...(action==='assign'?{brokerUID:broker}:{status})});}finally{setBusy(false);}}
- return <Card><CardHeader><CardTitle className="text-lg">{enquiry.propertyTitle||enquiry.title||'Property enquiry'}</CardTitle></CardHeader><CardContent className="space-y-3">
-  <p className="text-sm break-words">{enquiry.propertyAddress}</p>
-  <p className="text-sm break-words">Customer: {enquiry.userName} / {enquiry.userEmail} / {enquiry.userPhone}</p>
-  <p className="text-sm whitespace-pre-wrap break-words">{enquiry.message}</p>
+ return <Card className={styles.enquiry}><CardHeader className={styles.enquiryHeader}><CardTitle className={styles.enquiryTitle}>{enquiry.propertyTitle||enquiry.title||'Property enquiry'}</CardTitle></CardHeader><CardContent className={styles.enquiryBody}>
+  <p className={styles.address}>{enquiry.propertyAddress}</p>
+  <p className={styles.customer}>Customer: {enquiry.userName} / {enquiry.userEmail} / {enquiry.userPhone}</p>
+  <p className={styles.message}>{enquiry.message}</p>
   <Badge variant="outline">{enquiryStatuses[enquiry.status]}</Badge>
   <p className="text-sm">Assigned broker: {enquiry.brokerName||enquiry.brokerUID||'Unassigned'}</p>
   <Textarea aria-label="Private enquiry notes" placeholder="Optional private notes for admin and the assigned broker" value={notes} onChange={e=>setNotes(e.target.value)} maxLength={2000} disabled={busy}/>
@@ -27,15 +28,15 @@ function EnquiryRow({enquiry,admin,agents,onSave}:{enquiry:ManagedEnquiry;admin:
   <div className="flex flex-wrap gap-2"><label>Enquiry status<select aria-label="Enquiry status" className="border rounded h-10 w-full" value={status} onChange={e=>setStatus(e.target.value as EnquiryStatus)} disabled={busy}>
     {Object.entries(enquiryStatuses).map(([value,label])=><option key={value} value={value}>{label}</option>)}
   </select></label><Button disabled={busy||(status===enquiry.status&&!notes.trim())} onClick={()=>save('status')}>Save progress</Button></div>
-  <details><summary>Assignment and status history</summary>{enquiry.history.length?<ul className="space-y-2 mt-2">{enquiry.history.map((event,index)=><li key={index} className="text-sm break-words">{event.action.replaceAll('_',' ')} / {event.actorUID} / {new Date(event.at).toLocaleString()} / {event.previousBrokerUID||'Unassigned'} to {event.brokerUID||'Unassigned'} / {enquiryStatuses[event.previousStatus]} to {enquiryStatuses[event.status]}{event.notes&&<p className="whitespace-pre-wrap">{event.notes}</p>}</li>)}</ul>:<p className="text-sm">No assignment or progress recorded.</p>}</details>
+  <details className={styles.history}><summary>Assignment and status history</summary>{enquiry.history.length?<ul className="space-y-2 mt-2">{enquiry.history.map((event,index)=><li key={index} className="text-sm break-words">{event.action.replaceAll('_',' ')} / {event.actorUID} / {new Date(event.at).toLocaleString()} / {event.previousBrokerUID||'Unassigned'} to {event.brokerUID||'Unassigned'} / {enquiryStatuses[event.previousStatus]} to {enquiryStatuses[event.status]}{event.notes&&<p className="whitespace-pre-wrap">{event.notes}</p>}</li>)}</ul>:<p className="text-sm">No assignment or progress recorded.</p>}</details>
  </CardContent></Card>;
 }
 export default function EnquiryInbox({admin=false,agents=[]}:{admin?:boolean;agents?:Agent[]}) {
  const {user,loading}=useAuth(),[error,setError]=useState('');
  const query=useQuery({queryKey:['enquiries',user?.uid],queryFn:()=>workflowRequest<{enquiries:ManagedEnquiry[]}>('enquiries'),enabled:!!user&&!loading,staleTime:0});
  async function save(enquiry:ManagedEnquiry,body:Record<string,unknown>){setError('');try{await workflowRequest(`enquiries/${enquiry.id}`,body,'PATCH');}catch(e){setError(e instanceof Error?e.message:'Could not update enquiry');}finally{await query.refetch();}}
- return <section className="space-y-4 my-6" aria-label={admin?'Property enquiry inbox':'Assigned property enquiries'}>
-  <h2 className="text-xl font-semibold">{admin?'Property enquiry inbox':'Your assigned property enquiries'}</h2>
+ return <section className={styles.inbox} aria-label={admin?'Property enquiry inbox':'Assigned property enquiries'}>
+  <h2 className={styles.heading}>{admin?'Property enquiry inbox':'Your assigned property enquiries'}</h2>
   <p className="text-sm">Notes and history are private to administrators and the currently assigned broker. Progress records do not schedule visits or finalize negotiations.</p>
   <Button variant="outline" onClick={()=>query.refetch()} disabled={query.isFetching}>Refresh enquiries</Button>
   {error&&<p role="alert" className="text-destructive">{error}</p>}

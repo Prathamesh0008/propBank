@@ -4,7 +4,7 @@ import { apiFetch } from '@/lib/api-client';
 
 import { Building2, Archive, ArrowLeft, Eye, Edit, MoreVertical } from "lucide-react";
 import { Button } from "@/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
+import { Card, CardContent } from "@/ui/card";
 import { useNavigate } from "@/lib/navigation";
 import { useEffect, useState } from "react";
 import { auth } from "../../firebase";
@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
 import { Badge } from "@/ui/badge";
+import styles from "./ArchivedProperties.module.css";
 import { useToast } from "@/hooks/use-toast";
 import { API_BASE_URL } from "../../utils/config";
 import { useArchivedProperties } from "../../hooks/useProperties";
@@ -130,31 +131,21 @@ const ArchivedProperties = () => {
   };
 
   return (
-    <main className="container mx-auto py-4 sm:py-8 px-4">
+    <main className={styles.page}>
       <>
-        <title>Archived Properties — ShoPROP</title>
+        <title>Archived Properties — PropBank</title>
         <meta name="description" content="View your archived property listings" />
       </>
 
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="mb-6 sm:mb-8">
-          <div className="flex items-center gap-4 mb-4">
-            <Button variant="ghost" onClick={() => navigate("/manage-property")} className="mb-4">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Properties
-            </Button>
-          </div>
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="flex h-12 w-12 sm:h-16 sm:w-16 items-center justify-center rounded-full bg-orange-100 shadow-glow flex-shrink-0">
-              <Archive className="h-6 w-6 sm:h-8 sm:w-8 text-orange-600" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-2xl sm:text-3xl font-bold leading-tight">Archived Properties</h1>
-              <p className="text-sm sm:text-lg text-muted-foreground">Inactive and archived property listings</p>
-            </div>
-          </div>
-        </div>
+      <div className={styles.inner}>
+        <header className={styles.header}>
+          <button type="button" onClick={() => navigate("/manage-property")} className={styles.back}>
+            <ArrowLeft size={16} aria-hidden="true" /> Back to properties
+          </button>
+          <p className={styles.kicker}>Your property workspace</p>
+          <h1>Archived properties</h1>
+          <p>Review properties you've taken off your active list. Restore them when you're ready.</p>
+        </header>
 
         {/* Properties List */}
         {!user ? (
@@ -173,18 +164,18 @@ const ArchivedProperties = () => {
             <p>Loading archived properties...</p>
           </div>
         ) : properties.length > 0 ? (
-          <div className="space-y-4">
-            {properties.map((property, index) => (
-              <Card key={property.id} className="border-2 border-orange-200 bg-orange-50/30">
-                <CardContent className="p-4 sm:p-6">
-                  <div className="flex flex-col sm:flex-row gap-4">
+          <div className={styles.list}>
+            {properties.map((property) => (
+              <article key={property.id} className={styles.record}>
+                <div className={styles.recordBody}>
+                  <div className={styles.recordGrid}>
                     {/* Property Image - Always show with fallback */}
-                    <div className="w-full sm:w-32 h-32 flex-shrink-0 rounded-lg overflow-hidden bg-gradient-to-br from-gray-100 to-gray-200">
+                    <div className={styles.image}>
                       {property.images && property.images.length > 0 ? (
                         <img
                           src={property.images[0]}
                           alt={property.title}
-                          className="w-full h-full object-cover"
+                          className={styles.photo}
                           onError={(e) => {
                             const target = e.target as HTMLImageElement;
                             target.style.display = 'none';
@@ -199,20 +190,20 @@ const ArchivedProperties = () => {
                     </div>
 
                     {/* Property Details */}
-                    <div className="flex-1 space-y-2">
-                      <div className="flex items-start justify-between">
+                    <div className={styles.details}>
+                      <div className={styles.recordTop}>
                         <div>
-                          <h3 className="font-semibold text-lg">
+                          <h2 className={styles.propertyTitle}>
                             {property.title}
                             {property.unitNumber ? ` (${property.unitNumber})` : ""}
-                          </h3>
-                          <p className="text-sm text-muted-foreground">
+                          </h2>
+                          <p className={styles.address}>
                             {property.address}, {property.city}, {property.state}
                           </p>
                         </div>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                            <Button variant="ghost" size="sm" className="h-9 w-9 p-0" aria-label={`More actions for ${property.title}`}>
                               <MoreVertical className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -233,7 +224,7 @@ const ArchivedProperties = () => {
                         </DropdownMenu>
                       </div>
 
-                      <div className="flex flex-wrap gap-2 text-xs sm:text-sm text-muted-foreground">
+                      <div className={styles.facts}>
                         <span className="flex items-center gap-1">
                           🏠 {property.propertyType.toUpperCase()}
                         </span>
@@ -242,7 +233,7 @@ const ArchivedProperties = () => {
                             📐 {property.squareFeet} sqft
                           </span>
                         )}
-                        <Badge variant="secondary" className="bg-orange-100 text-orange-800">
+                        <Badge variant="secondary" className={styles.archivedBadge}>
                           Archived
                         </Badge>
                         {property.rentalStatus && (
@@ -252,18 +243,17 @@ const ArchivedProperties = () => {
                         )}
                       </div>
 
-                      <div className="text-sm font-semibold text-primary">
+                      <div className={styles.price}>
                         {formatPrice(property)}
                       </div>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </article>
             ))}
           </div>
         ) : (
-          <Card>
-            <CardContent className="py-12 text-center">
+          <div className={styles.empty}>
               <Archive className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
               <h3 className="text-xl font-semibold mb-2">No Archived Properties</h3>
               <p className="text-muted-foreground mb-4">
@@ -272,8 +262,7 @@ const ArchivedProperties = () => {
               <Button onClick={() => navigate("/manage-property")}>
                 View Active Properties
               </Button>
-            </CardContent>
-          </Card>
+          </div>
         )}
       </div>
     </main>

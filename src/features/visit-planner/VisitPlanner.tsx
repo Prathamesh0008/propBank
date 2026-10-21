@@ -16,6 +16,7 @@ import { visitService, Visit, CreateVisitRequest } from "@/services/visitService
 import { auth } from "../../firebase";
 import { User, onAuthStateChanged } from "firebase/auth";
 import { TimePicker } from "@/ui/time-picker";
+import styles from "./VisitPlanner.module.css";
 
 
 const VisitPlanner = () => {
@@ -189,15 +190,15 @@ const VisitPlanner = () => {
   };
 
   return (
-    <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
+    <main className={styles.page}>
       <>
         <title>Visit Planner — Propbank</title>
         <meta name="description" content="Schedule property visits, set reminders, and track your visit progress with Propbank Visit Planner." />
         <link rel="canonical" href="/visit-planner" />
       </>
 
-      <div className="space-y-4 sm:space-y-8">
-        <div className="text-center space-y-2 sm:space-y-4">
+      <div className={styles.shell}>
+        <div className={styles.intro}>
           <div className="flex items-center justify-center gap-2 sm:gap-3">
             <div className="flex h-8 w-8 sm:h-12 sm:w-12 items-center justify-center rounded-full bg-gradient-primary">
               <Calendar className="h-4 w-4 sm:h-6 sm:w-6 text-primary-foreground" />
@@ -207,8 +208,8 @@ const VisitPlanner = () => {
           <p className="text-sm sm:text-base text-muted-foreground">Schedule property visits, set reminders, and track your progress</p>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-4 sm:gap-8">
-          <div className="lg:col-span-2 space-y-4 sm:space-y-6">
+        <div className={styles.workspace}>
+          <div className={styles.results}>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="grid grid-cols-3 w-full">
                 <TabsTrigger value="active" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm">
@@ -229,38 +230,37 @@ const VisitPlanner = () => {
 
             <div className="space-y-3 sm:space-y-4">
               {loading ? (
-                <div className="text-center py-8 sm:py-12">
+                <div className={styles.emptyState}>
                   <Loader2 className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-muted-foreground mb-3 sm:mb-4 animate-spin" />
                   <h3 className="text-base sm:text-lg font-semibold mb-1 sm:mb-2">Loading visits...</h3>
                   <p className="text-sm sm:text-base text-muted-foreground">Please wait while we fetch your visits</p>
                 </div>
               ) 
               : getCurrentVisits().length === 0 ? (
-                <div className="text-center py-8 sm:py-12">
+                <div className={styles.emptyState}>
                   {activeTab === 'active' ? (
                     <>
                       <MapPin className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-muted-foreground mb-3 sm:mb-4" />
                       <h3 className="text-base sm:text-lg font-semibold mb-1 sm:mb-2">No active visits scheduled</h3>
-                      <p className="text-sm sm:text-base text-muted-foreground px-4">Schedule your upcoming property visits using the form below</p>
+                      <p className="text-sm sm:text-base text-muted-foreground px-4">Arrange your next visit using the scheduling panel.</p>
                     </>
                   ) : (
                     <>
                       <CheckCircle className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-muted-foreground mb-3 sm:mb-4" />
-                      <h3 className="text-base sm:text-lg font-semibold mb-1 sm:mb-2">No visits completed yet</h3>
-                      <p className="text-sm sm:text-base text-muted-foreground px-4">Visits automatically move here after the scheduled time</p>
+                      <h3 className="text-base sm:text-lg font-semibold mb-1 sm:mb-2">No visits in this section</h3>
+                      <p className="text-sm sm:text-base text-muted-foreground px-4">Completed visits will appear here once their status is updated.</p>
                     </>
                   )}
                 </div>
                 ) : 
                 (
-                <div className="grid gap-3 sm:gap-4">
+                <div className={styles.visitList}>
                   {getCurrentVisits().sort((a, b) => 
                       activeTab === 'active' 
                         ? new Date(a.visitDate).getTime() - new Date(b.visitDate).getTime()
                         : new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime()
                     ).map((visit) => (
-                      <Card key={visit.id} className={`transition-all ${
-                        activeTab === 'visited' ? 'border-blue-200 bg-blue-50' : 'border-blue-200'}`}>
+                      <Card key={visit.id} className={styles.visitRecord}>
                         <CardContent className="p-3 sm:p-6">
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 space-y-2">
@@ -312,7 +312,7 @@ const VisitPlanner = () => {
                               </div>
                             </div>
                             {activeTab === 'active' && (
-                              <Button variant="ghost" size="icon"  onClick={() => deleteVisit(visit.id)}
+                              <Button variant="ghost" size="icon" aria-label={`Delete visit ${visit.title}`} onClick={() => deleteVisit(visit.id)}
                                 className="text-destructive hover:text-destructive h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0">
                                 <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
                               </Button>
@@ -326,7 +326,7 @@ const VisitPlanner = () => {
             </div>
           </div>
 
-          <div className="space-y-3 sm:space-y-4">
+          <aside className={styles.scheduler}>
             <Button onClick={() => setIsAddingVisit(true)}  size="lg" className="gap-2 w-full text-sm sm:text-base">
               <Plus className="h-3 w-3 sm:h-4 sm:w-4" /> Schedule New Visit
             </Button>
@@ -403,7 +403,7 @@ const VisitPlanner = () => {
                 </CardContent>
               </Card>
             )}
-          </div>
+          </aside>
         </div>
 
       </div>

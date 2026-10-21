@@ -1,4 +1,5 @@
 "use client";
+import styles from "./AdminSiteSettingsTab.module.css";
 
 import React from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
@@ -32,7 +33,7 @@ export const AdminSiteSettingsTab = ({
   handleRemoveBannerImage
 }: AdminSiteSettingsTabProps) => {
   return (
-    <Card>
+    <Card className={styles.settings}>
       <CardHeader>
         <CardTitle>Site Settings</CardTitle>
         <CardDescription>
@@ -61,7 +62,7 @@ export const AdminSiteSettingsTab = ({
                 value={siteSettings.quote}
                 onChange={(e) => setSiteSettings({ ...siteSettings, quote: e.target.value })}
                 placeholder="Enter quote text..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`${styles.input} w-full px-3 py-2`}
               />
               <p className="text-xs text-muted-foreground">
                 Current: "{siteSettings.quote}"
@@ -81,7 +82,7 @@ export const AdminSiteSettingsTab = ({
                 value={siteSettings.heroTitle || ""}
                 onChange={(e) => setSiteSettings({ ...siteSettings, heroTitle: e.target.value })}
                 placeholder="Enter hero title..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`${styles.input} w-full px-3 py-2`}
               />
             </div>
 
@@ -98,7 +99,7 @@ export const AdminSiteSettingsTab = ({
                 value={siteSettings.heroSubtitle || ""}
                 onChange={(e) => setSiteSettings({ ...siteSettings, heroSubtitle: e.target.value })}
                 placeholder="Enter hero subtitle..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`${styles.input} w-full px-3 py-2`}
               />
             </div>
 
@@ -115,7 +116,7 @@ export const AdminSiteSettingsTab = ({
                 value={siteSettings.announcementText || ""}
                 onChange={(e) => setSiteSettings({ ...siteSettings, announcementText: e.target.value })}
                 placeholder="Enter announcement text (leave empty to hide)..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`${styles.input} w-full px-3 py-2`}
               />
             </div>
 

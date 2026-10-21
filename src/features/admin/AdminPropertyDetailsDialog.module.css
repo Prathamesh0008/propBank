@@ -1,0 +1,5 @@
+/* Full-height property dossier; preserves existing moderation and owner decisions. */
+.detailsDialog{background:#f8f6f0;color:#242b28;font-family:var(--font-manrope),sans-serif}
+.dialogHeading{background:#f8f6f0;border-bottom-color:#d6d2c8;box-shadow:none}
+.dialogHeading h2{font-weight:600;letter-spacing:-.035em;color:#242b28}
+@media(max-width:640px){.dialogHeading{padding:22px 18px}.dialogHeading h2{font-size:1.45rem;line-height:1.2}}

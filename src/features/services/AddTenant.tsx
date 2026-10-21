@@ -1,4 +1,5 @@
 "use client";
+import styles from "./TenantWorkspace.module.css";
 
 import { apiFetch } from '@/lib/api-client';
 
@@ -80,15 +81,12 @@ const AddTenant = () => {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const readOnly = searchParams.get('mode') === 'view';
-  const adminMode = searchParams.get('admin') === '1';
-  const adminTenantUID = searchParams.get('tenantUID') || '';
   const { toast } = useToast();
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [propertyOwner,setPropertyOwner]=useState("");
   const [existingTenants, setExistingTenants] = useState<TenantData[]>([]);
   const [propertyTitle, setPropertyTitle] = useState<string>('');
   const [propertyRentSchedule, setPropertyRentSchedule] = useState<any[]>([]);
-  const [tenancyRevision,setTenancyRevision]=useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
@@ -143,7 +141,6 @@ const AddTenant = () => {
           const property = data.property;
           setPropertyTitle(property.title);
           setPropertyOwner(property.ownerUID);
-          setTenancyRevision(Number(property.tenancyRevision||0));
           if (property.rentSchedule) {
             setPropertyRentSchedule(property.rentSchedule);
           }
@@ -181,19 +178,6 @@ const AddTenant = () => {
 
     fetchPropertyData();
   }, [propertyId]);
-
-  useEffect(()=>{
-    if(!adminMode||!adminTenantUID)return;
-    void (async()=>{
-      try{
-        const response=await apiFetch(`${API_BASE_URL}/users/${encodeURIComponent(adminTenantUID)}`);
-        const data=await response.json();
-        if(!response.ok||!data.user||data.user.isActive===false)throw new Error(data.message||'Active tenant account required');
-        const account=data.user,name=String(account.name||'').trim().split(/\s+/);
-        setTenants(current=>current.map((tenant,index)=>index?tenant:{...tenant,firstName:name[0]||'',lastName:name.slice(1).join(' '),email:account.email||'',phone:account.phoneNumber||'',userUID:account.uid,userInfo:{uid:account.uid,name:account.name||'',email:account.email||'',photoURL:account.photoURL||'',phoneNumber:account.phoneNumber||''}}));
-      }catch(error){toast({title:'Tenant unavailable',description:error instanceof Error?error.message:'Could not load tenant account',variant:'destructive'});}
-    })();
-  },[adminMode,adminTenantUID,toast]);
 
   const searchUserByPhone = async (tenantId: string, phoneNumber: string) => {
     if (!phoneNumber || phoneNumber.trim().length < 10) {
@@ -550,12 +534,16 @@ const AddTenant = () => {
       }));
 
       // Call the dedicated tenant creation endpoint which handles notifications
-      const response = await apiFetch(adminMode?`${API_BASE_URL}/admin/properties/${propertyId}/tenancy`:`${API_BASE_URL}/tenants`, {
+      const response = await apiFetch(`${API_BASE_URL}/tenants`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(adminMode?{action:existingTenants.length?'replace':'assign',expectedRevision:tenancyRevision,tenant:newTenantInfos[0]}:{propertyId:propertyId,ownerUID:property.ownerUID,tenants:newTenantInfos}),
+        body: JSON.stringify({
+          propertyId: propertyId,
+          ownerUID: property.ownerUID,
+          tenants: newTenantInfos
+        }),
       });
 
       const data = await response.json();
@@ -569,7 +557,7 @@ const AddTenant = () => {
         });
 
         setTimeout(() => {
-          navigate(adminMode?"/admin":"/manage-property");
+          navigate("/manage-property");
         }, 1500);
       } else {
         setIsSubmitting(false);
@@ -590,22 +578,8 @@ const AddTenant = () => {
     }
   };
 
-  const removeAssignedTenant=async(tenantId:string)=>{
-    if(!adminMode||isSubmitting)return;
-    setIsSubmitting(true);
-    try{
-      const response=await apiFetch(`${API_BASE_URL}/admin/properties/${propertyId}/tenancy`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'remove',tenantId,expectedRevision:tenancyRevision})});
-      const data=await response.json();
-      if(!response.ok)throw new Error(data.message||'Could not remove tenant');
-      setExistingTenants(current=>current.filter(tenant=>tenant.id!==tenantId));
-      setTenancyRevision(Number(data.tenancyRevision||tenancyRevision+1));
-      toast({title:'Tenant removed',description:'The relationship was ended without deleting its history.'});
-    }catch(error){toast({title:'Could not remove tenant',description:error instanceof Error?error.message:'Please refresh and try again',variant:'destructive'});}
-    finally{setIsSubmitting(false);}
-  };
-
   return (
-    <main className="container mx-auto py-8 px-4 pb-20">
+    <main className={`container mx-auto py-8 px-4 pb-20 ${styles.workspace}`}>
       <>
         <title>{readOnly || existingTenants.length > 0 ? 'Tenant Details' : 'Add Tenant'} — Property Management</title>
         <meta name="description" content={readOnly || existingTenants.length > 0 ? "View tenant details for rental property" : "Add tenant details for rental property"} />
@@ -619,7 +593,7 @@ const AddTenant = () => {
           </Button>
 
           <div className="flex items-center gap-4 mb-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-primary shadow-glow">
+            <div className={styles.symbol}>
               <UserPlus className="h-8 w-8 text-primary-foreground" />
             </div>
             <div>
@@ -667,7 +641,6 @@ const AddTenant = () => {
                         <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded-full">
                           Active Tenant
                         </span>
-                        {adminMode&&<Button type="button" variant="destructive" size="sm" onClick={()=>removeAssignedTenant(tenant.id)} disabled={isSubmitting}>Remove</Button>}
                       </div>
                     </div>
                   </CardHeader>
@@ -829,21 +802,19 @@ const AddTenant = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold">
-                  {adminMode&&existingTenants.length>0?'Replacement tenant':existingTenants.length > 0 ? 'Add New Tenants' : 'Tenant Information'}
+                  {existingTenants.length > 0 ? 'Add New Tenants' : 'Tenant Information'}
                 </h2>
                 <p className="text-muted-foreground">
-                  {adminMode&&existingTenants.length>0
-                    ? 'Completing this form atomically ends the current relationship and assigns the selected registered tenant.'
-                    : existingTenants.length > 0
+                  {existingTenants.length > 0
                     ? 'Add additional tenants to this property'
                     : 'Enter tenant details for this property'
                   }
                 </p>
               </div>
-              {!adminMode&&<Button onClick={addTenant} variant="outline">
+              <Button onClick={addTenant} variant="outline">
                 <Plus className="h-4 w-4 mr-2" />
                 {existingTenants.length > 0 ? 'Add Another Tenant' : 'Add New Tenant'}
-              </Button>}
+              </Button>
             </div>
 
             {tenants.map((tenant, index) => (
@@ -1298,7 +1269,7 @@ const AddTenant = () => {
                 ) : (
                   <>
                     <UserPlus className="h-4 w-4 mr-2" />
-                    {adminMode&&existingTenants.length?'Replace Tenant':`Add Tenant${tenants.length > 1 ? 's' : ''}`}
+                    Add Tenant{tenants.length > 1 ? 's' : ''}
                   </>
                 )}
               </Button>

@@ -1,36 +1,57 @@
 "use client";
 
 import { useNavigate, useSearchParams } from "@/lib/navigation";
-import {useState} from "react";
-import {Button} from "@/ui/button";
+import { useState } from "react";
+import { ArrowLeft, ArrowRight, KeyRound, Building2 } from "lucide-react";
 import PropertyTypeSelector from "./PropertyTypeSelector";
+import styles from "./SelectPropertyType.module.css";
 
 const SelectPropertyType = () => {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const [relationship,setRelationship]=useState<"owner"|"tenant"|null>(() => {
+  const [relationship, setRelationship] = useState<"owner" | "tenant" | null>(() => {
     const choice = params.get("as");
     return choice === "owner" || choice === "tenant" ? choice : null;
   });
 
   const handlePropertyTypeSelect = (propertyType: string) => {
-    const adminOwnerUID=params.get('adminOwnerUID');
-    navigate(`/add-property?type=${propertyType}&as=${relationship}${adminOwnerUID?`&adminOwnerUID=${encodeURIComponent(adminOwnerUID)}`:''}`);
+    navigate(`/add-property?type=${encodeURIComponent(propertyType)}&as=${relationship}`);
   };
 
   return (
-    <main>
-      <>
-        <title>Select Property Type — Add Property</title>
-        <meta name="description" content="Choose between residential, commercial, or industrial property types to add your property listing." />
-        <link rel="canonical" href="/select-property-type" />
-      </>
-
-      {!relationship?<section className="mx-auto max-w-3xl px-4 py-12"><h1 className="text-3xl font-bold mb-4">Add Property</h1><p className="text-muted-foreground mb-8">Are you adding a property you own or a home you rent?</p><div className="grid sm:grid-cols-2 gap-4"><Button size="lg" onClick={()=>setRelationship("owner")}>As an Owner</Button><Button size="lg" variant="outline" onClick={()=>setRelationship("tenant")}>As a Tenant</Button></div></section>:<><div className="mx-auto max-w-5xl px-4 pt-6"><Button variant="ghost" onClick={()=>setRelationship(null)}>Change owner / tenant choice</Button></div><PropertyTypeSelector
-        onSelect={handlePropertyTypeSelect}
-        title="What kind of property would you like to add today?"
-        description="Choose the type of property you want to include in your portfolio."
-      /></>}
+    <main className={styles.page}>
+      {!relationship ? (
+        <section className={styles.inner} aria-labelledby="add-property-heading">
+          <p className={styles.kicker}>Your property workspace</p>
+          <h1 id="add-property-heading" className={styles.heading}>First, tell us your connection to the property.</h1>
+          <p className={styles.intro}>We'll tailor the next steps to the information you need to share.</p>
+          <div className={styles.choices}>
+            <button type="button" className={styles.choice} onClick={() => setRelationship("owner")}>
+              <Building2 aria-hidden="true" className={styles.icon} />
+              <span className={styles.choiceText}><strong>I'm the owner</strong><span>Add a property you own or manage.</span></span>
+              <ArrowRight aria-hidden="true" className={styles.arrow} />
+            </button>
+            <button type="button" className={styles.choice} onClick={() => setRelationship("tenant")}>
+              <KeyRound aria-hidden="true" className={styles.icon} />
+              <span className={styles.choiceText}><strong>I'm a tenant</strong><span>Record the home or space you're renting.</span></span>
+              <ArrowRight aria-hidden="true" className={styles.arrow} />
+            </button>
+          </div>
+          <p className={styles.note}>Property ownership and tenant records follow different verification steps.</p>
+        </section>
+      ) : (
+        <section className={styles.inner} aria-label="Select the property category">
+          <button type="button" className={styles.back} onClick={() => setRelationship(null)}>
+            <ArrowLeft size={16} aria-hidden="true" /> Change owner / tenant choice
+          </button>
+          <p className={styles.kicker}>Adding as {relationship === "owner" ? "an owner" : "a tenant"}</p>
+          <PropertyTypeSelector
+            onSelect={handlePropertyTypeSelect}
+            title="What type of property is this?"
+            description="Choose the category that best describes the property to continue."
+          />
+        </section>
+      )}
     </main>
   );
 };

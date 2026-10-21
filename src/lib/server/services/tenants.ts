@@ -8,7 +8,6 @@ import { identity, propertyMember, readModel, readObject, getRecord, getRecords 
 import { bestEffort } from './property-effects';
 import { getUser, saveUser, resolveTenantIdentity } from './users';
 import { tenantMail } from './group2-mail';
-import { queueUserEvent } from './transactional-email';
 const collection=()=>getDatabase().collection(COLLECTIONS.tenants);
 export async function createTenants(request:Request) {
   const user=await identity(request);let req:RecordData;
@@ -87,79 +86,6 @@ export async function deleteTenant(request:Request,id:string) {
   const user=await identity(request);const tenant=await getRecord(COLLECTIONS.tenants,id,'Tenant');if(!tenant)return plainError('Tenant not found',404);
   requireSelfOrAdmin(user,s(tenant.ownerUID));await syncTenant(id,{isActive:false,updatedAt:new Date()},user);
   return jsonResponse({success:true,message:'Tenant deleted successfully'});
-}
-export async function manageAdminTenancy(request:Request,propertyId:string) {
-  const user=await identity(request);
-  if(user.role!=='admin')throw new AccessError(403,'Administrator access required');
-  let req:RecordData;
-  try{req=await readObject(request);}catch{return plainError('Invalid JSON',400);}
-  const action=s(req.action);
-  if(!['assign','replace','remove'].includes(action))return plainError('Invalid tenancy action',400);
-  if(!Number.isInteger(req.expectedRevision)||Number(req.expectedRevision)<0)return plainError('Expected tenancy revision is required',400);
-  const propertyRef=getDatabase().collection(COLLECTIONS.properties).doc(propertyId);
-  let added:RecordData|null=null;
-  if(action!=='remove') {
-    if(!isRecord(req.tenant))return plainError('Tenant details are required',400);
-    const value=req.tenant;
-    if(!value.firstName||!value.lastName||!value.email||!value.phone||!value.userUID)return plainError('A registered tenant with first name, last name, email, and phone is required',400);
-    if(value.paymentDueDate&&(!/^\d{1,2}$/.test(s(value.paymentDueDate))||Number(value.paymentDueDate)<1||Number(value.paymentDueDate)>31))return plainError('Payment due day must be between 1 and 31',400);
-    if(value.monthlyRent&&(!Number.isFinite(Number(value.monthlyRent))||Number(value.monthlyRent)<0))return plainError('Monthly rent must be a valid amount',400);
-    if(value.securityDeposit&&(!Number.isFinite(Number(value.securityDeposit))||Number(value.securityDeposit)<0))return plainError('Security deposit must be a valid amount',400);
-    if(value.leaseStartDate&&value.leaseEndDate&&s(value.leaseEndDate)<s(value.leaseStartDate))return plainError('Agreement end date must be after the start date',400);
-    const linkedUID=await resolveTenantIdentity(s(value.email),s(value.userUID));
-    const doc=collection().doc();const now=new Date();
-    added=model('Tenant',{...value,userUID:linkedUID,id:doc.id,propertyId,ownerUID:'',isActive:true,createdAt:now,updatedAt:now});
-    Object.assign(added,{assignedByUID:user.uid,assignmentSource:'admin'});
-  }
-  let removedUID='';let removedUIDs:string[]=[];let ownerUID='';let propertyForNotification:RecordData|null=null;
-  await getDatabase().runTransaction(async tx=>{
-    const snapshot=await tx.get(propertyRef);
-    if(!snapshot.exists)throw new ApiError(404,'Property not found');
-    const property=snapshot.data()!;ownerUID=s(property.ownerUID);
-    if(!ownerUID)throw new ApiError(409,'Verified property ownership is required before assigning a tenant');
-    const revision=Number(property.tenancyRevision||0);
-    if(revision!==Number(req.expectedRevision))throw new ApiError(409,'Tenancy changed; refresh before continuing');
-    const previous=Array.isArray(property.tenants)?property.tenants.filter(isRecord):[];
-    const active=previous.filter((tenant:RecordData)=>tenant.isActive===true);
-    const activeDocuments=new Map<string,boolean>();
-    for(const tenant of active)if(tenant.id)activeDocuments.set(s(tenant.id),(await tx.get(collection().doc(s(tenant.id)))).exists);
-    let next=previous;
-    if(action==='assign') {
-      if(active.length)throw new ApiError(409,'Property already has an active tenant; use replace instead');
-      if(active.some((tenant:RecordData)=>tenant.userUID===added!.userUID))throw new ApiError(409,'Tenant already has an active relationship with this property');
-      added!.ownerUID=ownerUID;next=[...previous,added!];
-    } else if(action==='replace') {
-      if(!active.length)throw new ApiError(409,'Property has no active tenant to replace');
-      if(active.some((tenant:RecordData)=>tenant.userUID===added!.userUID))throw new ApiError(409,'Tenant already has an active relationship with this property');
-      removedUIDs=active.map((tenant:RecordData)=>s(tenant.userUID)).filter(Boolean);
-      for(const tenant of active)if(tenant.id&&activeDocuments.get(s(tenant.id)))tx.update(collection().doc(s(tenant.id)),{isActive:false,updatedAt:new Date(),removedByUID:user.uid});
-      next=previous.map((tenant:RecordData)=>tenant.isActive===true?{...tenant,isActive:false,updatedAt:new Date(),removedByUID:user.uid}:tenant);
-      added!.ownerUID=ownerUID;next.push(added!);
-    } else {
-      const tenantId=s(req.tenantId);
-      const target=active.find((tenant:RecordData)=>tenant.id===tenantId);
-      if(!target)throw new ApiError(409,'Active tenant relationship not found');
-      removedUID=s(target.userUID);
-      removedUIDs=[removedUID];
-      if(activeDocuments.get(tenantId))tx.update(collection().doc(tenantId),{isActive:false,updatedAt:new Date(),removedByUID:user.uid});
-      next=previous.map((tenant:RecordData)=>tenant.id===tenantId?{...tenant,isActive:false,updatedAt:new Date(),removedByUID:user.uid}:tenant);
-    }
-    if(added)tx.create(collection().doc(s(added.id)),{...storeModel('Tenant',{...added,propertyId,ownerUID}),assignedByUID:user.uid,assignmentSource:'admin'});
-    const history=Array.isArray(property.relationshipHistory)?property.relationshipHistory:[];
-    if(history.length>=500)throw new ApiError(409,'Property relationship history limit reached');
-    const activeAfter=next.filter((tenant:RecordData)=>tenant.isActive===true);
-    const terms:RecordData={};
-    if(added)for(const [root,field] of [['monthlyRent','monthlyRent'],['securityDeposit','securityDeposit'],['paymentDueDate','paymentDueDate'],['agreementStartDate','leaseStartDate'],['agreementEndDate','leaseEndDate']])terms[root]=added[field]||'';
-    tx.update(propertyRef,{...terms,tenants:next,tenancyRevision:revision+1,rentalStatus:activeAfter.length?'rented':'available',listingType:'rent',updatedAt:new Date(),relationshipHistory:[...history,{action:`tenant_${action}`,actorUID:user.uid,userUID:added?.userUID||removedUID,relationship:'tenant',propertyId,tenantId:added?.id||req.tenantId,at:new Date(),revision:revision+1}]});
-    propertyForNotification={...property,...terms,tenants:next,tenancyRevision:revision+1};
-  });
-  if(added&&propertyForNotification) {
-    tenantMail(propertyForNotification,added);
-    await bestEffort(async()=>{const target=await getUser(s(added!.userUID));if(!target)return;Object.assign(target,{rentedPropertyId:propertyId,rentedPropertyOwnerId:ownerUID,rentedPropertyOwnerName:propertyForNotification!.ownerName,updatedAt:new Date()});await saveUser(target);});
-  }
-  if(removedUID)await bestEffort(async()=>{const target=await getUser(removedUID);if(!target||target.rentedPropertyId!==propertyId)return;Object.assign(target,{rentedPropertyId:'',rentedPropertyOwnerId:'',rentedPropertyOwnerName:'',updatedAt:new Date()});await saveUser(target);});
-  if(removedUIDs.length&&propertyForNotification)queueUserEvent({eventType:action==='replace'?'tenancy.tenant_replaced':'tenancy.tenant_removed',eventId:`${propertyId}:${Number(req.expectedRevision)+1}:${action}`,recipientUIDs:[ownerUID,...removedUIDs],propertyId,recordId:propertyId,templateId:'tenant-relationship-ended',subject:`Tenant ${action} completed`,title:'Tenant relationship updated',bodyHtml:`<p>The tenant relationship for <strong>${s(propertyForNotification.title)}</strong> was ${action==='replace'?'replaced':'removed'}.</p>`,bodyText:`The tenant relationship for ${s(propertyForNotification.title)} was ${action==='replace'?'replaced':'removed'}.`});
-  return jsonResponse({success:true,message:`Tenant ${action} completed`,tenancyRevision:Number(req.expectedRevision)+1,tenant:added?wireValue(added):undefined});
 }
 async function syncTenant(id:string,updates:RecordData,user:Awaited<ReturnType<typeof identity>>) {
   await getDatabase().runTransaction(async tx=>{
