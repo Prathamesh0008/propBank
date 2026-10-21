@@ -9,7 +9,7 @@
     {
       "method": "POST",
       "endpoint": "/api/admin/notifications",
-      "status": 400,
+      "status": 401,
       "reachable": true
     },
     {
@@ -97,6 +97,12 @@
       "reachable": true
     },
     {
+      "method": "PATCH",
+      "endpoint": "/api/documents/:id",
+      "status": 401,
+      "reachable": true
+    },
+    {
       "method": "GET",
       "endpoint": "/api/documents/property/:propertyId",
       "status": 401,
@@ -127,6 +133,12 @@
       "reachable": true
     },
     {
+      "method": "GET",
+      "endpoint": "/api/negotiations",
+      "status": 401,
+      "reachable": true
+    },
+    {
       "method": "POST",
       "endpoint": "/api/negotiations",
       "status": 401,
@@ -145,6 +157,12 @@
       "reachable": true
     },
     {
+      "method": "POST",
+      "endpoint": "/api/owner-verification",
+      "status": 401,
+      "reachable": true
+    },
+    {
       "method": "GET",
       "endpoint": "/api/properties",
       "status": 200,
@@ -158,7 +176,7 @@
     },
     {
       "method": "GET",
-      "endpoint": "/api/properties?all=true",
+      "endpoint": "/api/properties?admin=true",
       "status": 401,
       "reachable": true
     },
@@ -199,8 +217,38 @@
       "reachable": true
     },
     {
+      "method": "GET",
+      "endpoint": "/api/properties/tenant?tenantUID=:uid",
+      "status": 401,
+      "reachable": true
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/property-hub",
+      "status": 401,
+      "reachable": true
+    },
+    {
+      "method": "PATCH",
+      "endpoint": "/api/property-hub",
+      "status": 401,
+      "reachable": true
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/property-hub?propertyId=:propertyId",
+      "status": 401,
+      "reachable": true
+    },
+    {
       "method": "POST",
       "endpoint": "/api/reviews",
+      "status": 401,
+      "reachable": true
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/reviews?propertyId=:propertyId",
       "status": 401,
       "reachable": true
     },
@@ -208,13 +256,19 @@
       "method": "POST",
       "endpoint": "/api/service-requests",
       "status": 401,
-      "reachable": false
+      "reachable": true
     },
     {
       "method": "GET",
       "endpoint": "/api/service-requests?admin=true",
       "status": 401,
-      "reachable": false
+      "reachable": true
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/service-requests?propertyId=:propertyId",
+      "status": 401,
+      "reachable": true
     },
     {
       "method": "GET",
@@ -226,13 +280,13 @@
       "method": "PUT",
       "endpoint": "/api/service-requests/:id",
       "status": 401,
-      "reachable": false
+      "reachable": true
     },
     {
       "method": "GET",
       "endpoint": "/api/services",
       "status": 200,
-      "reachable": false
+      "reachable": true
     },
     {
       "method": "POST",
@@ -278,6 +332,12 @@
     },
     {
       "method": "GET",
+      "endpoint": "/api/users/:id",
+      "status": 401,
+      "reachable": true
+    },
+    {
+      "method": "PATCH",
       "endpoint": "/api/users/:id",
       "status": 401,
       "reachable": true

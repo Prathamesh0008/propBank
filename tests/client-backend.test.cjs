@@ -76,7 +76,7 @@ test('service requests authorize property membership, validate admin resolutions
  assert.equal((await detail.PUT(request(`/service-requests/${id}`,'owner','PUT',{status:'completed'}),context(id))).status,403);
  assert.equal((await detail.PUT(request(`/service-requests/${id}`,'admin','PUT',{status:'invalid'}),context(id))).status,400);
  assert.equal((await detail.PUT(request('/service-requests/missing','admin','PUT',{status:'completed'}),context('missing'))).status,404);
- assert.equal((await detail.PUT(request(`/service-requests/${id}`,'admin','PUT',{status:'resolved',adminNotes:'Fixed',resolutionReport:'Replaced pipe',adminImage:'https://legacy/report.png',action:'archive'}),context(id))).status,200);
+ assert.equal((await detail.PUT(request(`/service-requests/${id}`,'admin','PUT',{status:'resolved',adminNotes:'Fixed',resolutionReport:'Replaced pipe',adminImage:'data:image/png;base64,AQID',action:'archive'}),context(id))).status,200);
  assert.equal(app.state.service_requests[id].isArchived,true);assert.equal(app.state.service_requests[id].resolutionReport,'Replaced pipe');assert.equal(app.state.service_requests[id].history.length,2);
  const list=await (await root.GET(request('/service-requests?propertyId=P','owner'))).json();assert.equal(list.data[0].resolutionReport,'Replaced pipe');
  assert.equal((await detail.PUT(request(`/service-requests/${id}`,'admin','PUT',{action:'unarchive'}),context(id))).status,200);assert.equal(app.state.service_requests[id].isArchived,false);
@@ -90,7 +90,7 @@ test('owner can reject a tenant termination request without releasing the proper
 
 test('TDS and payment receipt reports reuse documents and preserve supplied metadata without tax computation',async()=>{
  const app=isolated({users,properties});const root=route(app,'documents');
- const input={propertyId:'P',documentName:'TDS receipt',documentType:'tds_report',fileUrl:'https://legacy/receipt.pdf',financialYear:'2029-30',period:'Q1',amount:'2500',description:'Owner supplied'};
+ const input={propertyId:'P',documentName:'TDS receipt',documentType:'tds_report',fileUrl:'data:application/pdf;base64,AQID',financialYear:'2029-30',period:'Q1',amount:'2500',description:'Owner supplied'};
  assert.equal((await root.POST(request('/documents','other','POST',input))).status,403);
  const response=await root.POST(request('/documents','tenant','POST',input));assert.equal(response.status,201);const id=(await response.json()).document.id;
  assert.equal(app.state.documents[id].amount,'2500');assert.equal(app.state.documents[id].status,'submitted');
@@ -99,9 +99,10 @@ test('TDS and payment receipt reports reuse documents and preserve supplied meta
  const list=await (await root.GET(request('/documents?propertyId=P&documentType=tds_report','owner'))).json();assert.equal(list.documents[0].financialYear,'2029-30');assert.equal(list.documents[0].statusHistory.length,1);
 });
 
-test('document metadata cannot cause deletion of a different property storage object',async()=>{
- const app=isolated({users,properties});const response=await route(app,'documents').POST(request('/documents','owner','POST',{propertyId:'P',documentName:'Legacy',documentType:'agreement',fileUrl:'https://existing-r2.test/documents/OTHER/private.pdf'}));const id=(await response.json()).document.id;
- assert.equal((await route(app,'documents/[id]').DELETE(request(`/documents/${id}`,'owner','DELETE'),context(id))).status,200);assert.equal(app.objects.length,0);
+test('document metadata cannot import or delete a different property storage object',async()=>{
+ const app=isolated({users,properties});const response=await route(app,'documents').POST(request('/documents','owner','POST',{propertyId:'P',documentName:'Legacy',documentType:'agreement',fileUrl:'https://existing-r2.test/documents/OTHER/private.pdf'}));assert.equal(response.status,400);assert.equal(Object.keys(app.state.documents||{}).length,0);
+ app.state.documents={D:{id:'D',propertyId:'P',userId:'owner',fileUrl:'https://existing-r2.test/documents/OTHER/private.pdf'}};
+ assert.equal((await route(app,'documents/[id]').DELETE(request('/documents/D','owner','DELETE'),context('D'))).status,200);assert.equal(app.objects.length,0);assert.equal(app.state.legacy_storage_cleanup.D.status,'approval_required');
 });
 
 test('admin property query includes archived records while public fields exclude private histories',async()=>{

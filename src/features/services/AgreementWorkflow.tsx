@@ -1,4 +1,5 @@
 "use client";
+import styles from "./AgreementWorkspace.module.css";
 import { useEffect,useState } from 'react';
 import { useQuery,useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
@@ -31,16 +32,16 @@ export default function AgreementWorkflow({renew}:{renew:boolean}) {
       setFeedback(action==='reject'?'Request rejected.':renew&&action==='approve'?'Renewal approved. Agreed terms updated.':!renew&&action==='terminate'?'Agreement terminated; history retained.':owner&&!renew?'Notice recorded. Final termination requires an owner decision.':'Request submitted; pending owner approval.');
     }catch(error){setFailure(error instanceof Error?error.message:'Could not save agreement');}finally{setBusy(false);}
   }
-  return <main className="container mx-auto max-w-4xl px-4 py-8 space-y-5">
-    <Link to="/manage-property">← Manage Property</Link>
-    <Card><CardHeader><CardTitle>{renew?'Agreement renewal':'Agreement termination'}</CardTitle></CardHeader><CardContent className="space-y-5">
+  return <main className={`container mx-auto max-w-5xl px-4 py-8 space-y-5 ${styles.workspace}`}>
+    <Link className={styles.back} to="/manage-property">← Manage Property</Link>
+    <Card className={styles.panel}><CardHeader><CardTitle>{renew?'Agreement renewal':'Agreement termination'}</CardTitle></CardHeader><CardContent className="space-y-5">
       {(authLoading||query.isLoading)&&<p role="status">Loading agreement…</p>}
       {(query.error||failure)&&<p role="alert" className="text-destructive">{query.error?.message||failure}</p>}
       {!authLoading&&!user&&<Link to="/auth">Sign in to manage agreements</Link>}
       {property&&<><h2 className="font-semibold break-words">{property.title} · {property.id}</h2>
         <p>Agreement status: {String(property.agreementStatus||'Active')} · {owner?'Owner':'Tenant'}</p>
         <p className="text-sm">Current rent: ₹{String(property.monthlyRent||'Not supplied')} · {String(property.agreementStartDate||'')} → {String(property.agreementEndDate||'')}</p>
-        {pending&&<p className="rounded border p-3">Pending {pending.kind} request. Existing terms remain in effect until the owner decides.</p>}
+        {pending&&<p className={styles.notice}>Pending {pending.kind} request. Existing terms remain in effect until the owner decides.</p>}
         {member&&property.agreementStatus!=='terminated'&&<form onSubmit={e=>{e.preventDefault();void submit('request');}} className="space-y-4">
           {renew?<div className="grid gap-4 sm:grid-cols-2">{renewalFields.map(([key,label])=><div key={key}><Label htmlFor={key}>{label}</Label><Input id={key} type={key.includes('Date')?'date':'text'} value={terms[key]||''} onChange={e=>setTerms({...terms,[key]:e.target.value})}/></div>)}<div><Label htmlFor="maintenance-payer">Maintenance paid by</Label><select id="maintenance-payer" className="h-10 w-full rounded border px-3" value={terms.maintenanceToBePaidBy||''} onChange={e=>setTerms({...terms,maintenanceToBePaidBy:e.target.value})}><option value="">Select</option><option value="owner">Owner</option><option value="tenant">Tenant</option></select></div></div>:<div className="grid gap-4 sm:grid-cols-3"><div><Label htmlFor="notice-period">Notice period</Label><Input id="notice-period" value={notice} onChange={e=>setNotice(e.target.value)}/></div><div><Label htmlFor="notice-start">Notice start</Label><Input id="notice-start" type="date" value={start} onChange={e=>setStart(e.target.value)} required/></div><div><Label htmlFor="termination-date">Termination date</Label><Input id="termination-date" type="date" min={start} value={end} onChange={e=>setEnd(e.target.value)} required/></div></div>}
           <div className="flex flex-wrap gap-3">
@@ -54,6 +55,6 @@ export default function AgreementWorkflow({renew}:{renew:boolean}) {
         <Link to={`/attach-documents/${property.id}`}>Agreement documents and receipts</Link>
       </>}
     </CardContent></Card>
-    {property&&<Card><CardHeader><CardTitle>Agreement history</CardTitle></CardHeader><CardContent>{!property.agreementHistory?.length?<p>No agreement changes recorded.</p>:<ol className="space-y-3">{property.agreementHistory.map((event,index)=><li key={index} className="rounded border p-3 break-words"><p>{event.action.replaceAll('_',' ')} · {new Date(event.at).toLocaleString('en-IN')}</p>{event.previousTerms&&<details><summary>Previous agreed terms</summary><dl>{Object.entries(event.previousTerms).map(([key,value])=><div key={key}>{key}: {String(value)}</div>)}</dl></details>}</li>)}</ol>}</CardContent></Card>}
+    {property&&<Card className={styles.panel}><CardHeader><CardTitle>Agreement history</CardTitle></CardHeader><CardContent>{!property.agreementHistory?.length?<p>No agreement changes recorded.</p>:<ol className="space-y-3">{property.agreementHistory.map((event,index)=><li key={index} className="rounded border p-3 break-words"><p>{event.action.replaceAll('_',' ')} · {new Date(event.at).toLocaleString('en-IN')}</p>{event.previousTerms&&<details><summary>Previous agreed terms</summary><dl>{Object.entries(event.previousTerms).map(([key,value])=><div key={key}>{key}: {String(value)}</div>)}</dl></details>}</li>)}</ol>}</CardContent></Card>}
   </main>;
 }

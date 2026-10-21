@@ -1,4 +1,5 @@
 "use client";
+import styles from "./TenantWorkspace.module.css";
 
 import { apiFetch } from '@/lib/api-client';
 
@@ -578,7 +579,7 @@ const AddTenant = () => {
   };
 
   return (
-    <main className="container mx-auto py-8 px-4 pb-20">
+    <main className={`container mx-auto py-8 px-4 pb-20 ${styles.workspace}`}>
       <>
         <title>{readOnly || existingTenants.length > 0 ? 'Tenant Details' : 'Add Tenant'} — Property Management</title>
         <meta name="description" content={readOnly || existingTenants.length > 0 ? "View tenant details for rental property" : "Add tenant details for rental property"} />
@@ -592,7 +593,7 @@ const AddTenant = () => {
           </Button>
 
           <div className="flex items-center gap-4 mb-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-primary shadow-glow">
+            <div className={styles.symbol}>
               <UserPlus className="h-8 w-8 text-primary-foreground" />
             </div>
             <div>

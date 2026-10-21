@@ -1,4 +1,5 @@
 "use client";
+import styles from "./DocumentWorkspace.module.css";
 
 import { apiFetch } from '@/lib/api-client';
 
@@ -28,6 +29,7 @@ interface Document {
   documentName: string;
   documentType: string;
   fileUrl: string;
+  contentType?:string;
   description?: string;
   createdAt: string;
   userId?: string;
@@ -333,7 +335,7 @@ const AttachDocuments = () => {
       if (data.success) {
         toast({
           title: "Document Deleted",
-          description: "Document has been deleted successfully.",
+          description: data.warning || "Document and stored file have been deleted successfully.",
         });
         // Refresh documents list
         const documentsResponse = await apiFetch(`${API_BASE_URL}/documents/property/${propertyId}`);
@@ -349,7 +351,7 @@ const AttachDocuments = () => {
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to delete document. Please try again later.",
+        description: error instanceof Error?error.message:'Failed to delete document. Please try again later.',
         variant: "destructive"
       });
     }
@@ -370,7 +372,7 @@ const AttachDocuments = () => {
       <>
         <title>Attach Documents | PropBank</title>
       </>
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
+      <div className={`container mx-auto px-4 py-8 max-w-5xl ${styles.workspace}`}>
         <Button
           variant="ghost"
           onClick={() => navigate(-1)}
@@ -380,7 +382,7 @@ const AttachDocuments = () => {
           Back
         </Button>
 
-        <Card>
+        <Card className={styles.panel}>
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
@@ -413,7 +415,7 @@ const AttachDocuments = () => {
             ) : (
               <div className="space-y-4">
                 {visibleDocuments.map((doc) => (
-                  <Card key={doc.id} className="border-l-4 border-l-blue-500">
+                  <Card key={doc.id} className={styles.documentRow}>
                     <CardContent className="pt-6">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
@@ -503,7 +505,7 @@ const AttachDocuments = () => {
                 {fileUrl ? (
                   <div className="flex items-center gap-2 p-2 border rounded">
                     <FileText className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm flex-1">File uploaded</span>
+                    <span className="text-sm flex-1">File selected</span>
                     <Button
                       type="button"
                       variant="ghost"
@@ -601,13 +603,13 @@ const AttachDocuments = () => {
             </DialogHeader>
             {viewingDocument && (
               <div className="mt-4">
-                {viewingDocument.fileUrl.startsWith('data:image/') ? (
+                {viewingDocument.contentType?.startsWith('image/') || viewingDocument.fileUrl.startsWith('data:image/') ? (
                   <img
                     src={viewingDocument.fileUrl}
                     alt={viewingDocument.documentName}
                     className="max-w-full h-auto rounded-md border"
                   />
-                ) : viewingDocument.fileUrl.includes('pdf') || viewingDocument.fileUrl.startsWith('data:application/pdf') ? (
+                ) : viewingDocument.contentType==='application/pdf' || viewingDocument.fileUrl.includes('pdf') || viewingDocument.fileUrl.startsWith('data:application/pdf') ? (
                   <iframe
                      src={viewingDocument.fileUrl}
                      className="w-full h-[600px] border rounded"

@@ -125,6 +125,11 @@ const Review = () => {
       return;
     }
 
+    const answers=reviewerType==='tenant'?tenantPart:ownerPart;
+    if(!Object.values(answers).some(value=>value.trim())) {
+      toast({title:'Review Required',description:'Please provide at least one review response.',variant:'destructive'});
+      return;
+    }
     setSubmitting(true);
     try {
       const response = await apiFetch(`${API_BASE_URL}/reviews`, {

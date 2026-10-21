@@ -8,7 +8,9 @@ import { identity, propertyMember, readObject, getRecord, getRecords, epoch } fr
 import { getUser } from './users';
 import { getProperty } from './properties';
 import { bestEffort } from './property-effects';
-import { uploadBase64, deleteR2File, extractR2Key } from './r2-storage';
+import {prepareFile,saveMediaRecord,deleteDocumentMedia,filePropertyRelationships} from './media';
+import {requirePropertyMember} from '../permissions';
+import {mediaId} from '../file-projection';
 const collection=()=>getDatabase().collection(COLLECTIONS.documents);
 const failure=(message:string,status:number)=>jsonResponse({success:false,message},status);
 export async function createDocument(request:Request) {
@@ -20,13 +22,11 @@ export async function createDocument(request:Request) {
   if(req.status&&!['submitted','verified','rejected'].includes(s(req.status)))return failure('Invalid document status',400);
   if(user.role!=='admin')req.status='submitted';
   let url=s(req.fileUrl);
-  if(!/^https?:\/\//.test(url)) {
-    const identifier=`${s(req.documentName).replace(/[ /\\]/g,'_')}_${s(req.documentType)}`;
-    try{url=await uploadBase64(url,`documents/${s(req.propertyId)}`,identifier);}catch{return failure('Failed to upload file to Storage',500);}
-  }
+  url=await prepareFile(url,user,s(req.propertyId),s(req.documentName));
   const now=new Date();const document=model('Document',{...req,id:randomUUID(),fileUrl:url,userId:user.uid,userName:profile.name,propertyTitle:property.title,createdAt:now,updatedAt:now});
-  const metadata=Object.fromEntries(['financialYear','period','amount','status','receiptDate'].filter(key=>key in req).map(key=>[key,req[key]]));
-  await collection().doc(s(document.id)).create({...storeModel('Document',document),...metadata});
+  const asset=await getDatabase().collection('storage_objects').doc(mediaId(url)!).get();
+  const metadata:RecordData={contentType:s(asset.data()?.contentType),...Object.fromEntries(['financialYear','period','amount','status','receiptDate'].filter(key=>key in req).map(key=>[key,req[key]]))};
+  await saveMediaRecord(COLLECTIONS.documents,s(document.id),{...storeModel('Document',document),...metadata},user,true);
   return jsonResponse({success:true,message:'Document uploaded successfully',document:{...wireModel('Document',document),...metadata}},201);
 }
 export async function listDocuments(request:Request,propertyId:string) {
@@ -55,6 +55,17 @@ export async function deleteDocument(request:Request,id:string) {
   const property=await getProperty(s(document.propertyId));
   if(!await propertyMember(user,s(document.propertyId)))throw new AccessError(403,'Property access required');
   if(user.role!=='admin'&&user.uid!==document.userId&&user.uid!==property?.ownerUID)throw new AccessError(403,'Document access required');
-  if(document.fileUrl)await bestEffort(async()=>{const key=extractR2Key(s(document.fileUrl));if(key.startsWith(`documents/${s(document.propertyId)}/`)||key.startsWith(`uploads/${s(document.userId)}/`))await deleteR2File(s(document.fileUrl));});
-  await collection().doc(id).delete();return jsonResponse({success:true,message:'Document deleted successfully'});
+  const managed=mediaId(document.fileUrl);
+  if(managed){await deleteDocumentMedia(managed,id,user);return jsonResponse({success:true,message:'Document and stored file deleted successfully'});}
+  // Historical files require an approved migration, never arbitrary URL-based deletion.
+  await getDatabase().runTransaction(async tx=>{
+    const ref=collection().doc(id),fresh=await tx.get(ref);if(!fresh.exists)return;
+    const current=fresh.data()!,property=await tx.get(getDatabase().collection(COLLECTIONS.properties).doc(s(current.propertyId)));
+    if(!property.exists)throw new AccessError(403,'Property access required');
+    requirePropertyMember(user,filePropertyRelationships(property.data()!));
+    if(user.role!=='admin'&&user.uid!==current.userId&&user.uid!==property.data()?.ownerUID)throw new AccessError(403,'Document deletion access required');
+    tx.create(getDatabase().collection('legacy_storage_cleanup').doc(id),{documentId:id,propertyId:current.propertyId,fileUrl:current.fileUrl||'',status:'approval_required',requestedBy:user.uid,createdAt:new Date()});
+    tx.delete(ref);
+  });
+  return jsonResponse({success:true,message:'Document metadata removed',warning:'Historical object revocation is pending an approved storage migration'});
 }

@@ -339,7 +339,7 @@ const InspectionReport = () => {
       {value ? (
         <div className="flex items-center gap-2 p-2 border rounded">
           <FileText className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm flex-1">File uploaded</span>
+          <span className="text-sm flex-1">File selected</span>
           <Button
             type="button"
             variant="ghost"

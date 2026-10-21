@@ -1,5 +1,7 @@
 "use client";
 
+import styles from "./PropertyForm.module.css";
+
 import ClientPropertyFields, {clientPropertySchema} from './ClientPropertyFields';
 import { apiFetch } from '@/lib/api-client';
 
@@ -539,12 +541,14 @@ const EditProperty = () => {
       if (result.success) {
         toast({
           title: "Property Updated!",
-          description: `${data.propertyTitle} has been successfully updated.`,
+          description: result.property?.moderationStatus==='pending_review'?'Changes saved and submitted for admin review.':`${data.propertyTitle} has been successfully updated.`,
         });
 
         // Refresh the property data to show updated values
         if (propertyId) {
-          queryClient.invalidateQueries({ queryKey: ['property', propertyId] });
+          await queryClient.invalidateQueries({ queryKey: ['property', propertyId] });
+          await queryClient.invalidateQueries({ queryKey: ['userProperties'] });
+          await queryClient.invalidateQueries({ queryKey: ['allProperties'] });
         }
 
         // Optional: navigate back or stay on the page
@@ -593,26 +597,26 @@ const EditProperty = () => {
   }
 
   return (
-    <main className="container mx-auto py-8 px-4">
+    <main className={styles.page}>
       <>
         <title>{property.title.charAt(0).toUpperCase() + property.title.slice(1)}</title>
         <meta name="description" content={`Edit property details for ${property.title}`} />
       </>
 
-      <div className="max-w-6xl mx-auto">
+      <div className={styles.shell}>
         {/* Header */}
-        <div className="mb-8">
+        <div className={styles.pageIntro}>
           <Button variant="ghost" onClick={() => navigate("/manage-property")} className="mb-4">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Manage Properties
           </Button>
 
           <div className="flex items-center gap-4 mb-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-primary shadow-glow">
+            <div className={styles.introIcon}>
               <Building2 className="h-8 w-8 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold">{isRenewalMode ? "Renew Agreement" : "Edit your property details"}</h1>
+              <h1 className={styles.title}>{isRenewalMode ? "Renew Agreement" : "Refine your listing"}</h1>
               <p className="text-lg text-muted-foreground">
                 {property.title}
                 <span className="ml-2 px-2 py-1 text-sm bg-primary/10 text-primary rounded-md capitalize">
@@ -628,7 +632,7 @@ const EditProperty = () => {
           </div>
         </div>
 
-        <Card>
+        <Card className={styles.formPanel}>
           <CardHeader>
             <CardTitle>Property Details</CardTitle>
             <CardDescription>
@@ -645,7 +649,13 @@ const EditProperty = () => {
           </CardHeader>
           <CardContent>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+              <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
+                const invalidFields = Object.keys(errors);
+                const firstError = errors[invalidFields[0] as keyof typeof errors];
+                const firstMessage = firstError && typeof firstError === "object" && "message" in firstError
+                  ? String(firstError.message || "") : "";
+                toast({ title: "Please review the highlighted fields", description: firstMessage || `${invalidFields.length} field(s) need attention.`, variant: "destructive" });
+              })} className={`${styles.formBody} space-y-8`}>
                 <ClientPropertyFields form={form} disabled={!isPropertyEditable()}/>
                 <div className="grid gap-4 sm:grid-cols-2">{(["escalationPercentage","escalationAmount"] as const).map(name=><FormField key={name} control={form.control} name={name} render={({field})=><FormItem><FormLabel>{name==="escalationPercentage"?"Rent escalation percentage":"Rent escalation fixed amount"}</FormLabel><FormControl><Input {...field} value={field.value||""}/></FormControl><FormMessage/></FormItem>}/>)}</div>
 
@@ -1122,7 +1132,7 @@ const EditProperty = () => {
                                 type="button"
                                 variant="destructive"
                                 size="sm"
-                                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                                className={styles.imageRemoveButton} aria-label={`Remove property photo ${index + 1}`}
                                 onClick={() => removeImage(index)}
                               >
                                 <X className="h-4 w-4" />

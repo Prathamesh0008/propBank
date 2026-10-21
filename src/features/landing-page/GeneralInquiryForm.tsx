@@ -130,6 +130,10 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
 
         onSuccess?.();
       } else {
+        if(response.status===429) {
+          toast({title:'Please wait',description:data.message||'Too many enquiries. Please wait one minute before retrying.',variant:'destructive'});
+          return;
+        }
         throw new Error(data.message || "Failed to submit inquiry");
       }
     } catch (error) {

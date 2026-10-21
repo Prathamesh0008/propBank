@@ -4,12 +4,8 @@ import { apiFetch } from '@/lib/api-client';
 
 import { useState, useEffect } from "react";
 import { useSearchParams, Link, useNavigate } from "@/lib/navigation";
-import { Button } from "@/ui/button";
-import { Input } from "@/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
-import { Card, CardContent, CardHeader} from "@/ui/card";
-import { Badge } from "@/ui/badge";
-import { Search, MapPin, BedDouble, Bath, Maximize, Loader2 } from "lucide-react";
+import { Search, MapPin, BedDouble, Bath, Maximize, Loader2, ArrowUpRight, SlidersHorizontal, X, ArrowRight } from "lucide-react";
+import styles from "./SearchResults.module.css";
 import { propertyService, Property } from "@/services/propertyService";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "../../firebase";
@@ -28,24 +24,6 @@ const getPlaceholderImage = (propertyType?: string): string => {
   } else {
     return 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=400&h=300&fit=crop&crop=house';
   }
-};
-
-const getListingTypeBadge = (listingType?: string) => {
-  if (listingType === 'rent') {
-    return (
-      <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200">
-        For Rent
-      </Badge>
-    );
-  } else if (listingType === 'sell') {
-    return (
-      <Badge className="bg-green-100 text-green-800 hover:bg-green-200">
-        For Sale
-      </Badge>
-    );
-  }
-  // Return null instead of "Unknown" badge when listingType is not set
-  return null;
 };
 
 const SearchResults = () => {
@@ -68,39 +46,35 @@ const SearchResults = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [sendingEnquiry, setSendingEnquiry] = useState<string | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [sortBy, setSortBy] = useState("recommended");
 
   // Load search results with filters
-  const performSearch = async () => {
+  const performSearch = async (overrides: {type?: 'buy' | 'rent'; condition?: string; query?: string} = {}) => {
+    const type = overrides.type ?? searchType;
+    const condition = overrides.condition ?? selectedProjectCondition;
+    const query = overrides.query ?? searchQuery;
     try {
       setLoading(true);
       
       // Use the first selected listing type if available, otherwise use searchType
-      let listingType: 'buy' | 'rent' | undefined = searchType;
+      let listingType: 'buy' | 'rent' | undefined = type;
       if (selectedListingTypes.length > 0) {
         listingType = selectedListingTypes[0] as 'buy' | 'rent';
       }
       
       let results = await propertyService.searchProperties(
-        searchQuery,
+        query,
         listingType,
-        selectedProjectCondition
+        condition
       );
-      
-      // Client-side filtering by categories if needed
-      if (selectedCategories.length > 0) {
-        results = results.filter(property => 
-          selectedCategories.some(category => 
-            property.propertyType?.toLowerCase().includes(category.toLowerCase())
-          )
-        );
-      }
       
       // Client-side filtering by multiple listing types if needed
       if (selectedListingTypes.length > 1) {
         // If multiple listing types are selected, we need to search for each and combine
         const allResults = await Promise.all(
           selectedListingTypes.map(type => 
-            propertyService.searchProperties(searchQuery, type as 'buy' | 'rent', selectedProjectCondition)
+            propertyService.searchProperties(query, type as 'buy' | 'rent', condition)
           )
         );
         
@@ -113,15 +87,24 @@ const SearchResults = () => {
         results = uniqueResults;
       }
       
+      // Client-side filtering by categories if needed
+      if (selectedCategories.length > 0) {
+        results = results.filter(property =>
+          selectedCategories.some(category =>
+            property.propertyType?.toLowerCase().includes(category.toLowerCase())
+          )
+        );
+      }
+
       setProperties(results);
       
       // Update URL params
       const newParams = new URLSearchParams();
-      if (searchQuery.trim()) newParams.append('q', searchQuery.trim());
-      if (searchType) newParams.append('type', searchType);
+      if (query.trim()) newParams.append('q', query.trim());
+      if (type) newParams.append('type', type);
       if (selectedCategories.length > 0) newParams.append('categories', selectedCategories.join(','));
       if (selectedListingTypes.length > 0) newParams.append('types', selectedListingTypes.join(','));
-      if (selectedProjectCondition) newParams.append('projectCondition', selectedProjectCondition);
+      if (condition) newParams.append('projectCondition', condition);
       setSearchParams(newParams);
       
     } catch (error) {
@@ -151,7 +134,7 @@ const SearchResults = () => {
   const handleTypeChange = (newType: 'buy' | 'rent') => {
     setSearchType(newType);
     // Auto-search when type changes
-    setTimeout(performSearch, 100);
+    void performSearch({type: newType});
   };
 
   const handleEnquireProperty = async (property: Property) => {
@@ -239,317 +222,99 @@ const SearchResults = () => {
 
     if (priceVal === 0) return 'Price on request';
 
-    if (isRent) {
-      return `Rent this property at ₹${priceVal.toLocaleString('en-IN')}/month`;
-    } else {
-      return `Buy at ₹${priceVal.toLocaleString('en-IN')}`;
-    }
+    return `₹${priceVal.toLocaleString('en-IN')}${isRent ? '/month' : ''}`;
+  };
+
+  const getNumericPrice = (property: Property) => {
+    const candidate = property.price > 0 ? property.price : Number(property.listingType === 'rent' ? property.monthlyRent : property.sellingPrice);
+    return Number.isFinite(candidate) ? candidate : 0;
+  };
+
+  const visibleProperties = [...properties].sort((a, b) => {
+    if (sortBy === 'price-low') return getNumericPrice(a) - getNumericPrice(b);
+    if (sortBy === 'price-high') return getNumericPrice(b) - getNumericPrice(a);
+    return 0;
+  });
+  const filterCount = selectedCategories.length + selectedListingTypes.length + Number(Boolean(selectedProjectCondition));
+  const clearFilters = () => {
+    setSelectedCategories([]);
+    setSelectedListingTypes([]);
+    setSelectedProjectCondition('');
+    setSearchQuery('');
+    setSearchParams(new URLSearchParams({type: searchType}));
+    // Reset from the server instead of reusing the previously filtered result set.
+    void propertyService.searchProperties('', searchType, '').then(setProperties).catch(() => {
+      toast({title: 'Could not reset filters', description: 'Try searching again.', variant: 'destructive'});
+    });
   };
 
   return (
-    <main className="container mx-auto px-4 py-8">
-      <>
-        <title>Search Properties — ShoPROP</title>
-        <meta name="description" content="Search and find properties for rent or purchase on ShoPROP." />
-        <link rel="canonical" href="/search" />
-      </>
-
-      <div className="space-y-8">
-        {/* Header */}
-        <div className="text-center space-y-4">
-          <div className="flex items-center justify-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-primary shadow-glow">
-              <Search className="h-6 w-6 text-primary-foreground" />
-            </div>
-            <h1 className="text-3xl font-bold">Property Search</h1>
+    <main className={styles.page}>
+      <div className={styles.shell}>
+        <header className={styles.pageHeader}>
+          <div>
+            <p className={styles.eyebrow}>PROPBANK / PROPERTY DISCOVERY</p>
+            <h1>Find your <em>next space.</em></h1>
+            <p className={styles.headerDescription}>Thoughtful spaces for the way you live and work. Explore available properties with clarity and confidence.</p>
           </div>
-          <p className="text-muted-foreground">
-            Find your perfect property by location, features, or property type
-          </p>
-        </div>
+          <div className={styles.headerSide}><span>Explore spaces</span><ArrowUpRight size={22} aria-hidden="true" /></div>
+        </header>
 
-        {/* Search Form */}
-        <Card className="w-full max-w-4xl mx-auto">
-          <CardContent className="p-6">
-            <form onSubmit={handleSearch} className="space-y-4">
-              <div className="flex flex-col md:flex-row gap-4">
-                {/* Search Type Selection */}
-                <div className="md:w-48">
-                  <Select value={searchType} onValueChange={handleTypeChange}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="buy">Buy Properties</SelectItem>
-                      <SelectItem value="rent">Rent Properties</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Search Input */}
-                <div className="flex-1">
-                  <Input
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search by location, property type, or features (e.g., 2BHK, 3BHK, Mumbai, Apartment)..."
-                    className="w-full"
-                  />
-                </div>
-
-                {/* Project Condition Filter */}
-                <div className="md:w-52">
-                  <Select 
-                    value={selectedProjectCondition} 
-                    onValueChange={(value) => {
-                      setSelectedProjectCondition(value);
-                      setTimeout(performSearch, 100);
-                    }}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Project Condition" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">All Conditions</SelectItem>
-                      <SelectItem value="New Project">New Project</SelectItem>
-                      <SelectItem value="Ready Project">Ready Project</SelectItem>
-                      <SelectItem value="Preleased">Preleased</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Search Button */}
-                <Button 
-                  type="submit" 
-                  disabled={loading}
-                  className="md:w-auto w-full"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      Searching...
-                    </>
-                  ) : (
-                    <>
-                      <Search className="h-4 w-4 mr-2" />
-                      Search
-                    </>
-                  )}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-
-        {/* Results Section */}
-        <div className="space-y-6">
-          {/* Results Header */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-semibold">Search Results</h2>
-              <p className="text-muted-foreground">
-                {loading ? 'Searching...' : `Found ${properties.length} properties`}
-                {searchQuery && ` for "${searchQuery}"`}
-                {selectedCategories.length > 0 && ` in ${selectedCategories.join(', ')} categories`}
-                {selectedListingTypes.length > 0 && ` for ${selectedListingTypes.join(' and ')} listings`}
-                {selectedProjectCondition && ` with ${selectedProjectCondition} condition`}
-              </p>
+        <section className={styles.searchSection} aria-label="Property search">
+          <form onSubmit={handleSearch} className={styles.searchForm}>
+            <div className={styles.modeSwitch} role="group" aria-label="Property transaction">
+              <button type="button" className={searchType === 'buy' ? styles.modeActive : styles.mode} aria-pressed={searchType === 'buy'} onClick={() => handleTypeChange('buy')}>Buy</button>
+              <button type="button" className={searchType === 'rent' ? styles.modeActive : styles.mode} aria-pressed={searchType === 'rent'} onClick={() => handleTypeChange('rent')}>Rent</button>
             </div>
+            <label className={styles.searchField}>
+              <Search size={20} aria-hidden="true" />
+              <span className={styles.srOnly}>Search property location, type or features</span>
+              <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="City, locality, building or property type" />
+            </label>
+            <button className={styles.submit} type="submit" disabled={loading}>{loading ? <Loader2 size={18} className={styles.spinner} /> : <Search size={18} />} <span>{loading ? 'Searching' : 'Search properties'}</span></button>
+          </form>
+          <div className={styles.toolbar}>
+            <button type="button" className={styles.filterToggle} onClick={() => setShowFilters(v => !v)} aria-expanded={showFilters} aria-controls="search-advanced-filters"><SlidersHorizontal size={17} /> {showFilters ? 'Hide filters' : 'More filters'}{filterCount ? ` (${filterCount})` : ''}</button>
+            <span className={styles.toolbarTip}>Search by location, project status and property category</span>
+            {filterCount > 0 && <button type="button" className={styles.clear} onClick={clearFilters}><X size={14} /> Clear filters</button>}
           </div>
+          {showFilters && <div id="search-advanced-filters" className={styles.filters}>
+            <label>Project condition
+              <select value={selectedProjectCondition} onChange={(e) => { const condition=e.target.value; setSelectedProjectCondition(condition); void performSearch({condition}); }}>
+                <option value="">All conditions</option><option value="New Project">New project</option><option value="Ready Project">Ready project</option><option value="Preleased">Preleased</option>
+              </select>
+            </label>
+            <fieldset className={styles.filterGroup}><legend>Property category</legend><div className={styles.filterOptions}>{['Residential', 'Commercial', 'Industrial'].map(category => <label key={category} className={styles.checkOption}><input type="checkbox" checked={selectedCategories.includes(category)} onChange={e => setSelectedCategories(current => e.target.checked ? [...current,category] : current.filter(x => x !== category))} /> {category}</label>)}</div></fieldset>
+            <fieldset className={styles.filterGroup}><legend>Listing purpose</legend><div className={styles.filterOptions}>{['buy','rent'].map(type => <label key={type} className={styles.checkOption}><input type="checkbox" checked={selectedListingTypes.includes(type)} onChange={e => setSelectedListingTypes(current => e.target.checked ? [...current,type] : current.filter(x => x !== type))} /> {type === 'buy' ? 'For sale' : 'For rent'}</label>)}</div></fieldset>
+            <button className={styles.applyFilters} type="button" onClick={() => void performSearch()}>Apply filters <ArrowRight size={16}/></button>
+          </div>}
+        </section>
 
-          {/* Active Filters Display */}
-          {(selectedCategories.length > 0 || selectedListingTypes.length > 0 || selectedProjectCondition) && (
-            <div className="mb-6">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm text-muted-foreground">Active filters:</span>
-                {selectedCategories.map(category => (
-                  <Badge key={category} variant="secondary" className="capitalize">
-                    {category}
-                  </Badge>
-                ))}
-                {selectedListingTypes.map(type => (
-                  <Badge key={type} variant="outline" className="capitalize">
-                    For {type}
-                  </Badge>
-                ))}
-                {selectedProjectCondition && (
-                  <Badge variant="default" className="bg-blue-600 text-white hover:bg-blue-700">
-                    {selectedProjectCondition}
-                  </Badge>
-                )}
+        <section className={styles.resultsSection} aria-label="Property results" aria-live="polite">
+          <div className={styles.resultsHeading}>
+            <div><p className={styles.eyebrow}>THE COLLECTION</p><h2>{searchType === 'rent' ? 'Properties to rent' : 'Properties for sale'}</h2><p>{loading ? 'Finding available spaces…' : `${properties.length} ${properties.length === 1 ? 'property' : 'properties'} found`}{searchQuery.trim() ? ` for “${searchQuery.trim()}”` : ''}</p></div>
+            <label className={styles.sortControl}>Sort by <select value={sortBy} onChange={e => setSortBy(e.target.value)}><option value="recommended">Recommended</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option></select></label>
+          </div>
+          {loading ? <div className={styles.emptyState}><Loader2 className={styles.spinner} size={32}/><h3>Finding your next space</h3><p>Checking available properties…</p></div> : visibleProperties.length === 0 ? <div className={styles.emptyState}><Search size={36}/><h3>No matching properties yet</h3><p>Try another location or remove your filters to discover more properties.</p><button type="button" onClick={clearFilters}>Clear search and filters <ArrowRight size={16}/></button></div> :
+          <div className={styles.resultsGrid}>{visibleProperties.map(property => <article key={property.id} className={styles.property}>
+            <Link to={`/property/${property.id}`} className={styles.propertyImageLink} aria-label={`View ${property.title || 'property'} details`}>
+              <img src={property.images?.[0] || getPlaceholderImage(property.propertyType)} alt={property.title ? `${property.title} property` : 'Property photograph'} loading="lazy" onError={e => { const img=e.currentTarget; const fallback=getPlaceholderImage(property.propertyType); if (!img.src.includes(fallback)) img.src=fallback; }} />
+              <span className={styles.imageTag}>{property.listingType === 'rent' ? 'FOR RENT' : 'FOR SALE'}</span>
+              <span className={styles.imageArrow}><ArrowUpRight size={20}/></span>
+            </Link>
+            <div className={styles.propertyBody}>
+              <div className={styles.propertyTop}><span>{property.propertyType || 'Property'}{property.configuration ? ` · ${property.configuration}` : ''}</span><span className={styles.price}>{formatPrice(property)}</span></div>
+              <h3><Link to={`/property/${property.id}`}>{property.title || 'Explore property'}</Link></h3>
+              <p className={styles.address}><MapPin size={15} />{property.address || property.city || 'Location available on enquiry'}</p>
+              <div className={styles.features}>
+                {property.bedrooms > 0 && <span><BedDouble size={15}/>{property.bedrooms} beds</span>}
+                {property.bathrooms > 0 && <span><Bath size={15}/>{property.bathrooms} baths</span>}
+                {property.squareFeet > 0 && <span><Maximize size={15}/>{property.squareFeet} sq ft</span>}
               </div>
+              <div className={styles.propertyActions}><button type="button" disabled={sendingEnquiry === property.id} onClick={() => void handleEnquireProperty(property)}>{sendingEnquiry === property.id ? 'Sending enquiry…' : 'Enquire about this property'} <ArrowUpRight size={16}/></button><Link to={`/property/${property.id}`}>Details <ArrowRight size={16}/></Link></div>
             </div>
-          )}
-
-          {/* Results Grid */}
-          {loading ? (
-            <div className="text-center py-12">
-              <Loader2 className="h-16 w-16 mx-auto text-muted-foreground mb-4 animate-spin" />
-              <h3 className="text-lg font-semibold mb-2">Searching Properties...</h3>
-              <p className="text-muted-foreground">Please wait while we find the best matches</p>
-            </div>
-          ) : properties.length === 0 ? (
-            <div className="text-center py-12">
-              <Search className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No Properties Found</h3>
-              <p className="text-muted-foreground mb-4">
-                Try adjusting your search criteria or browse all properties
-              </p>
-              <div className="flex flex-col sm:flex-row gap-2 justify-center">
-                <Button variant="outline" onClick={() => { setSearchQuery(''); performSearch(); }}>
-                  Show All Properties
-                </Button>
-                <Button variant="outline" asChild>
-                  <Link to={searchType === 'buy' ? '/buy' : '/rent'}>
-                    Browse {searchType === 'buy' ? 'Sale' : 'Rental'} Properties
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {properties.map((property) => (
-                <Card key={property.id} className="group hover:shadow-lg transition-all duration-200 flex flex-col h-full">
-                  <CardHeader className="p-0">
-                    {/* Property Image */}
-                    <div className="relative h-48 bg-muted rounded-t-lg overflow-hidden">
-                      <img
-                        src={
-                          property.images && property.images.length > 0 && property.images[0] 
-                            ? property.images[0] 
-                            : getPlaceholderImage(property.propertyType)
-                        }
-                        alt={property.title || 'Property Image'}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          // If the original image fails, try the placeholder
-                          if (target.src !== getPlaceholderImage(property.propertyType)) {
-                            target.src = getPlaceholderImage(property.propertyType);
-                          } else {
-                            // If placeholder also fails, show the animated house fallback
-                            target.style.display = 'none';
-                            const fallback = target.nextElementSibling as HTMLElement;
-                            if (fallback) {
-                              fallback.style.display = 'flex';
-                            }
-                          }
-                        }}
-                      />
-                      <div 
-                        className="w-full h-full hidden items-center justify-center bg-gradient-to-br from-muted/50 to-muted"
-                        style={{ 
-                          background: property.propertyType?.toLowerCase().includes('commercial') 
-                            ? 'linear-gradient(135deg, #f0f9ff, #e0e7ff)' 
-                            : property.propertyType?.toLowerCase().includes('residential')
-                            ? 'linear-gradient(135deg, #fef7cd, #fef3c7)'
-                            : 'linear-gradient(135deg, #f1f5f9, #e2e8f0)'
-                        }}
-                      >
-                        <div className="text-center">
-                          <p className="text-xs text-muted-foreground/80 font-medium mt-2 capitalize">
-                            {property.propertyType || 'Property'}
-                          </p>
-                        </div>
-                      </div>
-                      
-                      {/* Listing Type Badge */}
-                      {property.listingType && (
-                        <div className="absolute top-3 right-3">
-                          {getListingTypeBadge(property.listingType)}
-                        </div>
-                      )}
-                    </div>
-                  </CardHeader>
-
-                  <CardContent className="p-6 flex-1 flex flex-col space-y-4">
-                    {/* Title and Price */}
-                     <div>
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className="flex flex-col">
-                          <h3 className="font-bold text-base sm:text-lg line-clamp-2 text-slate-800 uppercase">
-                            {property.title || 'Property'}
-                          </h3>
-                          {property.configuration && (
-                            <span className="text-xs sm:text-sm font-semibold text-slate-500 uppercase mt-0.5">
-                              Configuration: {property.configuration}
-                            </span>
-                          )}
-                        </div>
-                        <Badge variant="secondary" className="capitalize shrink-0 text-xs py-0.5 px-2 bg-slate-100 border-slate-200 text-slate-600">
-                          {property.propertyType || 'Property'}
-                        </Badge>
-                      </div>
-                      <p className="text-sm font-bold text-primary">
-                        {formatPrice(property)}
-                      </p>
-                    </div>
-
-                    {/* Location */}
-                    <div className="flex items-start gap-2">
-                      <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                      <p className="text-muted-foreground text-sm line-clamp-2">
-                        {property.address || property.city || 'Location not specified'}
-                      </p>
-                    </div>
-
-                    {/* Property Details */}
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      {property.bedrooms > 0 && (
-                        <div className="flex items-center gap-1">
-                          <BedDouble className="h-4 w-4" />
-                          <span>{property.bedrooms} Beds</span>
-                        </div>
-                      )}
-                      {property.bathrooms > 0 && (
-                        <div className="flex items-center gap-1">
-                          <Bath className="h-4 w-4" />
-                          <span>{property.bathrooms} Baths</span>
-                        </div>
-                      )}
-                      {property.squareFeet > 0 && (
-                        <div className="flex items-center gap-1">
-                          <Maximize className="h-4 w-4" />
-                          <span>{property.squareFeet} sq ft</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Spacer to push content to bottom */}
-                    <div className="flex-1"></div>
-
-                    {/* Property Enquiry */}
-                    <div className="pt-4 border-t mt-auto">
-                      <p className="text-sm font-medium mb-2">Property Enquiry</p>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">
-                          {property.ownerRole === "agent" ? "Agent" : "Owner"}: {property.ownerName}
-                        </span>
-                        <div className="flex gap-2">
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
-                            className="w-full"
-                            onClick={() => handleEnquireProperty(property)}
-                            disabled={sendingEnquiry === property.id}
-                          >
-                            {sendingEnquiry === property.id ? "Sending..." : "Enquire Now"}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* View Details Button */}
-                    <Button asChild className="w-full">
-                      <Link to={`/property/${property.id}`}>
-                        View Details
-                      </Link>
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </div>
+          </article>)}</div>}
+        </section>
       </div>
     </main>
   );

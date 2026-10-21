@@ -9,14 +9,14 @@ interface UploadResponse {
 }
 
 /**
- * Upload Service - Handles file uploads to Cloudflare R2 via backend API
+ * Upload Service - Handles uploads through the managed private-storage API
  */
 
 /**
  * Upload a single image file (multipart form data)
  * @param file - The file to upload
  * @param folder - The folder to store the image in (e.g., 'properties', 'avatars')
- * @returns The URL of the uploaded image
+ * @returns The application delivery URL of the uploaded image
  */
 export const uploadImage = async (file: File, folder: string = 'uploads'): Promise<string> => {
   const formData = new FormData();
@@ -42,7 +42,7 @@ export const uploadImage = async (file: File, folder: string = 'uploads'): Promi
  * @param base64Image - The base64 encoded image data
  * @param folder - The folder to store the image in
  * @param identifier - An identifier for the image filename
- * @returns The URL of the uploaded image
+ * @returns The application delivery URL of the uploaded image
  */
 export const uploadBase64Image = async (
   base64Image: string,
@@ -74,7 +74,7 @@ export const uploadBase64Image = async (
  * Upload multiple property images (base64 encoded)
  * @param images - Array of base64 encoded images
  * @param propertyId - The property ID
- * @returns Array of uploaded image URLs
+ * @returns Array of application delivery URLs
  */
 export const uploadPropertyImages = async (
   images: string[],
@@ -105,7 +105,7 @@ export const uploadPropertyImages = async (
  * @param file - The document file to upload
  * @param propertyId - The property ID
  * @param docType - The type of document (e.g., 'lease', 'contract', 'general')
- * @returns The URL of the uploaded document
+ * @returns The authenticated application URL of the uploaded document
  */
 export const uploadDocument = async (
   file: File,
@@ -135,7 +135,7 @@ export const uploadDocument = async (
  * Upload a service request image (base64 encoded)
  * @param image - The base64 encoded image
  * @param requestId - The service request ID
- * @returns The URL of the uploaded image
+ * @returns The application delivery URL of the uploaded image
  */
 export const uploadServiceRequestImage = async (
   image: string,

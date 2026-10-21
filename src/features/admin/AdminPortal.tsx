@@ -1,4 +1,6 @@
 "use client";
+import AdminVisits from './AdminVisits';
+import EnquiryInbox from '@/features/enquiries/EnquiryInbox';
 import {ProductDashboard} from '@/features/properties/PropertyHub';
 
 
@@ -10,7 +12,8 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "@/lib/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Users, AlertCircle, Archive } from "lucide-react";
+import { Building2, Users, AlertCircle, Archive, Settings2, MessageSquareText, CalendarDays, Handshake } from "lucide-react";
+import styles from "./AdminPortal.module.css";
 import { uploadBase64Image } from "@/services/uploadService";
 import AdminPropertyDetailsDialog from "@/features/admin/AdminPropertyDetailsDialog";
 import AdminUserDetailsDialog from "@/features/admin/AdminUserDetailsDialog";
@@ -325,6 +328,10 @@ const AdminPortal = () => {
   };
 
   const handleSaveRemarks = async (notificationId: string, remarks: string, adminImage?: string) => {
+    if(uploadingRemarkImage===notificationId||remarkImages[notificationId]?.startsWith('data:')&&!remarkImages[`url-${notificationId}`]) {
+      toast({title:'Image upload incomplete',description:'Retry the selected image upload before saving remarks.',variant:'destructive'});
+      return;
+    }
     setUpdating(notificationId);
     try {
       const response = await apiFetch(`${API_BASE_URL}/admin/notifications/${notificationId}/remarks`, {
@@ -352,7 +359,7 @@ const AdminPortal = () => {
       const reader = new FileReader();
       reader.onload = async (e) => {
         const base64 = e.target?.result as string;
-        setRemarkImages(prev => ({ ...prev, [notificationId]: base64 }));
+        setRemarkImages(prev => ({ ...prev, [notificationId]: base64, [`url-${notificationId}`]: '' }));
         try {
           const imageUrl = await uploadBase64Image(base64);
           setRemarkImages(prev => ({ ...prev, [`url-${notificationId}`]: imageUrl }));
@@ -370,17 +377,21 @@ const AdminPortal = () => {
   };
 
   return (
-    <div className="container mx-auto py-8 px-4 max-w-7xl">
-      <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <main className={styles.workspace}>
+      <header className={styles.heading}>
         <div>
-          <h1 className="text-3xl font-bold mb-2">Admin Portal</h1>
-          <p className="text-muted-foreground">Manage properties, agents, service requests, and more</p>
+          <span className={styles.eyebrow}>Operations / PropBank</span>
+          <h1>Administration</h1>
+          <p>Listings, people and requests — organized in one place.</p>
         </div>
-      </div>
-
-      <ProductDashboard admin/>
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1">
+        <span className={styles.workspaceLabel}>Management workspace</span>
+      </header>
+      <div className={styles.dashboardSummary}><ProductDashboard admin/></div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className={styles.panel}>
+        <div className={styles.panelGrid}>
+        <aside className={styles.sidebar} aria-label="Administration sections">
+          <p className={styles.sidebarLabel}>WORKSPACE</p>
+          <TabsList className={styles.navigation}>
           <TabsTrigger value="service-requests" className="flex items-center gap-2">
             <AlertCircle className="h-4 w-4" />
             <span className="hidden sm:inline">Active Service Requests</span>
@@ -400,14 +411,20 @@ const AdminPortal = () => {
             <span>Archive</span>
           </TabsTrigger>
           <TabsTrigger value="settings" className="flex items-center gap-2">
-            <Building2 className="h-4 w-4" />
+            <Settings2 className="h-4 w-4" />
             <span className="hidden sm:inline">Site Settings</span>
             <span className="sm:hidden">Settings</span>
           </TabsTrigger>
-          <TabsTrigger value="offers">Offers</TabsTrigger>
+          <TabsTrigger value="offers" className="flex items-center gap-2"><Handshake className="h-4 w-4"/>Offers</TabsTrigger>
+          <TabsTrigger value="enquiries" className="flex items-center gap-2"><MessageSquareText className="h-4 w-4"/>Enquiries</TabsTrigger>
+          <TabsTrigger value="visits" className="flex items-center gap-2"><CalendarDays className="h-4 w-4"/>Visits</TabsTrigger>
         </TabsList>
+        </aside>
+        <div className={styles.content}>
 
         <TabsContent value="offers"><NegotiationPanel admin/></TabsContent>
+        <TabsContent value="enquiries"><EnquiryInbox admin agents={agents}/></TabsContent>
+        <TabsContent value="visits"><AdminVisits/></TabsContent>
         <TabsContent value="service-requests" className="mt-6">
           <ServiceRequestHistory admin/>
           <AdminServiceRequestsTab
@@ -467,10 +484,13 @@ const AdminPortal = () => {
             handleRemoveBannerImage={handleRemoveBannerImage}
           />
         </TabsContent>
+      </div>
+      </div>
       </Tabs>
 
       <AdminPropertyDetailsDialog
         property={selectedProperty}
+        onVerificationChange={async()=>{if(selectedProperty?.id)setSelectedProperty(await propertyService.getPropertyById(selectedProperty.id));}}
         isOpen={isPropertyDialogOpen}
         onOpenChange={setIsPropertyDialogOpen}
       />
@@ -479,7 +499,7 @@ const AdminPortal = () => {
         isOpen={isUserDialogOpen}
         onOpenChange={setIsUserDialogOpen}
       />
-    </div>
+    </main>
   );
 };
 

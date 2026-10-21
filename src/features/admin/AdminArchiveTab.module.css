@@ -1,0 +1,6 @@
+/* Archived operations: a readable editorial list, not stacks of cards. */
+.archive{font-family:var(--font-manrope),sans-serif;color:#242b28}
+.surface{background:transparent;border:0;box-shadow:none;border-radius:0}
+.entry{margin:0;border:0;border-top:1px solid #dcd8cf;border-radius:0;box-shadow:none;background:transparent;opacity:1;padding:7px 0}
+.entry:hover{background:#f1eee7}
+@media(max-width:680px){.archive{min-width:0;overflow-wrap:anywhere}.entry{padding:4px 0}}

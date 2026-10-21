@@ -16,7 +16,7 @@ test('public listings and detail clear private contacts, tenant records and sele
   const body=await response.json(),p=body.property||body.properties[0];
   assert.equal(p.ownerEmail,'');assert.equal(p.ownerPhone,'');assert.equal(p.tenants,null);assert.equal(p.buyers,null);assert.equal(p.internalImages,null);assert.deepEqual(p.images,['main']);
  }
- const member=await (await route(app,'properties/[id]').GET(request('/properties/P','owner'),context('P'))).json();assert.deepEqual(member.property.internalImages,['private']);
+ const member=await (await route(app,'properties/[id]').GET(request('/properties/P','owner'),context('P'))).json();assert.match(member.property.internalImages[0],/^\/api\/media\/legacy\?/);assert.ok(!JSON.stringify(member.property.internalImages).includes('private'));
 });
 test('private records reject IDOR; owner also tenant has both relationships without changing global role',async()=>{
  const app=isolated({users,properties:{P:properties.P,Q:{...properties.P,id:'Q',ownerUID:'other',tenants:[{userUID:'owner',isActive:true}]}}});
@@ -62,7 +62,7 @@ test('upload reserved namespaces require property membership and administrator p
  assert.equal((await r.POST(request('/upload/image','tenant','POST',{folder:'documents/P',image}))).status,200);
 });
 test('notification intake prevents internal event spoofing, private response leakage and HTML injection',async()=>{
- const app=isolated({users,properties}),r=route(app,'admin/notifications');
+ const app=isolated({users,properties}),r=route(app,'admin/notifications');app.state.properties.P.rentalStatus='available';app.state.properties.P.tenants=[];
  assert.equal((await r.POST(request('/admin/notifications','other','POST',{type:'agreement_renewal',propertyId:'P'}))).status,403);
  const response=await r.POST(request('/admin/notifications','other','POST',{type:'property_enquiry',propertyId:'P',userId:'other',ownerEmail:'forged@test.invalid',isRead:true}));assert.equal(response.status,201);
  const body=await response.json();assert.equal(body.notification.ownerEmail,'');
@@ -73,7 +73,7 @@ test('new uploads have unique keys and uploader metadata; another user cannot de
  const app=isolated({users,properties});const r=route(app,'upload/image');const image='data:image/png;base64,AQID';
  const first=await (await r.POST(request('/upload/image','owner','POST',{image,folder:'properties',identifier:'building'}))).json();
  const second=await (await r.POST(request('/upload/image','owner','POST',{image,folder:'properties',identifier:'building'}))).json();
- assert.notEqual(first.url,second.url);assert.equal(app.objects.length,2);assert.ok(app.objects.every(object=>object.Key.startsWith('uploads/owner/')&&object.Metadata.uploadedBy==='owner'));
+ assert.notEqual(first.url,second.url);assert.equal(app.objects.length,2);assert.ok(app.objects.every(object=>object.Key.startsWith('managed/')&&object.Bucket==='propbank-private-test'&&object.Metadata.uploadedBy==='owner'));
  const del=route(app,'files/[...path]');assert.equal((await del.DELETE(request('/files/delete','other','DELETE',{url:first.url}))).status,403);
  assert.equal((await del.DELETE(request('/files/delete','owner','DELETE',{url:first.url}))).status,200);
 });

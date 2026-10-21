@@ -1,4 +1,5 @@
 "use client";
+import styles from "./AdminArchiveTab.module.css";
 
 import { TabsContent } from "@/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/card";
@@ -39,8 +40,8 @@ export default function AdminArchiveTab({
   selectedProperty,
 }: AdminArchiveTabProps) {
   return (
-    <TabsContent value="archive" className="mt-6">
-      <Card>
+    <TabsContent value="archive" className={`${styles.archive} mt-6`}>
+      <Card className={styles.surface}>
         <CardHeader>
           <CardTitle>Archive</CardTitle>
           <CardDescription>Completed service requests and archived items</CardDescription>
@@ -60,7 +61,7 @@ export default function AdminArchiveTab({
           ) : (
             <div className="space-y-4">
               {notifications.map((notification) => (
-                <Card key={notification.id} className="border-l-4 border-l-gray-300 opacity-90">
+                <Card key={notification.id} className={styles.entry}>
                   <CardContent className="pt-6">
                     {/* Title */}
                     <div className="flex items-center gap-2 mb-1">

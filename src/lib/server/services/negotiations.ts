@@ -1,3 +1,4 @@
+import {publicListing,listingApproved} from '../../listing-policy';
 import 'server-only';
 
 import type { DocumentData, UpdateData } from 'firebase-admin/firestore';
@@ -109,7 +110,7 @@ export async function createNegotiation(
   const property = await getProperty(propertyId);
 
   if (
-    !property ||
+    !property || !publicListing(property) ||
     !['rent', 'sell'].includes(
       stringValue(property.listingType)
     ) ||
@@ -322,6 +323,7 @@ export async function updateNegotiation(
         }
 
         if (
+          !listingApproved(property.data()||{}) ||
           property.data()?.isActive !== true ||
           property.data()?.status ===
             'inactive' ||
@@ -521,16 +523,10 @@ export async function updateNegotiation(
             n.ownerApprovedAmount =
               nextAmount;
 
-            n.status =
-              nextAmount ===
-              before.customerOffer
-                ? 'accepted'
-                : 'owner_approved';
-
-            if (n.status === 'accepted') {
-              n.finalAgreedAmount =
-                nextAmount;
-            }
+            // Approval always returns to the customer for explicit confirmation,
+            // including when the approved amount matches their original offer.
+            n.status = 'owner_approved';
+            n.finalAgreedAmount = null;
 
             break;
 

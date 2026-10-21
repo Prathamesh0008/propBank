@@ -1,7 +1,5 @@
 import 'server-only';
-import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { getR2Client, getR2Configuration, getR2PublicUrl } from '../r2';
-import { randomUUID } from 'node:crypto';
+import { getR2Configuration } from '../r2';
 
 const extensions:Record<string,string>={'image/png':'.png','image/gif':'.gif','image/webp':'.webp','application/pdf':'.pdf'};
 function validateBase64(encoded:string) {
@@ -34,24 +32,6 @@ export function originalFilename(name:string,folder:string,seconds=Math.floor(Da
   const base=(ext?name.slice(0,-ext.length):name).replaceAll(' ','_');
   return `${folder}/${base}_${seconds}${ext}`;
 }
-export async function putFile(bytes:Buffer,key:string,contentType:string) {
-  const config=getR2Configuration();
-  const uploader=/^uploads\/([^/]+)\//.exec(key)?.[1];
-  try {await getR2Client().send(new PutObjectCommand({Bucket:config.bucketName,Key:key,Body:bytes,ContentType:contentType,...(uploader?{Metadata:{uploadedBy:uploader}}:{})}));}
-  catch {throw new Error('failed to upload to R2');}
-  return getR2PublicUrl(key);
-}
-export async function uploadBase64(data:string,folder:string,identifier:string) {
-  const parsed=parseBase64(data);
-  return putFile(parsed.bytes,`${folder}/${identifier.replace(/[^a-zA-Z0-9_-]/g,'_')}_${randomUUID()}${parsed.extension}`,parsed.contentType);
-}
-export async function uploadFile(file:File,folder:string) {
-  const bytes=Buffer.from(await file.arrayBuffer());
-  // Validated multipart upload handlers require MIME; this fallback matches
-  // Go's shared storage dependency for files lacking an explicit type.
-  const name=file.name.replace(/[\\/]/g,'_');
-  return putFile(bytes,originalFilename(name,folder).replace(/_(\d+)(?=\.[^.]*$|$)/,`_${randomUUID()}`),file.type || 'application/octet-stream');
-}
 export function extractR2Key(fileURL:string) {
   const config=getR2Configuration();
   const prefixes=[...(config.publicUrl?[config.publicUrl.replace(/\/$/,'')+'/']:[]),`https://${config.bucketName}.r2.dev/`];
@@ -64,9 +44,4 @@ export function extractR2Key(fileURL:string) {
     }catch{/* Reject malformed/lookalike URLs before sending a DeleteObject. */}
   }
   throw new Error('invalid file URL');
-}
-export async function deleteR2File(url:string) {
-  const key=extractR2Key(url);
-  try {await getR2Client().send(new DeleteObjectCommand({Bucket:getR2Configuration().bucketName,Key:key}));}
-  catch {throw new Error('failed to delete from R2');}
 }

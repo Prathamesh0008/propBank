@@ -1,4 +1,5 @@
 "use client";
+import styles from "./ServiceWorkspace.module.css";
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,10 +29,10 @@ export function ServiceRequestHistory({propertyId,admin=false}:{propertyId?:stri
       await workflowRequest(`service-requests/${id}`,{status:form.get('status'),resolutionReport:form.get('resolutionReport'),adminNotes:form.get('adminNotes'),adminImage:image,action:form.get('archive')==='yes'?'archive':'unarchive'},'PUT');await query.refetch();
     }catch(error){setFailure(error instanceof Error?error.message:'Could not update request');}finally{setBusy('');}
   }
-  return <Card><CardHeader><CardTitle>{admin?'Service requests and resolution':'Request history and admin responses'}</CardTitle></CardHeader><CardContent className="space-y-4">
+  return <Card className={styles.history}><CardHeader><CardTitle>{admin?'Service requests and resolution':'Request history and admin responses'}</CardTitle></CardHeader><CardContent className="space-y-4">
     {query.isLoading&&<p role="status">Loading requests…</p>}{(query.error||failure)&&<p role="alert" className="text-destructive">{query.error?.message||failure}</p>}
     {!query.isLoading&&!query.error&&!query.data?.data?.length&&<p>No requests yet.</p>}
-    {query.data?.data?.map(request=><article key={request.id} className="rounded border p-4 space-y-3 break-words">
+    {query.data?.data?.map(request=><article key={request.id} className={`${styles.requestRow} space-y-3 break-words`}>
       <h3 className="font-semibold">{request.serviceName||'Service request'} · {request.propertyId}</h3><p>{request.message}</p><p>Status: {request.status.replaceAll('_',' ')}{request.isArchived?' · Archived':''}</p>
       {request.image&&<a href={request.image} target="_blank" rel="noopener noreferrer">Open request attachment</a>}
       {(request.resolutionReport||request.adminNotes)&&<p>Admin response: {request.resolutionReport} {request.adminNotes}</p>}
@@ -60,7 +61,7 @@ export default function ServiceRequestWorkflow({group}:{group:keyof typeof ids})
       await workflowRequest('service-requests',{propertyId,userUID:user.uid,serviceId:service,message:comment,...(file?{image:await readFile(file)}:{})});setFeedback('Request submitted. The admin response will appear in the history below.');setGeneration(generation+1);setComment('');setFile(null);
     }catch(error){setFailure(error instanceof Error?error.message:'Could not submit request');}finally{setBusy(false);}
   }
-  return <main className="container mx-auto max-w-4xl px-4 py-8 space-y-6"><Link to="/manage-property">← Manage Property</Link><Card><CardHeader><CardTitle>{group==='legal'?'Legal services':group==='related'?'Other related services':'Raise a maintenance request'}</CardTitle></CardHeader><CardContent>
+  return <main className={`container mx-auto max-w-5xl px-4 py-8 space-y-6 ${styles.workspace}`}><Link to="/manage-property">← Manage Property</Link><Card className={styles.panel}><CardHeader><CardTitle>{group==='legal'?'Legal services':group==='related'?'Other related services':'Raise a maintenance request'}</CardTitle></CardHeader><CardContent>
     <p className="mb-4">Property: {propertyId}</p>
     {group==='related'&&<p className="mb-4"><Link to={`/visit-planner?propertyId=${propertyId}`}>Schedule a visit update with owner notification</Link></p>}
     {(catalog.error||failure)&&<p role="alert" className="text-destructive">{catalog.error?.message||failure}</p>}{feedback&&<p role="status">{feedback}</p>}

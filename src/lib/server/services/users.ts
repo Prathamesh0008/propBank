@@ -1,5 +1,5 @@
 import 'server-only';
-import { AccessError, verifyFirebaseIdentity } from '../auth';
+import { AccessError, requireUser, verifyFirebaseIdentity } from '../auth';
 import { COLLECTIONS, getDatabase } from '../firestore';
 import { getFirebaseAdminAuth } from '../firebase-admin';
 import { jsonResponse } from '../http';
@@ -84,6 +84,25 @@ export async function listUsers(request:Request) {
   }
   return jsonResponse({success:true,message:'Users fetched successfully',...(users.length?{data:users}:{})});
 }
+export async function searchUsersForAdmin(request:Request) {
+  const caller=await requireUser(request);
+  if(caller.role!=='admin')throw new AccessError(403,'Administrator access required');
+  const query=(new URL(request.url).searchParams.get('q')||'').trim().toLowerCase();
+  if(query.length<2)return fail('Enter at least 2 characters',400);
+  if(query.length>100)return fail('Search is too long',400);
+  const docs=await userCollection().get();
+  const matches:RecordData[]=[];
+  for(const doc of docs.docs) {
+    const raw=doc.data();
+    const fields=[stringValue(raw.name),stringValue(raw.email),stringValue(raw.phoneNumber)].map(value=>value.toLowerCase());
+    if(!fields.some(value=>value.includes(query)))continue;
+    let authActive=false;
+    try { authActive=!(await getFirebaseAdminAuth().getUser(doc.id)).disabled; } catch { authActive=false; }
+    matches.push({uid:doc.id,name:raw.name,email:raw.email,phoneNumber:raw.phoneNumber,role:raw.role,isActive:raw.isActive!==false&&authActive});
+    if(matches.length===20)break;
+  }
+  return jsonResponse({success:true,users:matches});
+}
 export async function readUser(request:Request,uid:string) {
   const identity=await userIdentity(request);
   const user=await getUser(uid);
@@ -91,7 +110,7 @@ export async function readUser(request:Request,uid:string) {
   return user ? success('User fetched successfully',user) : jsonResponse({success:false,message:'User not registered'});
 }
 export async function searchUser(request:Request) {
-  await userIdentity(request);
+  const caller=await requireUser(request);
   const phone = new URL(request.url).searchParams.get('phone') || '';
   if (!phone) return fail('Phone number is required',400);
   const user=await findUser('phoneNumber',normalizePhone(phone));
@@ -100,6 +119,7 @@ export async function searchUser(request:Request) {
     if(account.disabled)return fail('User account is inactive',404);
     user.email=account.email||'';
   }
+  if(user&&caller.role!=='admin'&&caller.uid!==user.uid)return jsonResponse({success:true,message:'User found successfully',user:Object.fromEntries(['uid','name','email','phoneNumber','photoURL','role'].map(key=>[key,user[key]||'']))});
   return user ? success('User found successfully',user) : fail('User is not found. Please ask to sign up with our platform to continue.',404);
 }
 

@@ -1,0 +1,14 @@
+/* Scoped property workspace foundation. Preserves the established form and action handlers. */
+.workspace { font-family: var(--font-manrope), Manrope, sans-serif; color: var(--pb-ink, #242b28); background: var(--pb-chalk, #f8f6f0); min-height: 75vh; }
+.content { max-width: 1160px; }
+.pageHeading { padding: 18px 0 23px; border-bottom: 1px solid #d8d5cd; }
+.pageHeading h1 { font-size: clamp(1.8rem, 3vw, 2.65rem); letter-spacing: -.055em; font-weight: 600; }
+.pageHeading p { color: #626860; }
+.pageHeading > div > div:first-child > div:first-child { border: 1px solid #d8d5cd; background: transparent; border-radius: 4px; color: #a25c42; }
+.filters { border: 0; border-bottom: 1px solid #d8d5cd; background: transparent; box-shadow: none; border-radius: 0; }
+.propertyRow { border: 0; border-bottom: 1px solid #d8d5cd; background: transparent; box-shadow: none; border-radius: 0; }
+.propertyRow:hover { background: #efebe3; }
+.propertyRow h3 { letter-spacing: -.025em; }
+.propertyRow img { object-fit: cover; }
+.workspace :focus-visible { outline: 2px solid #a25c42; outline-offset: 3px; }
+@media(max-width: 640px) { .pageHeading { padding-top: 4px; } .propertyRow { border-bottom: 1px solid #d8d5cd; } }

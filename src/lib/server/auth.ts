@@ -40,6 +40,9 @@ export async function verifyFirebaseIdentity(request: Request): Promise<DecodedI
 
 export async function requireUser(request: Request): Promise<AuthenticatedUser> {
   const token = await verifyFirebaseIdentity(request);
+  return userFromToken(token);
+}
+export async function userFromToken(token:DecodedIdToken):Promise<AuthenticatedUser> {
   const profile = await getDatabase().collection(COLLECTIONS.users).doc(token.uid).get();
   const data = profile.data();
   if (!data || data.isActive === false) throw new AccessError(403, 'Active user profile required');

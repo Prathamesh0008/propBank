@@ -1,9 +1,11 @@
 "use client";
+import styles from "./AdminPropertyDetailsDialog.module.css";
 
 import {Link} from '@/lib/navigation';
 import { apiFetch } from '@/lib/api-client';
 
 import React from "react";
+import ListingModeration from '@/features/properties/ListingModeration';
 import OwnerVerification from './OwnerVerification';
 import {
     Dialog,
@@ -62,12 +64,14 @@ interface AdminPropertyDetailsDialogProps {
     property: Property | null;
     isOpen: boolean;
     onOpenChange: (open: boolean) => void;
+    onVerificationChange?:()=>void|Promise<void>;
 }
 
 const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
     property,
     isOpen,
     onOpenChange,
+    onVerificationChange,
 }) => {
     const [inspectionReports, setInspectionReports] = useState<any[]>([]);
     const [loadingReports, setLoadingReports] = useState(false);
@@ -149,8 +153,8 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-[100vw] w-screen h-[100dvh] max-h-[100dvh] sm:max-w-[100vw] sm:rounded-none border-0 p-0 flex flex-col gap-0 overflow-hidden bg-slate-50">
-                <DialogHeader className="p-6 pb-6 border-b shrink-0 bg-white shadow-sm z-10 relative">
+            <DialogContent className={`${styles.detailsDialog} max-w-[100vw] w-screen h-[100dvh] max-h-[100dvh] sm:max-w-[100vw] sm:rounded-none border-0 p-0 flex flex-col gap-0 overflow-hidden`}>
+                <DialogHeader className={`${styles.dialogHeading} p-6 pb-6 border-b shrink-0 z-10 relative`}>
                     {property.createdAs==='tenant'&&<section className="max-w-6xl mx-auto mb-4 p-3 border rounded bg-amber-50"><p className="font-semibold">Tenant-submitted property · Owner verification {property.ownershipVerification}</p><p>Submitted by: {property.submittedByUID}</p><dl className="grid sm:grid-cols-2 gap-2 text-sm">{Object.entries(property.reportedOwner||{}).map(([key,value])=><div key={key} className="break-words"><dt className="font-medium">{({companyName:'Owner company',personName:'Owner person',phone:'Owner contact',alternatePhone:'Alternate contact',email:'Owner email',workingProfile:'Working profile'} as Record<string,string>)[key]||key}</dt><dd>{value||'Not supplied'}</dd></div>)}</dl></section>}
                     <div className="max-w-6xl mx-auto w-full flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pr-6">
                         <div>
@@ -190,7 +194,8 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                 </DialogHeader>
 
                 <ScrollArea className="flex-1 p-6 md:p-10 overflow-y-auto">
-                    {property.createdAs==='tenant'&&property.ownershipVerification==='pending'&&<OwnerVerification key={property.id} propertyId={property.id}/>}
+                    <ListingModeration key={`${property.id}:${property.moderationRevision||0}`} property={property} admin/>
+                    {property.createdAs==='tenant'&&<OwnerVerification key={property.id} propertyId={property.id} status={property.ownershipVerification} version={property.ownershipVerificationVersion} reason={property.ownershipVerificationReason} history={property.ownershipVerificationHistory} onDecision={onVerificationChange}/>}
                     <div className="max-w-6xl mx-auto w-full flex flex-col gap-8 pb-16">
 
                         {/* Basic Info */}

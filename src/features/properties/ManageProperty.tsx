@@ -1,5 +1,9 @@
 "use client";
 
+import workspaceStyles from './ManageProperty.module.css';
+import {OwnerVerificationStatus} from '@/features/admin/OwnerVerification';
+import {BrokerEnquiries} from '@/features/enquiries/EnquiryInbox';
+import ListingModeration from './ListingModeration';
 import {ProductDashboard} from './PropertyHub';
 import { propertyCategoryMatches } from '@/lib/client-workflows';
 import { apiFetch } from '@/lib/api-client';
@@ -89,7 +93,12 @@ interface BuyerInfo {
 }
 
 interface Property {
+  moderationStatus?: string;
+  moderationRevision?: number;
+  moderationReason?: string;
   createdAs?:string;
+  ownershipVerification?:string;
+  ownershipVerificationReason?:string;
   id: string;
   title: string;
   description: string;
@@ -595,16 +604,16 @@ const ManageProperty = () => {
 
 
   return (
-    <main className="container mx-auto py-4 sm:py-8 px-4">
+    <main className={`${workspaceStyles.workspace} container mx-auto py-4 sm:py-8 px-4`}>
       <>
-        <title>Manage Property — ShoPROP</title>
+        <title>Manage Property — PropBank</title>
         <meta name="description" content="Manage your property listings, update property details, unit numbers, and building information." />
         <link rel="canonical" href="/manage-property" />
       </>
 
-      <div className="max-w-6xl mx-auto">
+      <div className={`${workspaceStyles.content} max-w-6xl mx-auto`}>
         {/* Header */}
-        <div className="mb-6 sm:mb-8">
+        <div className={`${workspaceStyles.pageHeading} mb-6 sm:mb-8`}>
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
             <div className="flex items-center gap-3 sm:gap-4">
               <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-xl bg-primary/10 text-primary flex-shrink-0">
@@ -647,8 +656,9 @@ const ManageProperty = () => {
         </div>
 
         <ProductDashboard/>
+        <BrokerEnquiries/>
         {/* Filters Card */}
-        <Card className="mb-8 border shadow-sm">
+        <Card className={`${workspaceStyles.filters} mb-8 border shadow-sm`}>
           <CardContent className="p-4 sm:p-6">
             <div className="flex flex-col lg:flex-row gap-6 lg:items-center justify-between">
               
@@ -792,7 +802,7 @@ const ManageProperty = () => {
 
                         {sortedOwnedProperties.length > 0 ? (
                           sortedOwnedProperties.map((property, index) => (
-                            <Card key={property.id} className="hover:shadow-lg transition-shadow overflow-hidden">
+                            <Card key={property.id} className={`${workspaceStyles.propertyRow} transition-shadow overflow-hidden`}>
                               <div className="flex flex-col sm:flex-row">
                                 {/* Property Image Thumbnail - Always show with fallback */}
                                 <div className="w-full sm:w-40 h-32 sm:h-auto flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 relative overflow-hidden flex items-center justify-center">
@@ -821,7 +831,7 @@ const ManageProperty = () => {
                                               {property.title}
                                               {property.unitNumber ? ` (${property.unitNumber})` : ""}
                                               {property.buildingName && <span className="block text-sm font-normal">{property.buildingName}</span>}
-                                              <span className="block text-xs font-normal">Property ID: {property.id}{property.createdAs==="tenant" ? " - Owner verification pending" : ""}{property.agreementStatus ? ` · ${property.agreementStatus.replaceAll("_"," ")}` : ""}{property.agreementRequest?.status==="pending" ? ` · Pending ${property.agreementRequest.kind}` : ""}</span>
+                                              <span className="block text-xs font-normal">Property ID: {property.id}{property.createdAs==="tenant" ? ` - Owner verification ${property.ownershipVerification||"pending"}` : ""}{property.agreementStatus ? ` · ${property.agreementStatus.replaceAll("_"," ")}` : ""}{property.agreementRequest?.status==="pending" ? ` · Pending ${property.agreementRequest.kind}` : ""}</span>
                                               {property.address ? `, ${property.address}` : ""}
                                             </h3>
                                             <Badge
@@ -831,6 +841,7 @@ const ManageProperty = () => {
                                               Owner
                                             </Badge>
                                           </div>
+                                          <ListingModeration key={`${property.id}:${property.moderationRevision||0}`} property={property}/>
                                           {/* Show active tenants on a separate line if property is rented out */}
                                           {property.tenants && property.tenants.some((t: any) => t.isActive && (t.firstName || t.lastName || t.phone || t.email)) && (
                                             <p className="text-sm text-purple-600 font-medium mt-1">
@@ -1085,7 +1096,7 @@ const ManageProperty = () => {
 
                         {sortedTenantProperties.length > 0 ? (
                           sortedTenantProperties.map((property, index) => (
-                            <Card key={property.id} className="hover:shadow-lg transition-shadow overflow-hidden">
+                            <Card key={property.id} className={`${workspaceStyles.propertyRow} transition-shadow overflow-hidden`}>
                               <div className="flex flex-col sm:flex-row">
                                 {/* Property Image Thumbnail - Always show with fallback */}
                                 <div className="w-full sm:w-40 h-32 sm:h-auto flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 relative overflow-hidden flex items-center justify-center">
@@ -1124,6 +1135,7 @@ const ManageProperty = () => {
                                               Tenant
                                             </Badge>
                                           </div>
+                                          {property.createdAs==='tenant'&&<OwnerVerificationStatus status={property.ownershipVerification} reason={property.ownershipVerificationReason}/>}
                                           {/* Show owner info */}
                                           {property.ownerName && (
                                             <p className="text-sm text-gray-600 mt-1">

@@ -1,4 +1,5 @@
 "use client";
+import styles from "./AdminAgentsTab.module.css";
 
 import {useState} from 'react';
 import {useQueryClient} from '@tanstack/react-query';
@@ -30,11 +31,11 @@ export const AdminAgentsTab = ({
     catch(error){setFailure(error instanceof Error?error.message:'Could not update user role');}finally{setBusy('');}
   }
   return (
-    <div className="space-y-6">
+    <div className={`${styles.directory} space-y-6`}>
       {failure&&<p role="alert" className="text-destructive">{failure}</p>}
-      <Card><CardHeader><CardTitle>User roles</CardTitle><CardDescription>Owner and tenant access comes from property relationships. Agent access is assigned by an administrator.</CardDescription></CardHeader><CardContent className="space-y-3">{agents.filter(user=>user.role!=='admin').map(user=><div key={user.uid} className="flex flex-wrap items-center justify-between gap-3 border rounded p-3"><span className="min-w-0 break-words">{user.name} · {user.email}</span><Button variant="outline" disabled={busy===user.uid} onClick={()=>void changeRole(user.uid,user.role==='agent'?'individual':'agent')}>{user.role==='agent'?'Remove agent role':'Assign agent role'}: {user.name}</Button></div>)}</CardContent></Card>
+      <Card className={styles.intro}><CardHeader><CardTitle>User roles</CardTitle><CardDescription>Owner and tenant access comes from property relationships. Agent access is assigned by an administrator.</CardDescription></CardHeader><CardContent className="space-y-3">{agents.filter(user=>user.role!=='admin').map(user=><div key={user.uid} className={`${styles.personRow} flex flex-wrap items-center justify-between gap-3`}><span className="min-w-0 break-words">{user.name} · {user.email}</span><Button variant="outline" disabled={busy===user.uid} onClick={()=>void changeRole(user.uid,user.role==='agent'?'individual':'agent')}>{user.role==='agent'?'Remove agent role':'Assign agent role'}: {user.name}</Button></div>)}</CardContent></Card>
       {loading ? (
-        <Card>
+        <Card className={styles.section}>
           <CardContent className="pt-6">
             <div className="space-y-4">
               {[1, 2, 3].map((i) => (
@@ -46,7 +47,7 @@ export const AdminAgentsTab = ({
       ) : (
         <>
           {/* Individuals Section */}
-          <Card>
+          <Card className={styles.section}>
             <CardHeader className="pb-3">
               <div className="flex items-center gap-3">
                 <CardTitle className="text-base">Individuals</CardTitle>
@@ -65,7 +66,7 @@ export const AdminAgentsTab = ({
               ) : (
                 <div className="space-y-3">
                   {agents.filter(a => a.role === "individual" || !a.role).map((agent) => (
-                    <div key={agent.uid} className="flex items-center justify-between p-3 rounded-lg border bg-gray-50/50 hover:bg-gray-50 transition-colors">
+                    <div key={agent.uid} className={`${styles.personRow} flex items-center justify-between gap-3`}>
                       <div>
                         <h3 className="font-medium text-sm">{agent.name}</h3>
                         <div className="flex items-center gap-4 mt-1">
@@ -91,7 +92,7 @@ export const AdminAgentsTab = ({
           </Card>
 
           {/* Agents Section */}
-          <Card>
+          <Card className={styles.section}>
             <CardHeader className="pb-3">
               <div className="flex items-center gap-3">
                 <CardTitle className="text-base">Agents</CardTitle>

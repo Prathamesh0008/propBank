@@ -3,13 +3,15 @@ const {isolated,users,properties,defaults,request,route,context}=require('./fixt
 const setup=()=>isolated({users:{...users,broker:{...defaults,uid:'broker',role:'agent',email:'broker@test.invalid',name:'Broker'}},properties:{P:{...properties.P,rentalStatus:'available',monthlyRent:'70000',tenants:[]}}});
 async function offer(app){const response=await route(app,'negotiations').POST(request('/negotiations','other','POST',{propertyId:'P',amount:60000}));assert.equal(response.status,201);return (await response.json()).negotiation;}
 async function action(app,n,uid,action,extra={}){const response=await route(app,'negotiations/[id]').PATCH(request(`/negotiations/${n.id}`,uid,'PATCH',{action,version:n.version,...extra}),context(n.id));return {response,body:await response.json()};}
-test('broker/admin cannot force final rent; only owner acceptance confirms the original customer offer',async()=>{
+test('original offer requires owner approval and explicit customer acceptance before completion',async()=>{
  const app=setup();let n=await offer(app);
  assert.equal((await action(app,n,'admin','accept')).response.status,403);
  assert.equal((await action(app,n,'admin','complete')).response.status,409);
  n=(await action(app,n,'admin','propose',{amount:60000})).body.negotiation;assert.equal(n.finalAgreedAmount,null);
- n=(await action(app,n,'owner','accept')).body.negotiation;assert.equal(n.finalAgreedAmount,60000);assert.equal(n.status,'accepted');assert.equal(n.originalAskingPrice,70000);
- n=(await action(app,n,'admin','complete')).body.negotiation;assert.equal(n.status,'completed');assert.equal(n.history.length,4);assert.equal(app.state.properties.P.monthlyRent,'70000');
+ n=(await action(app,n,'owner','accept')).body.negotiation;assert.equal(n.finalAgreedAmount,null);assert.equal(n.status,'owner_approved');assert.equal(n.originalAskingPrice,70000);
+ assert.equal((await action(app,n,'admin','complete')).response.status,409);
+ n=(await action(app,n,'other','customer_accept')).body.negotiation;assert.equal(n.finalAgreedAmount,60000);assert.equal(n.status,'accepted');
+ n=(await action(app,n,'admin','complete')).body.negotiation;assert.equal(n.status,'completed');assert.equal(n.history.length,5);assert.equal(app.state.properties.P.monthlyRent,'70000');
 });
 test('owner counter requires customer acceptance and preserves all proposed amounts',async()=>{
  const app=setup();let n=await offer(app);
@@ -30,7 +32,7 @@ test('assigned agent, privacy, version conflict, rejection and spoofed payload c
 });
 test('concurrent acceptance and broker changes cannot overwrite an owner decision',async()=>{
  const app=setup();const n=await offer(app);
- const results=await Promise.all([action(app,n,'owner','accept'),action(app,n,'admin','propose',{amount:50000})]);assert.deepEqual(results.map(r=>r.response.status).sort(),[200,409]);assert.equal(app.state.negotiations[n.id].finalAgreedAmount,60000);
+ const results=await Promise.all([action(app,n,'owner','accept'),action(app,n,'admin','propose',{amount:50000})]);assert.deepEqual(results.map(r=>r.response.status).sort(),[200,409]);assert.equal(app.state.negotiations[n.id].finalAgreedAmount,null);assert.equal(app.state.negotiations[n.id].status,'owner_approved');
 });
 const now=new Date('2030-01-01T10:00:00Z');
 function reminders(seed={}){const app=isolated({users,visits:{V:{...defaults,id:'V',userId:'owner',title:'Home',description:'<script>',visitDate:new Date('2030-01-01T10:10:00Z'),reminderTime:15,reminderType:'email',status:'scheduled',isCompleted:false,...seed}}});app.env.FROM_EMAIL='staging@test.invalid';app.env.CRON_SECRET='x'.repeat(40);return app;}

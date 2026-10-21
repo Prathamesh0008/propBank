@@ -1,0 +1,42 @@
+[
+  {
+    "path": "src/features/landing-page/HeroSection.tsx",
+    "sha256": "d54321d00184a5d9cc74f79626513382db91d3c84f400cf114fed6f1610a159c"
+  },
+  {
+    "path": "src/features/landing-page/LeftHeroSection.tsx",
+    "sha256": "f51be4e82690dca3279ef4b30cbc46f55e6596c7c038dad6e39e47153ed15cfe"
+  },
+  {
+    "path": "src/features/landing-page/RightHeroSection.tsx",
+    "sha256": "a977276107b09ab7de77166908754c66ac5dbd1b57f0bf033cba7fde5abfe555"
+  },
+  {
+    "path": "src/common components/GradientSpotlight.tsx",
+    "sha256": "61e62977627c890e6fe5ee7560d6ca7c594097a2993325ae9f975ee9c60b3943"
+  },
+  {
+    "path": "src/features/landing-page/LandingPage.tsx",
+    "sha256": "eca4b97297625dc0482e6bd4eabcbae6ad2d98103c9e75261aac0bc99971270e"
+  },
+  {
+    "path": "src/features/landing-page/useLandingProperties.ts",
+    "sha256": "1df11e5d39a508eea3f80680c187a7252763299afd03aaef7ffbf80bf080a343"
+  },
+  {
+    "path": "src/index.css",
+    "sha256": "770ba31808f74dc66e8f58f9e60506e454961139ac3cd2f31123fb4816a3073a"
+  },
+  {
+    "path": "tailwind.config.ts",
+    "sha256": "38905406e5d6b04c768791c92a80b50fb0cc6bfea88884579a1209417c072bfb"
+  },
+  {
+    "path": "public/icons/icon-512.png",
+    "sha256": "14cceb63a77268356f5ede772dd741ce9e49c79bd1872017cdb9acf2839ce90f"
+  },
+  {
+    "path": "public/assets/hero-realestate.jpg",
+    "sha256": "eccaa17e26c28e36f9a2b6251d7b599bc295158f0c8b6282aef23e4391ec66ae"
+  }
+]

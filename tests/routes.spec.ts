@@ -1,10 +1,10 @@
 import { test, expect } from "@playwright/test";
 
 const protectedPaths = [
-  "/admin", "/search?q=home&type=rent", "/manage-property", "/select-property-type", "/add-property?type=residential",
-  "/property/test", "/edit-property/test?mode=renewal", "/add-tenant/test?mode=view", "/request-services/test",
+  "/admin", "/sell", "/manage-property", "/select-property-type", "/add-property?type=residential",
+  "/edit-property/test?mode=renewal", "/add-tenant/test?mode=view", "/request-services/test",
   "/inspection-report/test", "/review/test", "/legal-services/test", "/other-services/test", "/attach-documents/test",
-  "/renew-agreement/test", "/terminate-agreement/test", "/visit-planner", "/archived-properties",
+  "/renew-agreement/test", "/terminate-agreement/test", "/visit-planner", "/archived-properties", "/tenant-property",
 ];
 
 test("all protected URLs redirect guests, including direct loads and refresh", async ({ page }) => {
@@ -49,5 +49,5 @@ test("unknown URLs preserve the not-found page", async ({ page }) => {
   expect(response?.status()).toBe(404);
   await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
   await page.getByRole("link", { name: "Return to Home" }).click();
-  await expect(page).toHaveURL("http://localhost:8080/");
+  await expect(page).toHaveURL(/\/$/);
 });

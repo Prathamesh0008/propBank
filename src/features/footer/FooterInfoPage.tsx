@@ -1,44 +1,40 @@
+import Link from "next/link";
+import styles from "./FooterInfoPage.module.css";
+
 type FooterInfoPageProps = {
   eyebrow: string;
   title: string;
   description: string;
-  sections: {
-    title: string;
-    body: string;
-  }[];
+  sections: { title: string; body: string }[];
 };
 
-const FooterInfoPage = ({ eyebrow, title, description, sections }: FooterInfoPageProps) => {
+export default function FooterInfoPage({ eyebrow, title, description, sections }: FooterInfoPageProps) {
   return (
-    <main className="bg-background">
-      <section className="border-b bg-gradient-to-b from-slate-50 to-white">
-        <div className="container mx-auto max-w-5xl px-4 py-12 sm:py-16">
-          <p className="text-sm font-semibold uppercase tracking-wider text-primary">
-            {eyebrow}
-          </p>
-          <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
-            {title}
-          </h1>
-          <p className="mt-4 max-w-3xl text-base leading-7 text-muted-foreground sm:text-lg">
-            {description}
-          </p>
+    <main className={styles.page}>
+      <header className={styles.intro}>
+        <div className={styles.container}>
+          <p className={styles.eyebrow}>{eyebrow}</p>
+          <h1>{title}</h1>
+          <p className={styles.description}>{description}</p>
         </div>
-      </section>
-
-      <section className="container mx-auto max-w-5xl px-4 py-10 sm:py-14">
-        <div className="grid gap-5 md:grid-cols-2">
-          {sections.map((section) => (
-            <article key={section.title} className="rounded-lg border bg-card p-6 shadow-sm">
-              <h2 className="text-xl font-semibold">{section.title}</h2>
-              <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                {section.body}
-              </p>
+      </header>
+      <section className={styles.sections} aria-label={`${title} information`}>
+        <div className={styles.container}>
+          {sections.map((section, index) => (
+            <article className={styles.entry} key={`${section.title}-${index}`}>
+              <span className={styles.index}>{String(index + 1).padStart(2, "0")}</span>
+              <h2>{section.title}</h2>
+              <p>{section.body}</p>
             </article>
           ))}
         </div>
       </section>
+      <nav className={styles.next} aria-label="Helpful links">
+        <div className={styles.container}>
+          <div><p className={styles.eyebrow}>Continue exploring</p><h2>Find the right next step.</h2></div>
+          <div className={styles.links}><Link href="/properties">Explore properties <span aria-hidden="true">↗</span></Link><Link href="/contact">Contact PropBank <span aria-hidden="true">↗</span></Link></div>
+        </div>
+      </nav>
     </main>
   );
-};
-
-export default FooterInfoPage;
+}

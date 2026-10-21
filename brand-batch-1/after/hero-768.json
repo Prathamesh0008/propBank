@@ -1,0 +1,10 @@
+{
+  "x": 0,
+  "y": 81,
+  "width": 768,
+  "height": 1110,
+  "font": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+  "headingFont": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+  "headingSize": "24px",
+  "headingColor": "rgb(2, 8, 23)"
+}
