@@ -15,6 +15,7 @@ export const COLLECTIONS = {
   reviews: 'reviews',
   inspectionReports: 'inspection_reports',
   adminNotifications: 'admin_notifications',
+  emailDeliveries: 'email_deliveries',
   siteSettings: 'siteSettings',
 } as const;
 

@@ -84,6 +84,25 @@ export async function listUsers(request:Request) {
   }
   return jsonResponse({success:true,message:'Users fetched successfully',...(users.length?{data:users}:{})});
 }
+export async function searchUsersForAdmin(request:Request) {
+  const caller=await requireUser(request);
+  if(caller.role!=='admin')throw new AccessError(403,'Administrator access required');
+  const query=(new URL(request.url).searchParams.get('q')||'').trim().toLowerCase();
+  if(query.length<2)return fail('Enter at least 2 characters',400);
+  if(query.length>100)return fail('Search is too long',400);
+  const docs=await userCollection().get();
+  const matches:RecordData[]=[];
+  for(const doc of docs.docs) {
+    const raw=doc.data();
+    const fields=[stringValue(raw.name),stringValue(raw.email),stringValue(raw.phoneNumber)].map(value=>value.toLowerCase());
+    if(!fields.some(value=>value.includes(query)))continue;
+    let authActive=false;
+    try { authActive=!(await getFirebaseAdminAuth().getUser(doc.id)).disabled; } catch { authActive=false; }
+    matches.push({uid:doc.id,name:raw.name,email:raw.email,phoneNumber:raw.phoneNumber,role:raw.role,isActive:raw.isActive!==false&&authActive});
+    if(matches.length===20)break;
+  }
+  return jsonResponse({success:true,users:matches});
+}
 export async function readUser(request:Request,uid:string) {
   const identity=await userIdentity(request);
   const user=await getUser(uid);
