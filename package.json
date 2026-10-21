@@ -12,7 +12,11 @@
     "test:server": "node --test tests/server-foundation.test.cjs tests/native-group1.test.cjs tests/native-group2.test.cjs tests/migration-remainder.test.cjs",
     "audit:api": "node scripts/audit-active-api.cjs",
     "test:group2-routing": "node scripts/test-group2-routing.cjs",
-    "test:native-routing": "node scripts/test-native-routing.cjs"
+    "test:native-routing": "node scripts/test-native-routing.cjs",
+    "test": "npm run test:functional",
+    "test:functional": "node --test tests/*.test.cjs",
+    "test:storage": "node --test tests/storage-security.test.cjs",
+    "audit:storage": "node scripts/storage-migration-inventory.cjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1147.0",

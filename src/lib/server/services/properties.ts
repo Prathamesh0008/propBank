@@ -1,16 +1,21 @@
 import 'server-only';
 import { randomInt, randomUUID } from 'node:crypto';
 import type { Query, DocumentSnapshot } from 'firebase-admin/firestore';
+import {publicListing} from '../../listing-policy';
 import { AccessError, requireUser } from '../auth';
 import { COLLECTIONS, SITE_SETTINGS_DOCUMENT, getDatabase } from '../firestore';
 import { requireOwnerOrAdmin, requireSelfOrAdmin, isPropertyTenant } from '../permissions';
-import { jsonResponse, plainError } from '../http';
+import { ApiError, jsonResponse, plainError } from '../http';
 import { projections } from './go-contracts';
 import { model, storeModel, propertyResponse, publicPropertyResponse, isRecord, stringValue as s, type RecordData } from './contracts';
 import { schemas } from './go-contracts';
 import { resolveTenantIdentity, getUser } from './users';
 import { uploadPropertyImages } from './property-images';
-import { bestEffort, propertyCreatedEffects, propertyUpdatedEffects } from './property-effects';
+import {prepareMediaBindings,restoreFileReferences} from './media';
+import {readObject} from './domain-contracts';
+import { bestEffort, propertyCreatedEffects, propertyUpdatedEffects, escapeHtml } from './property-effects';
+import { getFirebaseAdminAuth } from '../firebase-admin';
+import { queueUserEvent } from './transactional-email';
 
 const properties = () => getDatabase().collection(COLLECTIONS.properties);
 function fromDocument(doc:DocumentSnapshot,defaults=true):RecordData {
@@ -35,8 +40,7 @@ export async function getProperty(id:string):Promise<RecordData|null> {
 }
 const listResponse=(rows:RecordData[],extra:RecordData={})=>jsonResponse({success:true,properties:rows.length?rows:null,count:rows.length,...extra});
 function available(property:RecordData,raw:RecordData) {
-  if(property.createdAs==='tenant')return false;
-  return property.listingType!=='manage' && property.status!=='inactive' && property.isActive===true && !(property.listingType==='rent' && property.rentalStatus==='rented') && raw.isSold!==true && raw.isRented!==true;
+  return publicListing({...property,isSold:raw.isSold,isRented:raw.isRented});
 }
 async function tenantProperties(uid:string,email='') {
   const rows=await queryProperties(properties());
@@ -78,7 +82,7 @@ export async function listProperties(request:Request) {
   let query:Query=properties().where('isActive','==',true);
   if (listingType) query=query.where('listingType','==',listingType);
   const rows=await queryProperties(query);
-  const filtered=rows.filter(row=>row.property.listingType!=='manage'&&(params.get('all')==='true'||available(row.property,row.raw))).map(row=>publicPropertyResponse(row.property));
+  const filtered=rows.filter(row=>available(row.property,row.raw)).map(row=>publicPropertyResponse(row.property));
   return listResponse(filtered,{...(await siteSettings() || {}),...(listingType?{listingType}:{})});
 }
 export async function searchProperties(request:Request) {
@@ -92,8 +96,7 @@ export async function searchProperties(request:Request) {
   const rows=await queryProperties(query,false);
   const search=term.trim().toLowerCase();
   const filtered=rows.filter(({property,raw})=>{
-    if(property.listingType==='manage')return false;
-    if (params.get('all')!=='true' && !available(property,raw)) return false;
+    if (!available(property,raw)) return false;
     if (!term) return true;
     const fields=['location','address','city','state','title','propertyType','configuration','unitNumber','floor'];
     return fields.some(key=>!!s(property[key])&&s(property[key]).toLowerCase().includes(search)) || ['bhk','rk'].some(tag=>search.includes(tag)&&s(property.configuration).toLowerCase().includes(tag));
@@ -147,9 +150,11 @@ export async function createProperty(request:Request) {
   const user=await requireUser(request);
   let req:RecordData;
   try {
-    const body:unknown=await request.json();
+    const body:unknown=await readObject(request,20<<20);
     if (body!==null&&!isRecord(body)) throw new Error('invalid request object');
-    const raw=(body||{}) as RecordData;validateProperty(raw);
+    const raw=(body||{}) as RecordData;
+    if(Object.keys(raw).some(key=>key.startsWith('moderation')))throw new Error('Moderation fields are server controlled');
+    validateProperty(raw);
     if(raw.createdAs!==undefined&&!['owner','tenant'].includes(s(raw.createdAs)))throw new Error('Invalid property relationship');
     req={...model('CreatePropertyRequest',raw,true),...Object.fromEntries(additiveFields.filter(key=>key in raw).map(key=>[key,raw[key]]))};
     if(raw.createdAs==='tenant') {
@@ -172,13 +177,18 @@ export async function createProperty(request:Request) {
   if(!tenantCreated)requireSelfOrAdmin(user,s(req.ownerUID));
   const owner=await getUser(tenantCreated?user.uid:s(req.ownerUID));
   if (!owner) return plainError('Owner not found',400);
+  if(!tenantCreated&&owner.isActive===false)return plainError('Active owner profile required',400);
+  if(!tenantCreated&&user.role==='admin'&&user.uid!==s(req.ownerUID)) {
+    try { if((await getFirebaseAdminAuth().getUser(s(req.ownerUID))).disabled)return plainError('Active owner account required',400); }
+    catch(error) { if((error as {code?:string}).code==='auth/user-not-found')return plainError('Owner account not found',400);throw error; }
+  }
   const id=await generateID();
   const property=model('Property',{});
   for(const key of additiveFields)if(key in req)property[key]=req[key];
   for(const [to,from] of projections.request) property[to]=req[from];
   property.rentSchedule=req.rentSchedule;
-  property.internalImages=req.internalImages;
-  Object.assign(property,{id,title:req.propertyTitle,address:req.location,tenantName:`${s(req.tenantFirstName)} ${s(req.tenantLastName)}`,images:await uploadPropertyImages((req.images as string[]|null)||[],id),ownerUID:req.ownerUID,ownerName:owner.name,ownerEmail:owner.email,ownerPhone:owner.phoneNumber,ownerRole:owner.role,status:'active',isActive:true});
+  property.internalImages=await uploadPropertyImages((req.internalImages as string[]|null)||[],id,user,true);
+  Object.assign(property,{id,title:req.propertyTitle,address:req.location,tenantName:`${s(req.tenantFirstName)} ${s(req.tenantLastName)}`,images:await uploadPropertyImages((req.images as string[]|null)||[],id,user,tenantCreated),ownerUID:req.ownerUID,ownerName:owner.name,ownerEmail:owner.email,ownerPhone:owner.phoneNumber,ownerRole:owner.role,status:'active',isActive:true});
   if(tenantCreated) {
     Object.assign(property,{createdAs:'tenant',submittedByUID:user.uid,ownershipVerification:'pending',reportedOwner:req.reportedOwner,ownerUID:'',ownerName:'',ownerEmail:'',ownerPhone:'',ownerRole:'',listingType:'rent',rentalStatus:'rented',isSold:false});
     req.rentalStatus='rented';req.isSold=false;req.tenantEmail=user.token.email||'';
@@ -195,9 +205,13 @@ export async function createProperty(request:Request) {
   }
   if(req.isSold) property.buyers=[model('BuyerInfo',{id:`buyer_${BigInt(now.getTime())*1000000n}`,firstName:req.buyerFirstName,lastName:req.buyerLastName,phone:req.buyerPhone,isActive:true,createdAt:now,updatedAt:now})];
   property.createdAt=now;property.updatedAt=now;
+  if(!tenantCreated&&user.role==='admin'&&user.uid!==s(req.ownerUID))Object.assign(property,{createdByUID:user.uid,adminCreatedForUID:req.ownerUID,relationshipHistory:[{action:'owner_property_created',actorUID:user.uid,userUID:req.ownerUID,relationship:'owner',propertyId:id,at:now}]});
+  if(!tenantCreated&&['rent','sell'].includes(s(property.listingType)))Object.assign(property,{moderationStatus:'pending_review',moderationRevision:1,moderationSubmittedAt:now,moderationHistory:[{action:'submitted',actorUID:user.uid,at:now,revision:1}]});
   // Atomic create avoids overwriting a property on a race or infrastructure failure.
   const data={...storeModel('Property',property),...Object.fromEntries(additiveFields.filter(key=>key in property).map(key=>[key,property[key]]))};
   if(tenantCreated)for(const key of ['createdAs','submittedByUID','ownershipVerification','reportedOwner'])data[key]=property[key];
+  for(const key of ['createdByUID','adminCreatedForUID','relationshipHistory'])if(key in property)data[key]=property[key];
+  for(const key of moderationFields)if(key in property)data[key]=property[key];
   await writeProperty(id,data,user,true);property.tenants=data.tenants;
   await propertyCreatedEffects(property);
   return jsonResponse({success:true,message:'Property created successfully',property:propertyResponse(property,'create',tenantCreated?'tenant':'owner')});
@@ -205,10 +219,13 @@ export async function createProperty(request:Request) {
 export async function updateProperty(request:Request,id:string) {
   const user=await requireUser(request);
   let req:RecordData;
-  try { const body:unknown=await request.json(); if(body!==null&&!isRecord(body)) throw new Error(); req=(body||{}) as RecordData; } catch { return plainError('Invalid JSON',400); }
+  try { const body:unknown=await readObject(request,20<<20); if(body!==null&&!isRecord(body)) throw new Error(); req=(body||{}) as RecordData; } catch { return plainError('Invalid JSON',400); }
   const existing=await getProperty(id);
   if(!existing) return plainError('Property not found',404);
   requireOwnerOrAdmin(user,{ownerUID:s(existing.ownerUID)});
+  if('moderationAction' in req)return moderateListing(req,id,user);
+  if(Object.keys(req).some(key=>key.startsWith('moderation')))return plainError('Moderation fields are server controlled',400);
+  restoreFileReferences('properties',id,req,existing);
   if(typeof req.ownerUID==='string' && req.ownerUID!==existing.ownerUID) return plainError('Unauthorized: You can only update your own properties',403);
   // A malformed owner field must not remove ownership while other flexible keys remain supported.
   if ('ownerUID' in req && typeof req.ownerUID!=='string') return plainError('Unauthorized: You can only update your own properties',403);
@@ -216,10 +233,11 @@ export async function updateProperty(request:Request,id:string) {
   const allowed=new Set([...schemas.Property.map(field=>field.name),...additiveFields,'isRented']);
   for(const key of Object.keys(req))if(!allowed.has(key))return plainError(`Unsupported property field: ${key}`,400);
   let images=existing.images;
-  if(Array.isArray(req.images)&&req.images.length) {
+  if(Array.isArray(req.images)) {
     const strings=req.images.filter((v):v is string=>typeof v==='string');
-    if(strings.length) images=await uploadPropertyImages(strings,id);
+    images=strings.length?await uploadPropertyImages(strings,id,user,existing.createdAs==='tenant',(existing.images as string[])||[]):[];
   }
+  if(Array.isArray(req.internalImages))req.internalImages=await uploadPropertyImages(req.internalImages as string[],id,user,true,(existing.internalImages as string[])||[]);
   const updates:RecordData={};
   for(const [key,value] of Object.entries(req)) {
     if(['id','createdAt','ownerUID','ownerName','ownerEmail','ownerPhone','ownerRole','agreementHistory','agreementRequest'].includes(key)) continue;
@@ -257,7 +275,9 @@ async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnTyp
     const before=await tx.get(ref);
     if(create&&before.exists)throw new Error('Property ID conflict');
     if(!create) {if(!before.exists)throw new Error('Property not found');requireOwnerOrAdmin(user,{ownerUID:s(before.data()?.ownerUID)});}
+    if(!create)applyListingEdit(before.data()||{},updates,user.uid);
     const records=Array.isArray(updates.tenants)?await tx.get(db.collection(COLLECTIONS.tenants).where('propertyId','==',id)):null;
+    const bindMedia=await prepareMediaBindings(tx,user,'properties',id,id,{...(before.data()||{}),...updates},before.data()||{});
     if(!create&&['agreementStartDate','agreementEndDate','monthlyRent','tenants'].some(key=>key in updates)) {
       const history=Array.isArray(before.data()?.agreementHistory)?before.data()!.agreementHistory:[];
       if(history.length>=500)throw new Error('Agreement history limit reached');
@@ -270,6 +290,45 @@ async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnTyp
       for(const tenant of updates.tenants as RecordData[])tx.set(db.collection(COLLECTIONS.tenants).doc(s(tenant.id)),storeModel('Tenant',model('Tenant',{...tenant,propertyId:id,ownerUID:updates.ownerUID||before.data()?.ownerUID})),{merge:true});
       if(!create)updates.rentalStatus=(updates.tenants as RecordData[]).some(t=>t.isActive===true)?'rented':'available';
     }
+    bindMedia();
     if(create)tx.create(ref,updates);else tx.update(ref,updates);
   });
+}
+
+const moderationFields=['moderationStatus','moderationRevision','moderationSubmittedAt','moderationReviewedAt','moderationReviewerUID','moderationReason','moderationHistory'];
+// Operational tenancy and archive changes retain approval. Changes to published
+// listing content require another review, including edits to legacy listings.
+const listingContentFields=['title','description','address','location','city','state','zipCode','propertyType','propertyCategory','listingType','configuration','unitNumber','floor','carpetArea','constructedArea','plotArea','areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit','squareFeet','buildingName','structure','bedrooms','bathrooms','monthlyRent','sellingPrice','price','images','amenities','projectCondition','isPreLeased','preLeasedType','rentalIncome','purpose','specificRequirement'];
+function applyListingEdit(before:RecordData,updates:RecordData,uid:string) {
+  if(before.createdAs==='tenant'||!['rent','sell'].includes(s(updates.listingType??before.listingType)))return;
+  const changed=listingContentFields.some(key=>key in updates&&JSON.stringify(updates[key])!==JSON.stringify(before[key]));
+  if(!changed)return;
+  const revision=Number(before.moderationRevision||0)+1,at=new Date();
+  const history=Array.isArray(before.moderationHistory)?before.moderationHistory:[];
+  if(history.length>=500)throw new ApiError(409,'Listing decision history limit reached');
+  Object.assign(updates,{moderationStatus:'pending_review',moderationRevision:revision,moderationSubmittedAt:at,moderationReason:'',moderationHistory:[...history,{action:'resubmitted',actorUID:uid,at,revision}]});
+}
+async function moderateListing(req:RecordData,id:string,user:Awaited<ReturnType<typeof requireUser>>) {
+  if(Object.keys(req).some(key=>!['moderationAction','reason','expectedRevision'].includes(key)))throw new ApiError(400,'Submit moderation separately from property edits');
+  const action=s(req.moderationAction),reason=s(req.reason).trim();
+  if(!['approve','reject','request_changes','resubmit'].includes(action)||('reason' in req&&typeof req.reason!=='string')||reason.length>2000)throw new ApiError(400,'Invalid moderation decision');
+  if(['reject','request_changes'].includes(action)&&!reason)throw new ApiError(400,'A reason is required');
+  if(action!=='resubmit'&&user.role!=='admin')throw new AccessError(403,'Administrator access required');
+  const ref=properties().doc(id);
+  await getDatabase().runTransaction(async tx=>{
+    const doc=await tx.get(ref),before=doc.data();
+    if(!before)throw new ApiError(404,'Property not found');
+    requireOwnerOrAdmin(user,{ownerUID:s(before.ownerUID)});
+    if(before.createdAs==='tenant'||!['rent','sell'].includes(s(before.listingType)))throw new ApiError(400,'This record does not use listing moderation');
+    if(!Number.isInteger(req.expectedRevision)||req.expectedRevision!==Number(before.moderationRevision||0))throw new ApiError(409,'Listing changed; refresh before deciding');
+    if(action==='resubmit'?!['rejected','changes_requested'].includes(s(before.moderationStatus)):before.moderationStatus!=='pending_review')throw new ApiError(409,'Invalid listing moderation transition');
+    const history=Array.isArray(before.moderationHistory)?before.moderationHistory:[];
+    if(history.length>=500)throw new ApiError(409,'Listing decision history limit reached');
+    const at=new Date(),revision=Number(before.moderationRevision||0)+1;
+    const status=action==='approve'?'approved':action==='reject'?'rejected':action==='request_changes'?'changes_requested':'pending_review';
+    tx.update(ref,{moderationStatus:status,moderationRevision:revision,moderationReason:reason,updatedAt:at,...(action==='resubmit'?{moderationSubmittedAt:at}:{moderationReviewedAt:at,moderationReviewerUID:user.uid}),moderationHistory:[...history,{action,actorUID:user.uid,reason,at,revision}]});
+  });
+  const property=await getProperty(id);
+  if(property&&action!=='resubmit')queueUserEvent({eventType:`listing.${action}`,eventId:`property:${id}:moderation:${s(property.moderationRevision)}`,recipients:[{uid:s(property.ownerUID),role:'owner'}],propertyId:id,recordId:id,templateId:'listing-moderation-decision',subject:`Listing ${status.replaceAll('_',' ')}`,title:`Listing ${status.replaceAll('_',' ')}`,bodyHtml:`<p><strong>${escapeHtml(s(property.title))}</strong> was ${escapeHtml(status.replaceAll('_',' '))}.</p>${reason?`<p>Reason: ${escapeHtml(reason)}</p>`:''}`,bodyText:`${s(property.title)} was ${status.replaceAll('_',' ')}.${reason?` Reason: ${reason}`:''}`,action:{label:'Review listing',path:`/manage-property/${encodeURIComponent(id)}`}});
+  return jsonResponse({success:true,message:'Listing moderation updated',property:propertyResponse(property!,'normal',user.role==='admin'?'admin':'owner')});
 }

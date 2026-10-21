@@ -52,6 +52,7 @@ export const AdminPropertiesTab = ({
                       <div className="flex items-center gap-2 mt-2">
                         <Badge variant="outline">{property.propertyType}</Badge>
                         <Badge variant="outline">{property.listingType}</Badge>
+                        {property.createdAs!=='tenant'&&['rent','sell'].includes(property.listingType)&&<Badge variant="outline">{(property.moderationStatus||'legacy_published').replaceAll('_',' ')}</Badge>}
                         <Badge variant={property.status === "active" ? "default" : "secondary"}>
                           {property.status}
                         </Badge>

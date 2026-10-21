@@ -12,29 +12,29 @@ test('login returns the verified Firebase token even with a legacy JWT secret',a
  delete app.env.JWT_SECRET;const native=await r.POST(request('/auth/login','owner','POST',{uid:'owner'}));assert.equal(native.status,200);assert.equal((await native.json()).token,'owner');
  assert.equal(app.writes.length,0);
 });
-test('services and service requests retain collections, omission, R2 URLs and admin/self access',async()=>{
+test('services and service requests retain collections, omission, managed files and admin/self access',async()=>{
  const app=isolated({users,properties,services:{S:{...defaults,id:'S',name:'Legal',isActive:true},off:{...defaults,id:'off',isActive:false}}});
  const service=await (await route(app,'services').GET(request('/services',null))).json();assert.equal(service.data.length,12);assert.ok(service.data.some(value=>value.id==='S'));assert.ok(service.data.some(value=>value.id==='plumbing'));
  const r=route(app,'service-requests');
  assert.equal((await r.POST(request('/service-requests','other','POST',{userUID:'owner',serviceId:'S'}))).status,403);
  assert.equal((await r.POST(request('/service-requests','owner','POST',{userUID:'owner',serviceId:'missing'}))).status,404);
  const result=await r.POST(request('/service-requests','owner','POST',{userUID:'owner',serviceId:'S',propertyId:'P',message:'Keep this text',image:'data:image/png;base64,AQID'}));assert.equal(result.status,201);
- const {serviceRequest:value}=await result.json();assert.equal(value.status,'pending');assert.equal(value.userName,'Owner');assert.equal(value.serviceName,'Legal');assert.match(value.image,/uploads\/owner\/service-requests\/image_[a-f0-9-]+\.png$/);assert.equal(app.state.service_requests[value.id].message,'Keep this text');
+ const {serviceRequest:value}=await result.json();assert.equal(value.status,'pending');assert.equal(value.userName,'Owner');assert.equal(value.serviceName,'Legal');assert.match(value.image,/^\/api\/media\/[a-f0-9-]{36}$/);assert.equal(app.state.service_requests[value.id].message,'Keep this text');
  const notification=Object.values(app.state.admin_notifications)[0];assert.equal(notification.serviceImage,value.image);assert.equal(notification.ownerId,'owner');assert.equal(notification.tenantName,'Tenant Name');
  assert.equal((await r.GET(request('/service-requests?admin=true','other'))).status,403);
  assert.equal((await r.GET(request('/service-requests?userUID=owner','other'))).status,403);
  assert.equal((await r.GET(request('/service-requests?userUID=owner','owner'))).status,200);
  const update=route(app,'service-requests/[id]');assert.equal((await update.PUT(request('/service-requests/'+value.id,'owner','PUT',{status:'completed'}),context(value.id))).status,403);
  assert.equal((await update.PUT(request('/service-requests/'+value.id,'admin','PUT',{status:'completed',adminNotes:'Done'}),context(value.id))).status,200);assert.equal(app.state.service_requests[value.id].adminNotes,'Done');
- app.r2Outage();assert.equal((await r.POST(request('/service-requests','owner','POST',{userUID:'owner',serviceId:'S',image:'data:image/png;base64,AQID'}))).status,201);
+ app.r2Outage();assert.equal((await r.POST(request('/service-requests','owner','POST',{userUID:'owner',serviceId:'S',image:'data:image/png;base64,AQID'}))).status,502);assert.equal(Object.keys(app.state.service_requests).length,1);
  
 });
-test('inspection reports preserve attachment URLs, typed Go schema, notifications and ordered queries',async()=>{
+test('inspection reports preserve managed attachments, typed schema, notifications and ordered queries',async()=>{
  const app=isolated({users,properties}),r=route(app,'inspection-reports');
  assert.equal((await r.POST(request('/inspection-reports',null,'POST',{}))).status,401);
  assert.equal((await r.POST(request('/inspection-reports','tenant','POST',{propertyId:'P',reportType:'bad'}))).status,400);
- const result=await r.POST(request('/inspection-reports','tenant','POST',{propertyId:'P',reportType:'on_possession',report:'Original report',apartmentConditionImages:['https://existing-r2.test/documents/P/photo.png'],keysDetails:'Two keys',unknown:'ignored'}));assert.equal(result.status,201);
- const {report}=await result.json();assert.equal(report.userId,'tenant');assert.equal(report.propertyTitle,'Existing Home');assert.equal(report.keysDetails,'Two keys');assert.equal(report.unknown,undefined);assert.equal(report.apartmentConditionImages[0],'https://existing-r2.test/documents/P/photo.png');assert.ok(app.state.inspection_reports[report.id].createdAt instanceof Date);
+ const result=await r.POST(request('/inspection-reports','tenant','POST',{propertyId:'P',reportType:'on_possession',report:'Original report',apartmentConditionImages:['data:image/png;base64,AQID'],keysDetails:'Two keys',unknown:'ignored'}));assert.equal(result.status,201);
+ const {report}=await result.json();assert.equal(report.userId,'tenant');assert.equal(report.propertyTitle,'Existing Home');assert.equal(report.keysDetails,'Two keys');assert.equal(report.unknown,undefined);assert.match(report.apartmentConditionImages[0],/^\/api\/media\/[a-f0-9-]{36}$/);assert.ok(app.state.inspection_reports[report.id].createdAt instanceof Date);
  const byProperty=await (await route(app,'inspection-reports/property/[propertyId]').GET(request('/inspection-reports/property/P','admin'),context('P','propertyId'))).json();assert.equal(byProperty.reports[0].id,report.id);
  const byUser=route(app,'inspection-reports/user/[userId]');assert.equal((await byUser.GET(request('/inspection-reports/user/tenant','admin'),context('tenant','userId'))).status,200);assert.equal((await byUser.GET(request('/inspection-reports/user/tenant','other'),context('tenant','userId'))).status,403);
  const notification=Object.values(app.state.admin_notifications)[0];assert.equal(notification.type,'inspection_report');assert.match(notification.message,/On Possession/);assert.equal(notification.tenantName,'Tenant Name');

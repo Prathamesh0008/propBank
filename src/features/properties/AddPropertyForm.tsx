@@ -176,6 +176,7 @@ const AddPropertyForm = () => {
   const [searchParams] = useSearchParams();
   const selectedPropertyType = searchParams.get('type') || '';
   const selectedRole = searchParams.get('role') || 'owner';
+  const adminOwnerUID = searchParams.get('adminOwnerUID') || '';
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [uploadedInternalImages, setUploadedInternalImages] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -356,7 +357,7 @@ const AddPropertyForm = () => {
     }
 
     setIsInternalUploading(true);
-    const newImages: string[] = [];
+    const newImages: string[] = [];let pendingUploads=0,failedReads=0;
 
     // Process files sequentially
     for (let i = 0; i < files.length; i++) {
@@ -375,11 +376,11 @@ const AddPropertyForm = () => {
             const uploadedUrl = await uploadBase64Image(base64Image, 'properties', 'internal');
             newImages.push(uploadedUrl);
           } catch (e) {
-            // Fallback
+            pendingUploads++;
             newImages.push(base64Image);
           }
         } catch (error) {
-          console.error("Error reading file", error);
+          failedReads++;
         }
       }
     }
@@ -390,6 +391,7 @@ const AddPropertyForm = () => {
       return update;
     });
     setIsInternalUploading(false);
+    if(pendingUploads||failedReads)toast({title:'Some images are not uploaded',description:`${pendingUploads} retained locally for retry on save; ${failedReads} could not be read. Property saving will fail if any selected image cannot be uploaded.`,variant:'destructive'});
 
     // Reset input
     if (internalFileInputRef.current) {
@@ -694,7 +696,7 @@ const AddPropertyForm = () => {
         images: buildingImages, // Ensure images from the latest form state are included
         internalImages: interiorImages,
         furnishedChecklist: checkedFurnishedItems, // Only include checked items
-        ownerUID: currentUser.uid,
+        ownerUID: adminOwnerUID || currentUser.uid,
       };
 
 
@@ -718,9 +720,9 @@ const AddPropertyForm = () => {
 
         toast({
           title: `${data.propertyTitle} added successfully!`,
-          description: `Your ${listingTypeText} has been saved and is now listed.`,
+          description: result.property?.moderationStatus==='pending_review'?'Your listing was submitted for admin review and is not public yet.':`Your ${listingTypeText} has been saved.`,
         });
-        navigate("/manage-property");
+        navigate(adminOwnerUID?"/admin":"/manage-property");
       } else {
         toast({
           title: "Error",
@@ -786,9 +788,10 @@ const AddPropertyForm = () => {
       </>
 
       <div className="max-w-6xl mx-auto">
+        {adminOwnerUID&&<div className="mb-4 border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900" role="status">Administrator-assisted creation: this property will belong to the selected registered user and any public listing will remain pending until moderation.</div>}
         {/* Header */}
         <div className="mb-8">
-          <Button variant="ghost" onClick={() => navigate(`/select-property-type?role=${selectedRole}`)} className="mb-4">
+          <Button variant="ghost" onClick={() => navigate(`/select-property-type?as=${selectedRole}${adminOwnerUID?`&adminOwnerUID=${encodeURIComponent(adminOwnerUID)}`:''}`)} className="mb-4">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Property Type Selection
           </Button>

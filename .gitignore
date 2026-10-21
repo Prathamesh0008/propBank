@@ -29,3 +29,7 @@ firebase-service-account.json
 *.service-account.json
 
 *.tsbuildinfo
+
+# Local sensitive migration manifests and browser artifacts
+phase-1-security/private-inventory.local.json
+.storage-security-browser-results/

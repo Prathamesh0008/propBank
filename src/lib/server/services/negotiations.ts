@@ -1,3 +1,4 @@
+import {publicListing,listingApproved} from '../../listing-policy';
 import 'server-only';
 
 import type { DocumentData, UpdateData } from 'firebase-admin/firestore';
@@ -8,13 +9,11 @@ import { AccessError, type AuthenticatedUser } from '../auth';
 import { requireAdmin } from '../permissions';
 import { identity, readObject } from './domain-contracts';
 import { getProperty } from './properties';
-import { getUser } from './users';
 import { parsePrice, stringValue } from './contracts';
 import {
-  escapeHtml,
-  queueEmail,
   bestEffort,
 } from './property-effects';
+import { queueUserEvent } from './transactional-email';
 import { createNotification } from './notifications';
 import type {
   Negotiation,
@@ -64,25 +63,8 @@ async function notify(n: Negotiation) {
     })
   );
 
-  for (
-    const uid of new Set(
-      [n.ownerUID, n.customerUID, n.brokerUID].filter(Boolean)
-    )
-  ) {
-    const user = await bestEffort(() => getUser(uid));
-
-    if (user?.email) {
-      queueEmail({
-        to: stringValue(user.email),
-        subject: `Negotiation update: ${n.propertyTitle}`,
-        html: `<p>${escapeHtml(
-          n.propertyTitle
-        )}: ${escapeHtml(
-          n.status.replaceAll('_', ' ')
-        )}</p><p>Open the property in Propbank to review the offer and its history.</p>`,
-      });
-    }
-  }
+  const recipientUIDs=[...new Set([n.ownerUID,n.customerUID,n.brokerUID].filter(Boolean))];
+  queueUserEvent({eventType:'negotiation.decision_updated',eventId:`${n.id}:${n.version}:${n.status}`,recipientUIDs,propertyId:n.propertyId,recordId:n.id,templateId:'negotiation-update',subject:`Negotiation update: ${n.propertyTitle}`,title:'Negotiation updated',bodyHtml:`<p>${n.propertyTitle}: ${n.status.replaceAll('_',' ')}</p><p>Sign in to review the offer and its history.</p>`,bodyText:`${n.propertyTitle}: ${n.status.replaceAll('_',' ')}. Sign in to review the offer and its history.`});
 }
 
 export async function createNegotiation(
@@ -109,7 +91,7 @@ export async function createNegotiation(
   const property = await getProperty(propertyId);
 
   if (
-    !property ||
+    !property || !publicListing(property) ||
     !['rent', 'sell'].includes(
       stringValue(property.listingType)
     ) ||
@@ -322,6 +304,7 @@ export async function updateNegotiation(
         }
 
         if (
+          !listingApproved(property.data()||{}) ||
           property.data()?.isActive !== true ||
           property.data()?.status ===
             'inactive' ||
@@ -521,16 +504,10 @@ export async function updateNegotiation(
             n.ownerApprovedAmount =
               nextAmount;
 
-            n.status =
-              nextAmount ===
-              before.customerOffer
-                ? 'accepted'
-                : 'owner_approved';
-
-            if (n.status === 'accepted') {
-              n.finalAgreedAmount =
-                nextAmount;
-            }
+            // Approval always returns to the customer for explicit confirmation,
+            // including when the approved amount matches their original offer.
+            n.status = 'owner_approved';
+            n.finalAgreedAmount = null;
 
             break;
 

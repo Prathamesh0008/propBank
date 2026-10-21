@@ -6,7 +6,8 @@ import { getDatabase, COLLECTIONS } from '../firestore';
 import { getProperty } from './properties';
 import { identity, propertyMember, readObject, knownFields } from './domain-contracts';
 import { stringValue as s } from './contracts';
-import { uploadFile, uploadBase64, deleteR2File, extractR2Key } from './r2-storage';
+import {stageFile,stageBase64,prepareFile,cleanupMedia} from './media';
+import {mediaId} from '../file-projection';
 
 const imageTypes=['image/jpeg','image/png','image/gif','image/webp'];
 const documentTypes=['application/pdf','image/jpeg','image/png','image/gif','image/webp','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','text/plain'];
@@ -38,7 +39,11 @@ async function uploadFolder(user:Awaited<ReturnType<typeof identity>>,folder:str
 export async function multipartUpload(request:Request,document=false) {
   const user=await identity(request);
   let form:FormData;
-  try {form=await request.formData();}catch{return response(false,'Failed to parse form: invalid multipart form');}
+  try {
+    const chunks:Uint8Array[]=[];let length=0;const reader=request.body?.getReader();
+    if(reader)for(;;){const next=await reader.read();if(next.done)break;length+=next.value.byteLength;if(length>21*1024*1024){await reader.cancel();throw new ApiError(413,'Multipart upload exceeds 21 MiB');}chunks.push(next.value);}
+    form=await new Request(request.url,{method:'POST',headers:request.headers,body:Buffer.concat(chunks)}).formData();
+  }catch(error){if(error instanceof ApiError)throw error;return response(false,'Failed to parse form: invalid multipart form');}
   const field=document?'document':'image';
   const file=form.get(field);
   if(!(file instanceof File))return response(false,`Failed to get ${field} file: http: no such file`);
@@ -52,13 +57,13 @@ export async function multipartUpload(request:Request,document=false) {
   if(document)await existingPropertyUpload(user,propertyId,true);
   safePath(docType);
   const target=document?`documents/${propertyId}/${docType}`:await uploadFolder(user,folder);
-  try {return response(true,document?'Document uploaded successfully':'Image uploaded successfully',await uploadFile(file,target));}
-  catch(error){return response(false,`Failed to upload ${field}: ${errorText(error)}`);}
+  try {return response(true,document?'Document uploaded successfully':'Image uploaded successfully',await stageFile(Buffer.from(await file.arrayBuffer()),file.type,file.name,user,document?propertyId:(target.match(/^(?:documents|properties)\/([^/]+)/)?.[1]||''),!document&&(folder==='properties'||folder.startsWith('properties/')||folder==='banners')));}
+  catch(error){if(error instanceof ApiError)throw error;return response(false,`Failed to upload ${field}: ${errorText(error)}`);}
 }
 async function uploadBody(request:Request,fields:string[]) {
   const req=knownFields(await readObject(request),fields);
   for(const key of fields.filter(f=>f!=='images'))if(req[key]!=null&&typeof req[key]!=='string')throw new Error(`json: invalid ${key}`);
-  if(req.images!=null&&(!Array.isArray(req.images)||req.images.some(image=>image!==null&&typeof image!=='string')))throw new Error('json: invalid images');
+  if(req.images!=null&&(!Array.isArray(req.images)||req.images.length>50||req.images.some(image=>image!==null&&typeof image!=='string')))throw new Error('json: invalid images');
   return req;
 }
 export async function base64Upload(request:Request,kind:'image'|'property-images'|'service-request-image') {
@@ -70,36 +75,30 @@ export async function base64Upload(request:Request,kind:'image'|'property-images
     const images=(req.images as Array<string|null>|null)||[];
     if(!images.length)return response(false,'At least one image is required');
     await existingPropertyUpload(user,s(req.propertyId));
-    const urls:string[]=[];
+    const urls:string[]=[],staged:string[]=[],failures:number[]=[];
     for(const [index,image] of images.entries()) {
-      if(!image)continue;
-      if(image.startsWith('http://')||image.startsWith('https://')){urls.push(image);continue;}
-      try {urls.push(await uploadBase64(image,`properties/${s(req.propertyId)}`,`image_${index+1}`));}catch{/* Go skips individual failures. */}
+      try {if(!image)throw new Error('Empty image');const url=await prepareFile(image,user,s(req.propertyId),`image_${index+1}`,undefined,true);urls.push(url);if(image.startsWith('data:'))staged.push(url);}catch{failures.push(index);}
     }
+    if(failures.length){for(const url of staged){const id=mediaId(url);if(id)try{await cleanupMedia(id,user,true);}catch{/* Durable cleanup intent is retained. */}}return jsonResponse({success:false,message:`${failures.length} of ${images.length} images failed. No images were attached; please retry.`,failedIndices:failures,urls:[]},502);}
     return response(true,`Successfully uploaded ${urls.length} images`,undefined,urls);
   }
   if(!req.image)return response(false,'Image data is required');
   const image=s(req.image);
   if(kind==='service-request-image') {
-    if(image.startsWith('http://')||image.startsWith('https://'))return response(true,'Image uploaded successfully',image);
+
     const folder=req.requestId?await uploadFolder(user,`service-requests/${s(req.requestId)}`):`uploads/${user.uid}/service-requests`;
-    try {return response(true,'Image uploaded successfully',await uploadBase64(image,folder,'image'));}catch(error){return response(false,`Failed to upload image: ${errorText(error)}`);}
+    try {return response(true,'Image uploaded successfully',await prepareFile(image,user,'','image'));}catch(error){if(error instanceof ApiError)throw error;return response(false,`Failed to upload image: ${errorText(error)}`);}
   }
   const folder=await uploadFolder(user,s(req.folder)||'uploads'),identifier=s(req.identifier)||'image';
-  try {return response(true,'Image uploaded successfully',await uploadBase64(image,folder,identifier));}catch(error){return response(false,`Failed to upload image: ${errorText(error)}`);}
+  try {return response(true,'Image uploaded successfully',await stageBase64(image,user,folder.match(/^(?:documents|properties)\/([^/]+)/)?.[1]||'',identifier,(s(req.folder)==='properties'||s(req.folder).startsWith('properties/')||s(req.folder)==='banners')&&identifier!=='internal'));}catch(error){if(error instanceof ApiError)throw error;return response(false,`Failed to upload image: ${errorText(error)}`);}
 }
 export async function deleteFile(request:Request) {
   const user=await identity(request);
   let req:Awaited<ReturnType<typeof uploadBody>>;
   try {req=await uploadBody(request,['url']);}catch(error){return response(false,`Invalid request body: ${errorText(error)}`);}
   if(!req.url)return response(false,'File URL is required');
-  let key:string;
-  try {key=extractR2Key(s(req.url));}catch(error){return response(false,`Failed to delete file: ${errorText(error)}`);}
-  const match=/^(?:properties|documents)\/([^/]+)\//.exec(key);
-  if(match) {
-    const property=await getProperty(match[1]);
-    if(property)requireOwnerOrAdmin(user,{ownerUID:s(property.ownerUID)});else requireAdmin(user);
-  }else if(key.startsWith(`uploads/${user.uid}/`)) { /* New uploads have a trusted uploader namespace. */ }
-  else requireAdmin(user); // Legacy generic objects have no trusted uploader metadata.
-  try {await deleteR2File(s(req.url));return response(true,'File deleted successfully');}catch(error){return response(false,`Failed to delete file: ${errorText(error)}`);}
+  const id=mediaId(req.url);
+  if(!id)throw new ApiError(409,'Legacy file removal requires the approved migration process');
+  await cleanupMedia(id,user,true);
+  return response(true,'File deleted successfully');
 }

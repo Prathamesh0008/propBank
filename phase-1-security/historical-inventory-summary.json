@@ -1,0 +1,40 @@
+{
+  "mode": "read-only",
+  "collections": {
+    "properties": {
+      "scanned": 15,
+      "complete": true
+    },
+    "documents": {
+      "scanned": 9,
+      "complete": true
+    },
+    "inspection_reports": {
+      "scanned": 1,
+      "complete": true
+    },
+    "service_requests": {
+      "scanned": 0,
+      "complete": true
+    },
+    "admin_notifications": {
+      "scanned": 45,
+      "complete": true
+    },
+    "siteSettings": {
+      "scanned": 1,
+      "complete": true
+    }
+  },
+  "historicalReferences": 35,
+  "privateReferences": 29,
+  "publicReferences": 6,
+  "managedReferences": 0,
+  "byProvider": {
+    "r2": 33,
+    "embedded": 2
+  },
+  "truncated": false,
+  "uniqueHistoricalUrls": 33,
+  "uniquePrivateUrls": 27
+}

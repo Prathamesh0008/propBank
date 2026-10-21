@@ -24,34 +24,51 @@ files.filter(f=>/^app\//.test(relative(f))&&!relative(f).startsWith('app/api/'))
 function literal(n) {return n&&(ts.isStringLiteral(n)||ts.isNoSubstitutionTemplateLiteral(n))?n.text:null;}
 const operations=[];
 for(const [file,source]of parsed) {
- if(relative(file).startsWith('app/api/')||relative(file).startsWith('lib/server/')||relative(file)==='lib/api-client.ts')continue;
- function expression(n) {
-  if(literal(n)!==null)return literal(n);
-  if(ts.isTemplateExpression(n))return n.head.text+n.templateSpans.map(span=>{
-   const value=span.expression.getText(source);
-   if(['API_BASE_URL','baseUrl'].includes(value))return '/api'+span.literal.text;
-   if(value==='endpoint')return ':agreementEndpoint'+span.literal.text;
-   if(value==='searchParams.toString()')return 'q=:q&listingType=:listingType&projectCondition=:condition'+span.literal.text;
-   return ':param'+span.literal.text;
-  }).join('');
+ if(relative(file).startsWith('app/api/')||relative(file).startsWith('lib/server/')||['lib/api-client.ts','lib/client-workflows.ts'].includes(relative(file)))continue;
+ function expressions(n) {
+  if(!n)throw new Error(`Missing API URL at ${relative(file)}`);
+  if(literal(n)!==null)return [literal(n)];
+  if(ts.isIdentifier(n)&&['API_BASE_URL','baseUrl'].includes(n.text))return ['/api'];
+  if(ts.isIdentifier(n)&&['uid','propertyId','id'].includes(n.text))return [':param'];
+  if(ts.isCallExpression(n)&&n.expression.getText(source)==='encodeURIComponent')return [':param'];
+  if(ts.isConditionalExpression(n))return [...expressions(n.whenTrue),...expressions(n.whenFalse)];
+  if(ts.isBinaryExpression(n)&&n.operatorToken.kind===ts.SyntaxKind.PlusToken)return expressions(n.left).flatMap(left=>expressions(n.right).map(right=>left+right));
+  if(ts.isTemplateExpression(n)) {
+   let values=[n.head.text];
+   for(const span of n.templateSpans) {
+    const value=span.expression.getText(source);
+    const choices=['API_BASE_URL','baseUrl'].includes(value)?['/api']:value==='endpoint'?[':agreementEndpoint']:value==='searchParams.toString()'?['q=:q&listingType=:listingType&projectCondition=:condition']:
+     ts.isConditionalExpression(span.expression)||ts.isTemplateExpression(span.expression)||literal(span.expression)!==null?expressions(span.expression):[':param'];
+    values=values.flatMap(prefix=>choices.map(choice=>prefix+choice+span.literal.text));
+   }
+   return values;
+  }
+  if(ts.isIdentifier(n)&&n.text==='endpoint'&&relative(file).endsWith('AgreementWorkflow.tsx'))return ['agreements/renew','agreements/terminate','agreements/request-renewal','agreements/request-termination'];
   if(ts.isIdentifier(n)&&n.text==='url') {
-   if(relative(file)==='services/visitService.ts')return '/api/visits?userId=:uid&status=:status';
-   if(relative(file).endsWith('TerminateAgreement.tsx'))return '/api/:agreementEndpoint';
+   if(relative(file)==='services/visitService.ts')return ['/api/visits?userId=:uid&status=:status'];
+   if(relative(file).endsWith('TerminateAgreement.tsx'))return ['/api/:agreementEndpoint'];
   }
   throw new Error(`Unresolved API URL at ${relative(file)}: ${n.getText(source)}`);
  }
  function visit(n) {
   if(ts.isCallExpression(n)) {
    const callee=n.expression.getText(source),axios=/^axios\.(get|post|put|patch|delete|head|options)$/.exec(callee);
-   if(['apiFetch','fetch'].includes(callee)||axios) {
-    let method=axios?axios[1].toUpperCase():'GET';
-    if(!axios&&n.arguments[1]&&ts.isObjectLiteralExpression(n.arguments[1]))for(const p of n.arguments[1].properties)if(ts.isPropertyAssignment(p)&&p.name.getText(source)==='method')method=literal(p.initializer)||'UNRESOLVED';
-    const url=expression(n.arguments[0]);
-    const urls=url.includes(':agreementEndpoint')?['/api/agreements/'+(relative(file).endsWith('RenewAgreement.tsx')?'renew':'terminate'),'/api/agreements/'+(relative(file).endsWith('RenewAgreement.tsx')?'request-renewal':'request-termination')]:[url];
-    for(let endpoint of urls) {
+   if(['apiFetch','fetch','workflowRequest'].includes(callee)||axios) {
+    let methodNode;
+    let methods=[axios?axios[1].toUpperCase():callee==='workflowRequest'?(n.arguments[2]?literal(n.arguments[2]):n.arguments[1]?'POST':'GET'):'GET'];
+    if(!axios&&callee!=='workflowRequest'&&n.arguments[1]&&ts.isObjectLiteralExpression(n.arguments[1]))for(const p of n.arguments[1].properties)if(ts.isPropertyAssignment(p)&&p.name.getText(source)==='method'){methodNode=p.initializer;methods=expressions(p.initializer);}
+    const urls=expressions(n.arguments[0]).flatMap(url=>url.includes(':agreementEndpoint')?['/api/agreements/'+(relative(file).endsWith('RenewAgreement.tsx')?'renew':'terminate'),'/api/agreements/'+(relative(file).endsWith('RenewAgreement.tsx')?'request-renewal':'request-termination')]:[callee==='workflowRequest'?'/api/'+url:url]);
+    const urlNode=n.arguments[0];
+    // Keep correlated URL/method branches together; a Cartesian product invents calls.
+    const correlated=ts.isConditionalExpression(urlNode)&&methodNode&&ts.isConditionalExpression(methodNode)&&urlNode.condition.getText(source)===methodNode.condition.getText(source);
+    const pairs=correlated?[[urlNode.whenTrue,methodNode.whenTrue],[urlNode.whenFalse,methodNode.whenFalse]].flatMap(([url,method])=>expressions(url).flatMap(endpoint=>expressions(method).map(method=>({endpoint,method})))):methods.flatMap(method=>urls.map(endpoint=>({endpoint,method})));
+    for(const pair of pairs) {const method=pair.method;let endpoint=pair.endpoint;
      if(!endpoint.startsWith('/api'))throw new Error(`Nonlocal request needs review: ${endpoint}`);
-     endpoint=endpoint.replace(/\/properties\/:param/g,'/properties/:id').replace(/\/users\/:param/g,'/users/:id').replace(/\/visits\/:param/g,'/visits/:id').replace(/\/documents\/property\/:param/g,'/documents/property/:propertyId').replace(/\/documents\/:param/g,'/documents/:id').replace(/\/inspection-reports\/property\/:param/g,'/inspection-reports/property/:propertyId').replace(/\/inspection-reports\/user\/:param/g,'/inspection-reports/user/:userId').replace(/\/service-requests\/:param/g,'/service-requests/:id').replace(/\/admin\/notifications\/:param/g,'/admin/notifications/:id');
-     endpoint=endpoint.replace(/(userId|ownerUID|userUID)=:param/g,'$1=:uid').replace(/phone=:param/g,'phone=:phone').replace(/userEmail=:param/g,'userEmail=:email').replace(/listingType=:param/g,'listingType=:listingType').replace(/propertyId=:param/g,'propertyId=:propertyId');
+     endpoint=endpoint.replace(/\/negotiations\/:param/g,'/negotiations/:id').replace(/\/properties\/:param/g,'/properties/:id').replace(/\/users\/:param/g,'/users/:id').replace(/\/visits\/:param/g,'/visits/:id').replace(/\/documents\/property\/:param/g,'/documents/property/:propertyId').replace(/\/documents\/:param/g,'/documents/:id').replace(/\/inspection-reports\/property\/:param/g,'/inspection-reports/property/:propertyId').replace(/\/inspection-reports\/user\/:param/g,'/inspection-reports/user/:userId').replace(/\/service-requests\/:param/g,'/service-requests/:id').replace(/\/admin\/notifications\/:param/g,'/admin/notifications/:id');
+     endpoint=endpoint.replace(/\/enquiries\/:param/g,'/enquiries/:id');
+     endpoint=endpoint.replace(/(status|dateFrom|dateTo)=:param/g,'$1=:filter');
+     endpoint=endpoint.replace(/(userId|ownerUID|userUID)=:param/g,'$1=:uid').replace(/phone=:param/g,'phone=:phone').replace(/userEmail=:param/g,'userEmail=:email').replace(/listingType=:param/g,'listingType=:listingType').replace(/propertyId=:param/g,'propertyId=:propertyId').replace(/q=:param/g,'q=:query');
+     endpoint=endpoint.replace(/tenantUID=:param/g,'tenantUID=:uid');
      if(endpoint.includes(':param'))throw new Error(`Unnormalized endpoint ${endpoint}`);
      operations.push({method,endpoint,caller:relative(file)+':'+(source.getLineAndCharacterOfPosition(n.getStart()).line+1),reachable:reachable.has(file)});
     }
@@ -107,7 +124,9 @@ fs.writeFileSync(path.join(out,'API_INVENTORY.md'),markdown);
 // The prior Go dispatch table documents unchanged registrations and handlers.
 // Compare method/path coverage, not its now-stale migration-status column.
 const legacy=[];
-for(const line of fs.readFileSync(path.join(root,'../BACKEND_STRANGLER_TABLE.md'),'utf8').split('\n')) {
+const legacyPath=path.join(root,'../BACKEND_STRANGLER_TABLE.md');
+const legacyAvailable=fs.existsSync(legacyPath);
+for(const line of (legacyAvailable?fs.readFileSync(legacyPath,'utf8'):'').split('\n')) {
  if(!/^\| (GET|POST|PUT|PATCH|DELETE)/.test(line))continue;
  const columns=line.split('|').map(v=>v.trim()),raw=columns[2].match(/`([^`]+)`/)?.[1];if(!raw)continue;
  const endpoint='/api'+raw.split('?')[0].replace(/\/$/,'');
@@ -117,8 +136,11 @@ for(const line of fs.readFileSync(path.join(root,'../BACKEND_STRANGLER_TABLE.md'
   legacy.push({method,endpoint,handler:columns[3],status:'UNUSED',implementation:implemented?'NATIVE':'REMOVED'});
  }
 }
+if(!legacyAvailable)fs.appendFileSync(path.join(out,'API_INVENTORY.md'),'\nLegacy comparison: BLOCKED ? original BACKEND_STRANGLER_TABLE.md is unavailable. Current-source coverage remains independently checked.\n');
 const uniqueLegacy=[...new Map(legacy.map(v=>[v.method+' '+v.endpoint,v])).values()];
 uniqueLegacy.push({method:'ANY',endpoint:'/api',handler:'Go root health',status:'UNUSED',implementation:'REMOVED'}, {method:'ANY',endpoint:'/api/admin/trigger-reminders',handler:'ReminderScheduler.ForceCheck',status:'UNUSED',implementation:'REMOVED'});
 fs.writeFileSync(path.join(out,'unused-legacy-go.json'),JSON.stringify(uniqueLegacy,null,2)+'\n');
 fs.appendFileSync(path.join(out,'API_INVENTORY.md'),'\n## Unused legacy Go operations\n\nCount includes the root health and reminder dispatches as one ANY operation each.\n\n| METHOD | ENDPOINT | GO HANDLER | IMPLEMENTATION | STATUS |\n| --- | --- | --- | --- | --- |\n'+uniqueLegacy.map(r=>`| ${r.method} | ${r.endpoint} | ${r.handler} | ${r.implementation} | UNUSED |`).join('\n')+'\n');
 console.log(JSON.stringify({callSites:output.callSites,sourceOperations:output.sourceOperations,activeOperations:output.activeOperations,uniqueActiveMethodPaths:output.uniqueActiveMethodPaths,status:rows.reduce((v,r)=>(v[r.status]=(v[r.status]||0)+1,v),{}),before:rows.reduce((v,r)=>(v[r.before]=(v[r.before]||0)+1,v),{})},null,2));
+
+if(rows.some(row=>row.reachable&&!row.nativeImplemented))process.exitCode=1;

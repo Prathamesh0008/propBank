@@ -1,0 +1,16 @@
+[
+  {
+    "method": "ANY",
+    "endpoint": "/api",
+    "handler": "Go root health",
+    "status": "UNUSED",
+    "implementation": "REMOVED"
+  },
+  {
+    "method": "ANY",
+    "endpoint": "/api/admin/trigger-reminders",
+    "handler": "ReminderScheduler.ForceCheck",
+    "status": "UNUSED",
+    "implementation": "REMOVED"
+  }
+]

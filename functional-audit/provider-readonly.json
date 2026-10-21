@@ -1,0 +1,17 @@
+{
+  "firebaseAdminAuth": {
+    "status": "PASS",
+    "scope": "Authenticated Admin Auth lookup of synthetic nonexistent UID returned user-not-found"
+  },
+  "r2ReadOnly": {
+    "status": "PASS",
+    "httpStatus": 404,
+    "scope": "Signed HEAD of random nonexistent object returned 404; upload/delete and public/private policy unverified"
+  },
+  "resendReadOnly": {
+    "status": "PASS",
+    "httpStatus": 200,
+    "verifiedDomainCount": 1,
+    "scope": "Read-only domain configuration; no email sent or delivery verified"
+  }
+}

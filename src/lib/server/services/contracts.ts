@@ -108,8 +108,10 @@ export function propertyResponse(property: RecordData, projection = 'normal', us
   if (userRole) result.userRole = userRole;
   const response=wireModel('PropertyResponse',result);
   if(userRole)for(const field of schemas.Property)if(field.name!=='price')response[field.name]=nestedModel(field.type,property[field.name],false);
-  if(userRole)for(const key of ['createdAs','submittedByUID','ownershipVerification','reportedOwner'])if(key in property)response[key]=wireValue(property[key]);
+  if(userRole)for(const key of ['createdAs','submittedByUID','ownershipVerification','reportedOwner','moderationStatus','moderationRevision','moderationSubmittedAt','moderationReviewedAt','moderationReviewerUID','moderationReason','moderationHistory'])if(key in property)response[key]=wireValue(property[key]);
   for(const key of ['propertyCategory','buildingName','plotArea','areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit','expectedRent','structure','agreementStatus','anticipatedTerminationDate','noticeStartDate','terminationDate','agreementHistory','agreementRequest','isRented'])if(key in property)response[key]=wireValue(property[key]);
+  if(userRole==='admin'||userRole==='tenant')for(const key of ['ownershipVerificationReason','ownershipVerificationVersion'])if(key in property)response[key]=wireValue(property[key]);
+  if(userRole==='admin')for(const key of ['ownershipVerificationReviewerUID','ownershipVerificationReviewedAt','ownershipVerificationHistory','ownershipVerificationAudit','createdByUID','adminCreatedForUID','relationshipHistory','tenancyRevision'])if(key in property)response[key]=wireValue(property[key]);
   if(Array.isArray(property.rentSchedule))response.rentSchedule=wireValue(property.rentSchedule);
   return response;
 }

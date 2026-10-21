@@ -2,9 +2,16 @@ import { apiFetch } from '@/lib/api-client';
 import { API_BASE_URL } from '../utils/config';
 
 interface Property {
+  moderationStatus?: string;
+  moderationRevision?: number;
+  moderationReason?: string;
+  moderationHistory?: Array<{action:string;actorUID:string;at:string;reason?:string}>;
   createdAs?:'owner'|'tenant';
   submittedByUID?:string;
   ownershipVerification?:string;
+  ownershipVerificationVersion?:number;
+  ownershipVerificationReason?:string;
+  ownershipVerificationHistory?:Array<{action:string;actorUID:string;at:string;reason:string}>;
   reportedOwner?:Record<string,string>;
   rentSchedule: any;
   id: string;

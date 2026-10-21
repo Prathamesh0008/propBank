@@ -14,7 +14,8 @@ const SelectPropertyType = () => {
   });
 
   const handlePropertyTypeSelect = (propertyType: string) => {
-    navigate(`/add-property?type=${propertyType}&as=${relationship}`);
+    const adminOwnerUID=params.get('adminOwnerUID');
+    navigate(`/add-property?type=${propertyType}&as=${relationship}${adminOwnerUID?`&adminOwnerUID=${encodeURIComponent(adminOwnerUID)}`:''}`);
   };
 
   return (

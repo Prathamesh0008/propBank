@@ -9,6 +9,8 @@ import axios from "axios";
 import { firebaseAuthorizationHeaders } from '@/lib/api-client';
 import { DesktopNav } from "./DesktopNav";
 import { MobileNav } from "./MobileNav";
+import BrandLogo from "@/features/brand/BrandLogo";
+import styles from "./SiteHeader.module.css";
 
 const SiteHeader = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -62,15 +64,9 @@ const SiteHeader = () => {
   };
 
   return (
-    <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
-      <div className="container mx-auto flex h-20 items-center justify-between px-4 sm:px-6 lg:px-8">
-      <Link to="/" className="inline-flex h-20 items-center">
-  <img
-    src="/images/pb1_logo.png"
-    alt="Propbank logo"
-    className="h-17 w-auto max-w-[240px] object-contain sm:h-21 sm:max-w-[220px]"
-  />
-</Link>
+    <header className={styles.header}>
+      <div className={styles.inner}>
+        <Link to="/" className={styles.home} aria-label="PropBank home"><BrandLogo/></Link>
 
         {/* Desktop & Tablet Navigation */}
         <DesktopNav

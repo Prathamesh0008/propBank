@@ -1,5 +1,8 @@
 "use client";
 
+import {OwnerVerificationStatus} from '@/features/admin/OwnerVerification';
+import {BrokerEnquiries} from '@/features/enquiries/EnquiryInbox';
+import ListingModeration from './ListingModeration';
 import {ProductDashboard} from './PropertyHub';
 import { propertyCategoryMatches } from '@/lib/client-workflows';
 import { apiFetch } from '@/lib/api-client';
@@ -89,7 +92,12 @@ interface BuyerInfo {
 }
 
 interface Property {
+  moderationStatus?: string;
+  moderationRevision?: number;
+  moderationReason?: string;
   createdAs?:string;
+  ownershipVerification?:string;
+  ownershipVerificationReason?:string;
   id: string;
   title: string;
   description: string;
@@ -647,6 +655,7 @@ const ManageProperty = () => {
         </div>
 
         <ProductDashboard/>
+        <BrokerEnquiries/>
         {/* Filters Card */}
         <Card className="mb-8 border shadow-sm">
           <CardContent className="p-4 sm:p-6">
@@ -821,7 +830,7 @@ const ManageProperty = () => {
                                               {property.title}
                                               {property.unitNumber ? ` (${property.unitNumber})` : ""}
                                               {property.buildingName && <span className="block text-sm font-normal">{property.buildingName}</span>}
-                                              <span className="block text-xs font-normal">Property ID: {property.id}{property.createdAs==="tenant" ? " - Owner verification pending" : ""}{property.agreementStatus ? ` · ${property.agreementStatus.replaceAll("_"," ")}` : ""}{property.agreementRequest?.status==="pending" ? ` · Pending ${property.agreementRequest.kind}` : ""}</span>
+                                              <span className="block text-xs font-normal">Property ID: {property.id}{property.createdAs==="tenant" ? ` - Owner verification ${property.ownershipVerification||"pending"}` : ""}{property.agreementStatus ? ` · ${property.agreementStatus.replaceAll("_"," ")}` : ""}{property.agreementRequest?.status==="pending" ? ` · Pending ${property.agreementRequest.kind}` : ""}</span>
                                               {property.address ? `, ${property.address}` : ""}
                                             </h3>
                                             <Badge
@@ -831,6 +840,7 @@ const ManageProperty = () => {
                                               Owner
                                             </Badge>
                                           </div>
+                                          <ListingModeration key={`${property.id}:${property.moderationRevision||0}`} property={property}/>
                                           {/* Show active tenants on a separate line if property is rented out */}
                                           {property.tenants && property.tenants.some((t: any) => t.isActive && (t.firstName || t.lastName || t.phone || t.email)) && (
                                             <p className="text-sm text-purple-600 font-medium mt-1">
@@ -1124,6 +1134,7 @@ const ManageProperty = () => {
                                               Tenant
                                             </Badge>
                                           </div>
+                                          {property.createdAs==='tenant'&&<OwnerVerificationStatus status={property.ownershipVerification} reason={property.ownershipVerificationReason}/>}
                                           {/* Show owner info */}
                                           {property.ownerName && (
                                             <p className="text-sm text-gray-600 mt-1">

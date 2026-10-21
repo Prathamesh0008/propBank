@@ -87,7 +87,7 @@ test('public lists, availability, owner+tenant merge, search filters, price and 
  }});
  const r=route(app,'properties');
  let data=await body(await r.GET(request('/properties')));assert.equal(data.count,1);assert.equal(data.properties[0].price,12500);assert.equal(data.properties[0].internalImages,null);
- data=await body(await r.GET(request('/properties?all=true')));assert.equal(data.count,4);
+ data=await body(await r.GET(request('/properties?all=true')));assert.equal(data.count,1); // Public all=true cannot bypass publication/availability.
  assert.equal((await r.GET(request('/properties?ownerUID=owner','tenant'))).status,403);
  data=await body(await r.GET(request('/properties?ownerUID=owner','owner')));assert.equal(data.count,5);assert.equal(data.properties.find(p=>p.id==='C').userRole,'tenant');
  const search=route(app,'properties/search');data=await body(await search.GET(request('/properties/search/?q=3bhk&listingType=rent')));assert.equal(data.count,1);assert.equal(data.query,'3bhk');assert.equal(data.properties[0].status,'');
@@ -134,24 +134,25 @@ test('property creation writes the original schema, preserves URLs, links tenant
  await app.flush();assert.equal(app.emails.length,2);assert.ok(app.emails.every(mail=>mail.from==='Propbank <connect@propbank.shop>'));
  assert.ok(!app.writes.some(w=>w.kind==='storage'));
 });
-test('property update validates ownership, retains Go boolean/image semantics and triggers transitions once',async()=>{
+test('property update validates ownership, clears explicit empty galleries and triggers transitions once',async()=>{
  const app=isolated({users,properties:{A:{...defaults,id:'A',title:'Home',location:'Fixture',ownerUID:'owner',ownerName:'Owner',ownerEmail:'owner@test.invalid',monthlyRent:'100',listingType:'rent',images:['https://old/image'],tenants:[{id:'T',userUID:'tenant',firstName:'First',email:'tenant@test.invalid',isActive:true,paymentDueDate:'5'}]}}});
  const r=route(app,'properties/[id]');
  assert.equal((await r.PATCH(request('/properties/A','tenant','PATCH',{monthlyRent:'200'}),context('A'))).status,403);
  assert.equal((await r.PATCH(request('/properties/A','owner','PATCH',{ownerUID:'tenant'}),context('A'))).status,403);
  const response=await r.PATCH(request('/properties/A','owner','PATCH',{id:'rewrite',isActive:false,isSold:false,status:'inactive',images:[],monthlyRent:'200',wantToSell:true,tenants:[{firstName:' '},{id:'T',userUID:'tenant',firstName:'First',email:'tenant@test.invalid',isActive:true,paymentDueDate:'10'}]}),context('A'));
- assert.equal(response.status,200);assert.equal(app.state.properties.A.id,'A');assert.equal(app.state.properties.A.isActive,false);assert.equal(app.state.properties.A.status,'inactive');assert.deepEqual(app.state.properties.A.images,['https://old/image']);assert.equal(app.state.properties.A.tenants.length,1);assert.ok(app.state.properties.A.tenants[0].createdAt instanceof Date);
+ assert.equal(response.status,200);assert.equal(app.state.properties.A.id,'A');assert.equal(app.state.properties.A.isActive,false);assert.equal(app.state.properties.A.status,'inactive');assert.equal(app.state.properties.A.images.length,0);assert.equal(app.state.properties.A.tenants.length,1);assert.ok(app.state.properties.A.tenants[0].createdAt instanceof Date);
  assert.equal(app.state.users.tenant.rentedPropertyId,'A');assert.equal(Object.values(app.state.admin_notifications)[0].type,'want_to_sell');
  await app.flush();assert.equal(app.emails.length,2);assert.match(app.emails[0].subject,/Rent Update/);assert.match(app.emails[1].subject,/Payment Due/);
  await r.PUT(request('/properties/A','owner','PUT',{wantToSell:true}),context('A'));assert.equal(Object.keys(app.state.admin_notifications).length,1);
  await r.PUT(request('/properties/A','admin','PUT',{wantToSell:false}),context('A'));assert.equal(Object.keys(app.state.admin_notifications).length,2);
- const empty=await r.PUT(request('/properties/A','owner','PUT',{tenants:[]}),context('A'));assert.equal(empty.status,200);assert.deepEqual(app.state.properties.A.tenants,[]);
+ const empty=await r.PUT(request('/properties/A','owner','PUT',{tenants:[]}),context('A'));assert.equal(empty.status,200);assert.equal(app.state.properties.A.tenants.length,0);
 });
-test('Go GCS image dependency retains original path/content type and skips malformed images',async()=>{
- const app=isolated();const images=app.load('@/lib/server/services/property-images');
- const urls=await images.uploadPropertyImages(['https://unchanged/path','bad','data:image/png;base64,AQID'],'ABCD1234');
- assert.equal(urls[0],'https://unchanged/path');assert.match(urls[1],/^https:\/\/storage.googleapis.com\/existing-bucket\/properties\/ABCD1234\/image_3_[a-f0-9-]+\.png$/);
- assert.equal(app.writes[0].options.metadata.contentType,'image/png');assert.equal(app.writes[0].options.metadata.cacheControl,'public, max-age=86400');assert.deepEqual([...app.writes[0].bytes],[1,2,3]);
+test('legacy property image callers use managed private R2 and fail rather than skip malformed images',async()=>{
+ const app=isolated({users});const images=app.load('@/lib/server/services/property-images'),user={uid:'owner',role:'individual'};
+ const urls=await images.uploadPropertyImages(['https://unchanged/path','data:image/png;base64,AQID'],'ABCD1234',user);
+ assert.equal(urls[0],'https://unchanged/path');assert.match(urls[1],/^\/api\/media\/[a-f0-9-]{36}$/);
+ assert.equal(app.objects[0].ContentType,'image/png');assert.equal(app.objects[0].Bucket,'propbank-private-test');assert.deepEqual([...app.objects[0].Body],[1,2,3]);assert.ok(!app.writes.some(w=>w.kind==='storage'));
+ await assert.rejects(images.uploadPropertyImages(['bad'],'ABCD1234',user),error=>error.status===502);
 });
 test('infrastructure errors never create/upsert records or fall back after a native request',async()=>{
  const app=isolated({users});app.outage();

@@ -19,7 +19,8 @@ export async function propertyHub(request:Request){
  const hubs:RecordData[]=[],actions:RecordData[]=[];const today=todayIST();
  for(const p of properties){
   const role=user.role==='admin'?'admin':p.ownerUID===user.uid?'owner':'tenant';
-  const [documents,inspections,requests,allVisits,allOffers]=await Promise.all([records(COLLECTIONS.documents,p.id),records(COLLECTIONS.inspectionReports,p.id),records(COLLECTIONS.serviceRequests,p.id),records(COLLECTIONS.visits,p.id),records(COLLECTIONS.negotiations,p.id)]);
+  const [documents,inspections,allRequests,allVisits,allOffers]=await Promise.all([records(COLLECTIONS.documents,p.id),records(COLLECTIONS.inspectionReports,p.id),records(COLLECTIONS.serviceRequests,p.id),records(COLLECTIONS.visits,p.id),records(COLLECTIONS.negotiations,p.id)]);
+  const requests=allRequests.filter(r=>role!=='tenant'||r.userUID===user.uid);
   const visits=allVisits.filter(v=>role!=='tenant'||v.userId===user.uid);
   const offers=allOffers.filter(n=>user.role==='admin'||[n.ownerUID,n.customerUID,n.brokerUID].includes(user.uid));
   const history:RecordData[]=[];

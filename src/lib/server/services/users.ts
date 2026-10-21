@@ -1,9 +1,10 @@
 import 'server-only';
-import { AccessError, verifyFirebaseIdentity } from '../auth';
+import { AccessError, requireUser, verifyFirebaseIdentity } from '../auth';
 import { COLLECTIONS, getDatabase } from '../firestore';
 import { getFirebaseAdminAuth } from '../firebase-admin';
-import { jsonResponse } from '../http';
+import { ApiError, jsonResponse } from '../http';
 import { model, storeModel, stringValue, wireModel, type RecordData, isRecord } from './contracts';
+import { queueUserEvent } from './transactional-email';
 
 export const normalizePhone = (phone: string) => phone.replace(/[^0-9+]/g,'');
 const duplicateMessage = 'This phone number is already registered with another account';
@@ -84,6 +85,25 @@ export async function listUsers(request:Request) {
   }
   return jsonResponse({success:true,message:'Users fetched successfully',...(users.length?{data:users}:{})});
 }
+export async function searchUsersForAdmin(request:Request) {
+  const caller=await requireUser(request);
+  if(caller.role!=='admin')throw new AccessError(403,'Administrator access required');
+  const query=(new URL(request.url).searchParams.get('q')||'').trim().toLowerCase();
+  if(query.length<2)return fail('Enter at least 2 characters',400);
+  if(query.length>100)return fail('Search is too long',400);
+  const docs=await userCollection().get();
+  const matches:RecordData[]=[];
+  for(const doc of docs.docs) {
+    const raw=doc.data();
+    const fields=[stringValue(raw.name),stringValue(raw.email),stringValue(raw.phoneNumber)].map(value=>value.toLowerCase());
+    if(!fields.some(value=>value.includes(query)))continue;
+    let authActive=false;
+    try { authActive=!(await getFirebaseAdminAuth().getUser(doc.id)).disabled; } catch { authActive=false; }
+    matches.push({uid:doc.id,name:raw.name,email:raw.email,phoneNumber:raw.phoneNumber,role:raw.role,isActive:raw.isActive!==false&&authActive});
+    if(matches.length===20)break;
+  }
+  return jsonResponse({success:true,users:matches});
+}
 export async function readUser(request:Request,uid:string) {
   const identity=await userIdentity(request);
   const user=await getUser(uid);
@@ -91,7 +111,7 @@ export async function readUser(request:Request,uid:string) {
   return user ? success('User fetched successfully',user) : jsonResponse({success:false,message:'User not registered'});
 }
 export async function searchUser(request:Request) {
-  await userIdentity(request);
+  const caller=await requireUser(request);
   const phone = new URL(request.url).searchParams.get('phone') || '';
   if (!phone) return fail('Phone number is required',400);
   const user=await findUser('phoneNumber',normalizePhone(phone));
@@ -100,6 +120,7 @@ export async function searchUser(request:Request) {
     if(account.disabled)return fail('User account is inactive',404);
     user.email=account.email||'';
   }
+  if(user&&caller.role!=='admin'&&caller.uid!==user.uid)return jsonResponse({success:true,message:'User found successfully',user:Object.fromEntries(['uid','name','email','phoneNumber','photoURL','role'].map(key=>[key,user[key]||'']))});
   return user ? success('User found successfully',user) : fail('User is not found. Please ask to sign up with our platform to continue.',404);
 }
 
@@ -126,6 +147,7 @@ export async function createUser(request:Request,authRegistration=false) {
     else if (existing.role && req.role==='individual') user.role=existing.role;
   }
   await saveUser(user);
+  if(authRegistration&&!existing)queueUserEvent({eventType:'user.registration_welcome',eventId:`user:${uid}:registered`,recipients:[{uid,role:'user'}],recordId:uid,templateId:'registration-welcome',subject:'Welcome to PropBank',title:'Welcome to PropBank',bodyHtml:`<p>Your PropBank account is ready.</p><p>You can now manage property, tenancy, visits and account activity from your secure account.</p>`,bodyText:'Your PropBank account is ready. You can now manage property, tenancy, visits and account activity from your secure account.',action:{label:'Open your account',path:'/manage-property'}});
   return success(authRegistration?(existing?'User updated successfully':'User created successfully'):'User created/updated successfully',user,authRegistration?200:201);
 }
 export async function updateUser(request:Request,uid:string) {
@@ -148,10 +170,17 @@ export async function updateUser(request:Request,uid:string) {
   if (req.phoneNumber) {
     const phone=normalizePhone(stringValue(req.phoneNumber));
     if (await checkPhone(uid,phone)) return fail(duplicateMessage,409);
+    if(existing.phoneNumber&&phone!==existing.phoneNumber) {
+      const authTime=Number(identity.token.auth_time||0),recent=authTime>0&&Date.now()/1000-authTime<=300;
+      if(!recent)throw new AccessError(403,'Recent authentication is required to change the mobile number');
+      const verified=normalizePhone(stringValue(identity.token.phone_number));
+      if(!verified||verified!==phone)throw new ApiError(503,'Mobile number change is blocked until ownership of the new number is verified');
+    }
     existing.phoneNumber=phone;
   }
   if (['admin','agent','individual'].includes(stringValue(req.role))) existing.role=req.role;
   existing.updatedAt=new Date();
   await saveUser(existing);
+  if(req.phoneNumber&&normalizePhone(stringValue(req.phoneNumber))!==normalizePhone(stringValue(identity.existing?.phoneNumber)))queueUserEvent({eventType:'user.mobile_number_changed',eventId:`user:${uid}:phone:${normalizePhone(stringValue(req.phoneNumber))}`,recipients:[{uid,role:'user'},{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:uid,templateId:'mobile-number-changed',subject:'Your PropBank mobile number changed',title:'Mobile number updated',bodyHtml:'<p>The verified mobile number on this PropBank account was changed.</p><p>If you did not make this change, sign in and review your account immediately.</p>',bodyText:'The verified mobile number on this PropBank account was changed. If you did not make this change, sign in and review your account immediately.',action:{label:'Review account',path:'/manage-property'}});
   return success('User updated successfully',existing);
 }

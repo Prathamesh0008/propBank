@@ -27,7 +27,7 @@ function load(name, dependencies = {}, env = {}, globals = {}) {
 
 test('HTTP errors preserve ApiError and AccessError statuses without leaking unexpected errors', async () => {
   const auth=load('auth',{'./firebase-admin':{},'./firestore':{}});
-  const http=load('http',{'./auth':auth});
+  const http=load('http',{'./auth':auth,'./file-projection':load('file-projection',{'../listing-policy':load('../listing-policy')})});
   for(const error of [new http.ApiError(409,'Version conflict'),new http.ApiError(400,'Invalid request'),new auth.AccessError(401,'Token required'),new auth.AccessError(403,'Access denied')]) {
     for(const json of [false,true]) {
       const response=await http.handle(async()=>{throw error;},'Safe failure',json)();

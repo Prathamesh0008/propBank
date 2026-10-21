@@ -539,12 +539,14 @@ const EditProperty = () => {
       if (result.success) {
         toast({
           title: "Property Updated!",
-          description: `${data.propertyTitle} has been successfully updated.`,
+          description: result.property?.moderationStatus==='pending_review'?'Changes saved and submitted for admin review.':`${data.propertyTitle} has been successfully updated.`,
         });
 
         // Refresh the property data to show updated values
         if (propertyId) {
-          queryClient.invalidateQueries({ queryKey: ['property', propertyId] });
+          await queryClient.invalidateQueries({ queryKey: ['property', propertyId] });
+          await queryClient.invalidateQueries({ queryKey: ['userProperties'] });
+          await queryClient.invalidateQueries({ queryKey: ['allProperties'] });
         }
 
         // Optional: navigate back or stay on the page

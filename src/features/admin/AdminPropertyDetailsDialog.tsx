@@ -4,6 +4,7 @@ import {Link} from '@/lib/navigation';
 import { apiFetch } from '@/lib/api-client';
 
 import React from "react";
+import ListingModeration from '@/features/properties/ListingModeration';
 import OwnerVerification from './OwnerVerification';
 import {
     Dialog,
@@ -62,12 +63,14 @@ interface AdminPropertyDetailsDialogProps {
     property: Property | null;
     isOpen: boolean;
     onOpenChange: (open: boolean) => void;
+    onVerificationChange?:()=>void|Promise<void>;
 }
 
 const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
     property,
     isOpen,
     onOpenChange,
+    onVerificationChange,
 }) => {
     const [inspectionReports, setInspectionReports] = useState<any[]>([]);
     const [loadingReports, setLoadingReports] = useState(false);
@@ -190,7 +193,8 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                 </DialogHeader>
 
                 <ScrollArea className="flex-1 p-6 md:p-10 overflow-y-auto">
-                    {property.createdAs==='tenant'&&property.ownershipVerification==='pending'&&<OwnerVerification key={property.id} propertyId={property.id}/>}
+                    <ListingModeration key={`${property.id}:${property.moderationRevision||0}`} property={property} admin/>
+                    {property.createdAs==='tenant'&&<OwnerVerification key={property.id} propertyId={property.id} status={property.ownershipVerification} version={property.ownershipVerificationVersion} reason={property.ownershipVerificationReason} history={property.ownershipVerificationHistory} onDecision={onVerificationChange}/>}
                     <div className="max-w-6xl mx-auto w-full flex flex-col gap-8 pb-16">
 
                         {/* Basic Info */}
@@ -489,7 +493,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                             </div>
                         )}
 
-                        <div className="flex flex-wrap gap-4 mt-6"><Link to={`/attach-documents/${property.id}`}>Documents, receipts and report verification</Link><Link to={`/inspection-report/${property.id}`}>Inspection history</Link><Link to={`/review/${property.id}`}>Review history</Link></div>
+                        <div className="flex flex-wrap gap-4 mt-6"><Link to={`/add-tenant/${property.id}?admin=1`}>Manage tenant relationships</Link><Link to={`/attach-documents/${property.id}`}>Documents, receipts and report verification</Link><Link to={`/inspection-report/${property.id}`}>Inspection history</Link><Link to={`/review/${property.id}`}>Review history</Link></div>
                         {/* Timestamps */}
                         <div className="mt-8 pt-6 border-t border-gray-300 flex justify-between text-xs font-bold text-slate-400 uppercase tracking-widest">
                             <span>Created: {formatDate(property.createdAt)}</span>

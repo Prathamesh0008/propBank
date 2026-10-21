@@ -1,38 +1,42 @@
 import 'server-only';
 import { templates } from './group2-email-templates';
-import { templates as propertyTemplates } from './property-email-templates';
-import { formatTemplate, queueEmail, sendEmail, bestEffort } from './property-effects';
+import { formatTemplate, queueEmail } from './property-effects';
+import { queueUserEvent } from './transactional-email';
 import { stringValue as s, type RecordData } from './contracts';
 
-export function formatIST(date:Date) {
-  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Kolkata',weekday:'long',month:'long',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true}).formatToParts(date);
-  const p=(key:string)=>parts.find(part=>part.type===key)?.value||'';
+export function formatIST(date: Date) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).formatToParts(date);
+  const p = (key: string) => parts.find((part) => part.type === key)?.value || '';
   return `${p('weekday')}, ${p('month')} ${p('day')}, ${p('year')} at ${p('hour')}:${p('minute')} ${p('dayPeriod')} IST`;
 }
-export function visitMail(user:RecordData,visit:RecordData) {
-  queueEmail({to:s(user.email),subject:`✅ Visit Scheduled: ${s(visit.title)}`,html:formatTemplate(templates.VisitConfirmation[0],[s(user.name),s(visit.title),formatIST(new Date(s(visit.visitDate)||String(visit.visitDate))),String(visit.reminderTime),s(visit.reminderType),s(visit.description)])});
+
+export function visitMail(user: RecordData, visit: RecordData) {
+  const uid = s(user.uid);
+  if (!uid) return;
+  queueUserEvent({ eventType: 'visit.scheduled', eventId: s(visit.id), templateId: 'visit-scheduled', subject: `Visit scheduled: ${s(visit.title)}`, recipientUIDs: [uid], propertyId: s(visit.propertyId), bodyHtml: `<p>Your visit for <strong>${s(visit.title)}</strong> is scheduled for ${formatIST(new Date(s(visit.visitDate) || String(visit.visitDate)))}.</p>`, bodyText: `Your visit for ${s(visit.title)} is scheduled for ${formatIST(new Date(s(visit.visitDate) || String(visit.visitDate)))}.` });
 }
-export function tenantMail(property:RecordData,tenant:RecordData) {
-  const details=[s(property.title),s(property.address),s(property.propertyType),s(tenant.monthlyRent),s(tenant.leaseStartDate),s(tenant.leaseEndDate)];
-  queueEmail({to:s(tenant.email),subject:"🏠 Welcome! You've been added as a Tenant - Propbank",html:formatTemplate(propertyTemplates.TenantAdded,['Welcome to Your New Home!',`${s(tenant.firstName)} ${s(tenant.lastName)}`,'You have been added as a tenant to the following property.',...details])});
-  queueEmail({to:s(property.ownerEmail),subject:'🏠 Tenant Added to Your Property - Propbank',html:formatTemplate(propertyTemplates.TenantAdded,['Tenant Added to Your Property',s(property.ownerName),'A new tenant has been added to your property.',...details])});
+
+export function tenantMail(property: RecordData, tenant: RecordData) {
+  const propertyId = s(property.id);
+  const recipientUIDs = [s(tenant.userUID), s(property.ownerUID)].filter(Boolean);
+  if (!recipientUIDs.length) return;
+  queueUserEvent({ eventType: 'tenancy.tenant_assigned', eventId: `${propertyId}:${s(tenant.id) || s(tenant.userUID)}`, templateId: 'tenant-assigned', subject: `Tenant assigned: ${s(property.title)}`, recipientUIDs, propertyId, bodyHtml: `<p>A tenant relationship has been added for <strong>${s(property.title)}</strong>. Sign in to review the current rental details.</p>`, bodyText: `A tenant relationship has been added for ${s(property.title)}. Sign in to review the current rental details.` });
 }
-export function inquiryMail(req:RecordData) {
-  const listing=req.inquiryType==='buy'?'Buying':req.inquiryType==='sell'?'Selling':'Renting';
-  const visit=req.requestVisit?`Requested on ${s(req.visitDate)} at ${s(req.visitTime)}`:'Not requested';
-  queueEmail({to:process.env.ADMIN_EMAIL||'connectpropbank@gmail.com',subject:`📩 New Quick Inquiry: ${s(req.userName)}`,html:formatTemplate(templates.GeneralInquiry[0],[s(req.userName),s(req.userEmail),s(req.userPhone),listing,s(req.propertyType),visit,s(req.message),s(req.userEmail)])});
+
+export function inquiryMail(req: RecordData) {
+  const listing = req.inquiryType === 'buy' ? 'Buying' : req.inquiryType === 'sell' ? 'Selling' : 'Renting';
+  const visit = req.requestVisit ? `Requested on ${s(req.visitDate)} at ${s(req.visitTime)}` : 'Not requested';
+  queueEmail({ to: process.env.ADMIN_EMAIL || 'connectpropbank@gmail.com', subject: `New Quick Inquiry: ${s(req.userName)}`, html: formatTemplate(templates.GeneralInquiry[0], [s(req.userName), s(req.userEmail), s(req.userPhone), listing, s(req.propertyType), visit, s(req.message), s(req.userEmail)]) });
 }
-export function ownerTerminationMail(property:RecordData,owner:RecordData,tenant:RecordData,notice:boolean,terminationDate:string) {
-  for(const isTenant of [true,false]) {
-    const recipient=isTenant?tenant:owner;
-    const details=[s(property.title),s(property.location),s(property.unitNumber),s(property.floor),s(property.propertyType),s(property.configuration),s(property.carpetArea),s(property.monthlyRent)];
-    const html=notice?formatTemplate(templates.AgreementNotice[0],[isTenant?'Termination Notice':'Notice Initiated',s(recipient.name),isTenant?`We have received a notice to terminate the lease agreement for <strong>${s(property.title)}</strong>. The agreement will be terminated on <strong>${terminationDate}</strong>.`:`You have successfully served a termination notice for <strong>${s(property.title)}</strong>. The agreement is scheduled to end on <strong>${terminationDate}</strong>.`,...details,terminationDate,'Owner']):formatTemplate(templates.AgreementTermination[0],[isTenant?'Agreement Termination Notice':'Agreement Terminated',s(recipient.name),isTenant?'The property owner has terminated your rental agreement. Please review the details below.':'The rental agreement has been successfully terminated.',terminationDate,'Agreement terminated by property owner','Owner',...details,s(property.agreementStartDate),s(property.agreementEndDate)]);
-    queueEmail({to:s(recipient.email),subject:notice?(isTenant?'📅 Agreement Termination Notice Served - Propbank':'✅ Notice Period Initiated - Propbank'):(isTenant?'⚠️ Agreement Termination Notice - Propbank':'✅ Agreement Terminated Successfully - Propbank'),html});
-  }
+
+export function ownerTerminationMail(property: RecordData, owner: RecordData, tenant: RecordData, notice: boolean, terminationDate: string) {
+  const recipientUIDs = [s(owner.uid) || s(property.ownerUID), s(tenant.userUID) || s(tenant.uid)].filter(Boolean);
+  if (!recipientUIDs.length) return;
+  queueUserEvent({ eventType: notice ? 'agreement.termination_notice' : 'agreement.terminated', eventId: `${s(property.id)}:${terminationDate}`, templateId: notice ? 'agreement-termination-notice' : 'agreement-terminated', subject: `${notice ? 'Agreement termination notice' : 'Agreement terminated'}: ${s(property.title)}`, recipientUIDs, propertyId: s(property.id), bodyHtml: `<p>The rental agreement for <strong>${s(property.title)}</strong> ${notice ? `is scheduled to end on ${terminationDate}` : `ended on ${terminationDate}`}.</p>`, bodyText: `The rental agreement for ${s(property.title)} ${notice ? `is scheduled to end on ${terminationDate}` : `ended on ${terminationDate}`}.` });
 }
-export async function tenantRequestMail(property:RecordData,owner:RecordData,tenant:RecordData,renew:boolean,noticePeriod:string) {
-  const notice=noticePeriod||'Immediate';
-  const source=renew?templates.RenewalRequest:templates.TerminationRequest;
-  const mails=[{to:s(owner.email),subject:renew?`🔄 Renewal Request: ${s(property.title)}`:`📢 Termination Request: ${s(property.title)} - ${notice}`,html:formatTemplate(source[0],renew?[s(owner.name),s(tenant.name),s(property.title),s(property.id)]:[s(owner.name),s(tenant.name),s(property.title),notice,s(property.id)])},{to:s(tenant.email),subject:renew?'Renewal Request Received - Propbank':'Termination Request Received - Propbank',html:formatTemplate(source[1],renew?[s(tenant.name),s(property.title),s(owner.name)]:[s(tenant.name),s(property.title),notice,s(owner.name)])}];
-  for(const mail of mails) {if(renew)await bestEffort(()=>sendEmail(mail));else queueEmail(mail);}
+
+export async function tenantRequestMail(property: RecordData, owner: RecordData, tenant: RecordData, renew: boolean, noticePeriod: string) {
+  const recipientUIDs = [s(owner.uid) || s(property.ownerUID), s(tenant.userUID) || s(tenant.uid)].filter(Boolean);
+  if (!recipientUIDs.length) return;
+  queueUserEvent({ eventType: renew ? 'agreement.renewal_requested' : 'agreement.termination_requested', eventId: `${s(property.id)}:${renew ? 'renew' : 'terminate'}:${s(property.updatedAt) || noticePeriod}`, templateId: renew ? 'agreement-renewal-requested' : 'agreement-termination-requested', subject: `${renew ? 'Agreement renewal request' : 'Agreement termination request'}: ${s(property.title)}`, recipientUIDs, propertyId: s(property.id), bodyHtml: `<p>A ${renew ? 'renewal' : 'termination'} request was submitted for <strong>${s(property.title)}</strong>. Sign in to review it.</p>`, bodyText: `A ${renew ? 'renewal' : 'termination'} request was submitted for ${s(property.title)}. Sign in to review it.` });
 }

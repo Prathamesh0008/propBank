@@ -1,27 +1,36 @@
 {
-  "name": "ShoPROP - Real Estate PWA",
-  "short_name": "ShoPROP",
+  "name": "PropBank - Real Estate, Considered",
+  "short_name": "PropBank",
   "description": "Buy, sell, and rent properties fast on any device",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#0f172a",
+  "background_color": "#F8F6F0",
+  "theme_color": "#242B28",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/icons/icon-512.png",
+      "src": "/brand/propbank-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/brand/propbank-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/maskable-512.png", 
+      "src": "/brand/propbank-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
     }
   ],
-  "categories": ["business", "lifestyle"],
+  "categories": [
+    "business",
+    "lifestyle"
+  ],
   "lang": "en",
   "dir": "ltr"
 }

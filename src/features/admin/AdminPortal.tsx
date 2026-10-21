@@ -1,4 +1,6 @@
 "use client";
+import AdminVisits from './AdminVisits';
+import EnquiryInbox from '@/features/enquiries/EnquiryInbox';
 import {ProductDashboard} from '@/features/properties/PropertyHub';
 
 
@@ -26,6 +28,8 @@ import { AdminServiceRequestsTab } from "./AdminServiceRequestsTab";
 import { AdminPropertiesTab } from "./AdminPropertiesTab";
 import { AdminAgentsTab } from "./AdminAgentsTab";
 import { AdminSiteSettingsTab } from "./AdminSiteSettingsTab";
+import AdminPropertyOperations from './AdminPropertyOperations';
+import AdminEmailDeliveries from './AdminEmailDeliveries';
 
 const AdminPortal = () => {
   const { toast } = useToast();
@@ -325,6 +329,10 @@ const AdminPortal = () => {
   };
 
   const handleSaveRemarks = async (notificationId: string, remarks: string, adminImage?: string) => {
+    if(uploadingRemarkImage===notificationId||remarkImages[notificationId]?.startsWith('data:')&&!remarkImages[`url-${notificationId}`]) {
+      toast({title:'Image upload incomplete',description:'Retry the selected image upload before saving remarks.',variant:'destructive'});
+      return;
+    }
     setUpdating(notificationId);
     try {
       const response = await apiFetch(`${API_BASE_URL}/admin/notifications/${notificationId}/remarks`, {
@@ -352,7 +360,7 @@ const AdminPortal = () => {
       const reader = new FileReader();
       reader.onload = async (e) => {
         const base64 = e.target?.result as string;
-        setRemarkImages(prev => ({ ...prev, [notificationId]: base64 }));
+        setRemarkImages(prev => ({ ...prev, [notificationId]: base64, [`url-${notificationId}`]: '' }));
         try {
           const imageUrl = await uploadBase64Image(base64);
           setRemarkImages(prev => ({ ...prev, [`url-${notificationId}`]: imageUrl }));
@@ -405,9 +413,15 @@ const AdminPortal = () => {
             <span className="sm:hidden">Settings</span>
           </TabsTrigger>
           <TabsTrigger value="offers">Offers</TabsTrigger>
+          <TabsTrigger value="enquiries">Enquiries</TabsTrigger>
+          <TabsTrigger value="visits">Visits</TabsTrigger>
+          <TabsTrigger value="email-deliveries">Email deliveries</TabsTrigger>
         </TabsList>
 
         <TabsContent value="offers"><NegotiationPanel admin/></TabsContent>
+        <TabsContent value="enquiries"><EnquiryInbox admin agents={agents}/></TabsContent>
+        <TabsContent value="visits"><AdminVisits/></TabsContent>
+        <TabsContent value="email-deliveries" className="mt-6"><AdminEmailDeliveries/></TabsContent>
         <TabsContent value="service-requests" className="mt-6">
           <ServiceRequestHistory admin/>
           <AdminServiceRequestsTab
@@ -426,6 +440,7 @@ const AdminPortal = () => {
         </TabsContent>
 
         <TabsContent value="properties" className="mt-6">
+          <AdminPropertyOperations properties={allProperties}/>
           {propertiesError&&<p role="alert" className="text-destructive mb-4">Could not load properties. Please refresh to retry.</p>}
           <AdminPropertiesTab
             loading={loading||loadingProperties}
@@ -471,6 +486,7 @@ const AdminPortal = () => {
 
       <AdminPropertyDetailsDialog
         property={selectedProperty}
+        onVerificationChange={async()=>{if(selectedProperty?.id)setSelectedProperty(await propertyService.getPropertyById(selectedProperty.id));}}
         isOpen={isPropertyDialogOpen}
         onOpenChange={setIsPropertyDialogOpen}
       />

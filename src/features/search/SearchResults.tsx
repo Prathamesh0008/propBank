@@ -70,37 +70,31 @@ const SearchResults = () => {
   const [sendingEnquiry, setSendingEnquiry] = useState<string | null>(null);
 
   // Load search results with filters
-  const performSearch = async () => {
+  const performSearch = async (overrides: {type?: 'buy' | 'rent'; condition?: string; query?: string} = {}) => {
+    const type = overrides.type ?? searchType;
+    const condition = overrides.condition ?? selectedProjectCondition;
+    const query = overrides.query ?? searchQuery;
     try {
       setLoading(true);
       
       // Use the first selected listing type if available, otherwise use searchType
-      let listingType: 'buy' | 'rent' | undefined = searchType;
+      let listingType: 'buy' | 'rent' | undefined = type;
       if (selectedListingTypes.length > 0) {
         listingType = selectedListingTypes[0] as 'buy' | 'rent';
       }
       
       let results = await propertyService.searchProperties(
-        searchQuery,
+        query,
         listingType,
-        selectedProjectCondition
+        condition
       );
-      
-      // Client-side filtering by categories if needed
-      if (selectedCategories.length > 0) {
-        results = results.filter(property => 
-          selectedCategories.some(category => 
-            property.propertyType?.toLowerCase().includes(category.toLowerCase())
-          )
-        );
-      }
       
       // Client-side filtering by multiple listing types if needed
       if (selectedListingTypes.length > 1) {
         // If multiple listing types are selected, we need to search for each and combine
         const allResults = await Promise.all(
           selectedListingTypes.map(type => 
-            propertyService.searchProperties(searchQuery, type as 'buy' | 'rent', selectedProjectCondition)
+            propertyService.searchProperties(query, type as 'buy' | 'rent', condition)
           )
         );
         
@@ -113,15 +107,24 @@ const SearchResults = () => {
         results = uniqueResults;
       }
       
+      // Client-side filtering by categories if needed
+      if (selectedCategories.length > 0) {
+        results = results.filter(property =>
+          selectedCategories.some(category =>
+            property.propertyType?.toLowerCase().includes(category.toLowerCase())
+          )
+        );
+      }
+
       setProperties(results);
       
       // Update URL params
       const newParams = new URLSearchParams();
-      if (searchQuery.trim()) newParams.append('q', searchQuery.trim());
-      if (searchType) newParams.append('type', searchType);
+      if (query.trim()) newParams.append('q', query.trim());
+      if (type) newParams.append('type', type);
       if (selectedCategories.length > 0) newParams.append('categories', selectedCategories.join(','));
       if (selectedListingTypes.length > 0) newParams.append('types', selectedListingTypes.join(','));
-      if (selectedProjectCondition) newParams.append('projectCondition', selectedProjectCondition);
+      if (condition) newParams.append('projectCondition', condition);
       setSearchParams(newParams);
       
     } catch (error) {
@@ -151,7 +154,7 @@ const SearchResults = () => {
   const handleTypeChange = (newType: 'buy' | 'rent') => {
     setSearchType(newType);
     // Auto-search when type changes
-    setTimeout(performSearch, 100);
+    void performSearch({type: newType});
   };
 
   const handleEnquireProperty = async (property: Property) => {
@@ -299,17 +302,18 @@ const SearchResults = () => {
                 {/* Project Condition Filter */}
                 <div className="md:w-52">
                   <Select 
-                    value={selectedProjectCondition} 
+                    value={selectedProjectCondition || 'all'}
                     onValueChange={(value) => {
-                      setSelectedProjectCondition(value);
-                      setTimeout(performSearch, 100);
+                      const condition=value==='all'?'':value;
+                      setSelectedProjectCondition(condition);
+                      void performSearch({condition});
                     }}
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Project Condition" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All Conditions</SelectItem>
+                      <SelectItem value="all">All Conditions</SelectItem>
                       <SelectItem value="New Project">New Project</SelectItem>
                       <SelectItem value="Ready Project">Ready Project</SelectItem>
                       <SelectItem value="Preleased">Preleased</SelectItem>
@@ -395,7 +399,7 @@ const SearchResults = () => {
                 Try adjusting your search criteria or browse all properties
               </p>
               <div className="flex flex-col sm:flex-row gap-2 justify-center">
-                <Button variant="outline" onClick={() => { setSearchQuery(''); performSearch(); }}>
+                <Button variant="outline" onClick={() => { setSearchQuery(''); void performSearch({query: ''}); }}>
                   Show All Properties
                 </Button>
                 <Button variant="outline" asChild>
