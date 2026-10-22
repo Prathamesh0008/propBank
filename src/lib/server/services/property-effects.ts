@@ -2,8 +2,9 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { after } from 'next/server';
 import { COLLECTIONS, getDatabase } from '../firestore';
-import { model, storeModel, wireModel, parsePrice, isRecord, stringValue as s, type RecordData } from './contracts';
+import { model, storeModel, wireModel, wireValue, parsePrice, isRecord, stringValue as s, type RecordData } from './contracts';
 import { getUser, saveUser } from './users';
+import { brandedEmail, type TransactionalEmailEvent } from './transactional-email';
 import { templates } from './property-email-templates';
 
 export interface Email { to:string; subject:string; html:string }
@@ -105,4 +106,27 @@ export async function propertyUpdatedEffects(before:RecordData,property:RecordDa
     }
   }
   if (typeof updates.wantToSell==='boolean' && updates.wantToSell!==before.wantToSell) await bestEffort(()=>notify(property,updates.wantToSell?'want_to_sell':'want_to_sell_cancelled'));
+}
+
+export function propertyNotificationEvents(property:RecordData,submitter:RecordData,status='pending_review'):TransactionalEmailEvent[] {
+  const id=s(property.id),revision=Number(property.moderationRevision||1),title=s(property.title);
+  const label=status.replaceAll('_',' '),reason=s(property.moderationReason),submitted=status==='pending_review';
+  const subject=submitted?'Property submitted - Pending Review':`Property ${label}`;
+  const body=`Property: ${title}\nReference ID: ${id}\nStatus: ${label}${reason?`\nAdmin reason: ${reason}`:''}`;
+  const make=(role:string,uid:string,email:string,text:string,path:string):TransactionalEmailEvent=>{
+    const notificationSubject=submitted&&role==='admin'?'PropBank \u2013 New Property Submitted for Review':subject;
+    return ({
+    eventType:submitted?'property.submitted':`property.${status}`,eventId:`property:${id}:${revision}:${status}`,
+    recipientUID:uid,recipientRole:role,recipientEmail:email,propertyId:id,recordId:id,templateId:'property-review',templateVersion:1,subject:notificationSubject,
+    ...brandedEmail(notificationSubject,`<p>${escapeHtml(text).replaceAll('\n','<br>')}</p>`,text,{label:submitted&&role==='admin'?'Review property':'View property',path}),
+  });
+  };
+  const recipientUID=s(submitter.uid),email=s(submitter.email);
+  const events=[make('owner',recipientUID,email,body,`/property/${encodeURIComponent(id)}`)];
+  if(submitted) {
+    const submittedAt=wireValue(property.createdAt);
+    const adminBody=`Property: ${title}\nReference ID: ${id}\nLocation: ${s(property.location)||s(property.address)}\nOwner name: ${s(property.ownerName)||s(isRecord(property.reportedOwner)?property.reportedOwner.personName||property.reportedOwner.companyName:'')||'Not supplied'}\nOwner email: ${s(property.ownerEmail)||s(isRecord(property.reportedOwner)?property.reportedOwner.email:'')||'Not supplied'}\nSubmission date: ${typeof submittedAt==='string'?submittedAt:'Not recorded'}\nStatus: Pending Review\nSubmitter: ${s(submitter.name)}\nEmail: ${email}\nPhone: ${s(submitter.phoneNumber)}\nUser ID: ${recipientUID}`;
+    events.push(make('admin','',(process.env.ADMIN_EMAIL||'').trim().toLowerCase(),adminBody,`/admin?tab=properties&propertyId=${encodeURIComponent(id)}`));
+  }
+  return events;
 }

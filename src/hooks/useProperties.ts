@@ -40,11 +40,13 @@ export const useUserProperties = (currentUser: User | null) => {
   });
 };
 
-export const useAllProperties = () => {
+export const useAllProperties = (active=true) => {
+  const {user,loading:authLoading}=useAuth();
   return useQuery({
-    queryKey: ['allProperties'],
+    queryKey: ['allProperties',user?.uid],
+    enabled: !!user&&!authLoading&&active,
     queryFn: async () => {
-      const response = await apiFetch(`${API_BASE_URL}/properties?admin=true`);
+      const response = await apiFetch(`${API_BASE_URL}/properties?admin=true`,{cache:'no-store'});
       const data = await response.json();
       if(!response.ok||!data.success)throw new Error(data.message||'Could not load administrator properties');
       if (data.success) {
@@ -52,7 +54,10 @@ export const useAllProperties = () => {
       }
       return [];
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
+    refetchInterval: active?5000:false,
   });
 };
 

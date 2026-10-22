@@ -1,4 +1,5 @@
 "use client";
+import { readPropertyResponse } from "./property-response";
 
 import styles from "./PropertyForm.module.css";
 
@@ -710,7 +711,7 @@ const AddPropertyForm = () => {
         body: JSON.stringify(propertyData)
       });
 
-      const result = await response.json();
+      const result = await readPropertyResponse(response);
 
       if (result.success) {
         const listingTypeText = data.listingType === "rent" ? "rental property" : "property for sale";
@@ -734,7 +735,7 @@ const AddPropertyForm = () => {
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to connect to server. Please try again.",
+        description: error instanceof Error?error.message:"Failed to connect to server. Please try again.",
         variant: "destructive",
       });
     }

@@ -162,7 +162,7 @@ const Review = () => {
 
       toast({
         title: "Error",
-        description: "Failed to submit review. Please try again later.",
+        description: error instanceof Error ? error.message : "Failed to submit review. Please try again later.",
         variant: "destructive"
       });
     } finally {
@@ -208,10 +208,23 @@ const Review = () => {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-8">
               <div className="space-y-2">
-                <Label>Submitting review as</Label>
-                <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 border rounded-md w-full md:w-1/3">
-                  <span className="font-semibold text-gray-800 capitalize">{reviewerType || '...'}</span>
-                </div>
+                <Label htmlFor="reviewer-type">Submitting review as</Label>
+                <select
+                  id="reviewer-type"
+                  value={reviewerType}
+                  onChange={(event) => setReviewerType(event.target.value)}
+                  disabled={submitting}
+                  required
+                  aria-describedby="reviewer-type-help"
+                  className="flex h-10 px-4 py-2 bg-gray-50 border border-input rounded-md w-full md:w-1/3 font-semibold text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                >
+                  <option value="" disabled>Select your role</option>
+                  <option value="owner">Owner</option>
+                  <option value="tenant">Tenant</option>
+                </select>
+                <p id="reviewer-type-help" className="text-sm text-muted-foreground">
+                  Owners review tenants. Tenants review the property owner. Choose your role for this property.
+                </p>
               </div>
 
               <div className="pt-4">

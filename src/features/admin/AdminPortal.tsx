@@ -33,9 +33,9 @@ import { AdminSiteSettingsTab } from "./AdminSiteSettingsTab";
 const AdminPortal = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("service-requests");
+  const [activeTab, setActiveTab] = useState("properties");
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
-  const { data: propertiesData, isLoading: loadingProperties,error:propertiesError } = useAllProperties();
+  const { data: propertiesData, isLoading: loadingProperties,error:propertiesError } = useAllProperties(activeTab==='properties');
   const allProperties = propertiesData || [];
 
   const { data: usersData, isLoading: loadingUsers,refetch:refetchUsers } = useAllUsers();
@@ -116,6 +116,14 @@ const AdminPortal = () => {
       setLoadingProperty(false);
     }
   };
+  useEffect(() => {
+    const params=new URLSearchParams(window.location.search);
+    if(params.get('tab')==='properties') {
+      setActiveTab('properties');
+      const id=params.get('propertyId');
+      if(id)void handleViewPropertyDetails(id);
+    }
+  }, []);
   const fetchNotifications = async () => {
     try {
       const response = await apiFetch(`${API_BASE_URL}/admin/notifications?unread=true`);
@@ -399,8 +407,7 @@ const AdminPortal = () => {
           </TabsTrigger>
           <TabsTrigger value="properties" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
-            <span className="hidden sm:inline">All Properties</span>
-            <span className="sm:hidden">Properties</span>
+            <span>Properties</span>
           </TabsTrigger>
           <TabsTrigger value="agents" className="flex items-center gap-2">
             <Users className="h-4 w-4" />

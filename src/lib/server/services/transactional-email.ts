@@ -1,5 +1,6 @@
 import 'server-only';
 import { createHash, randomUUID } from 'node:crypto';
+import type { Transaction } from 'firebase-admin/firestore';
 import { after } from 'next/server';
 import { AccessError } from '../auth';
 import { COLLECTIONS, getDatabase } from '../firestore';
@@ -17,7 +18,7 @@ export type TransactionalEmailEvent={
 };
 type UserEvent={eventType:string;eventId:string;recipients?:Array<{uid?:string;role:string;email?:string}>;recipientUIDs?:string[];propertyId?:string;recordId?:string;templateId:string;subject:string;title?:string;bodyHtml:string;bodyText:string;action?:{label:string;path:string}};
 
-const deliveries=()=>getDatabase().collection(COLLECTIONS.emailDeliveries);
+const deliveries=()=>getDatabase().collection(COLLECTIONS.emailDeliveries || 'email_deliveries');
 const safeError=()=> 'Email provider delivery failed';
 const keyFor=(event:TransactionalEmailEvent,email:string)=>event.idempotencyKey||`${event.eventType}:${event.eventId}:${event.recipientUID||email.toLowerCase()}`;
 const idFor=(key:string)=>createHash('sha256').update(key).digest('hex');
@@ -42,14 +43,29 @@ async function resolveRecipient(event:TransactionalEmailEvent) {
 
 async function deliver(id:string) {
   const ref=deliveries().doc(id),now=new Date(),lease=randomUUID();let value:RecordData|null=null;
-  await getDatabase().runTransaction(async tx=>{const snapshot=await tx.get(ref);if(!snapshot.exists)return;const current=snapshot.data()!,status=s(current.status);if(!(['pending','failed'].includes(status)||status==='sending'&&Number(current.deliveryLeaseUntil?.toMillis?.()||new Date(current.deliveryLeaseUntil||0).getTime())<=now.getTime())||Number(current.retryCount||0)>=5||status==='failed'&&Number(current.nextRetryAt?.toMillis?.()||new Date(current.nextRetryAt||0).getTime())>now.getTime())return;value=current;tx.update(ref,{status:'sending',deliveryLease:lease,deliveryLeaseUntil:new Date(now.getTime()+120000),lastAttemptAt:now,updatedAt:now});});
+  await getDatabase().runTransaction(async tx=>{value=null;const snapshot=await tx.get(ref);if(!snapshot.exists)return;const current=snapshot.data()!,status=s(current.status);if(!(['pending','failed'].includes(status)||status==='sending'&&Number(current.deliveryLeaseUntil?.toMillis?.()||new Date(current.deliveryLeaseUntil||0).getTime())<=now.getTime())||Number(current.retryCount||0)>=5||status==='failed'&&Number(current.nextRetryAt?.toMillis?.()||new Date(current.nextRetryAt||0).getTime())>now.getTime())return;value=current;tx.update(ref,{status:'sending',deliveryLease:lease,deliveryLeaseUntil:new Date(now.getTime()+120000),lastAttemptAt:now,updatedAt:now});});
   if(!value)return 'skipped';
   try{
-    await sendEmail({to:s(value.recipientEmail),subject:s(value.subject),html:s(value.html),text:s(value.text)},s(value.idempotencyKey));
+    if(value.firstAttemptAt&&now.getTime()-new Date(wireValue(value.firstAttemptAt) as string).getTime()>=23*60*60*1000)throw new Error('Delivery reconciliation required');
+    if(!value.firstAttemptAt)await ref.update({firstAttemptAt:now});
+    await sendEmail({to:s(value.recipientEmail)||(value.recipientRole==='admin'?process.env.ADMIN_EMAIL||'':''),subject:s(value.subject),html:s(value.html),text:s(value.text)},s(value.idempotencyKey));
     await ref.update({status:'sent',sentAt:now,lastAttemptAt:now,updatedAt:now,retryCount:Number(value.retryCount||0)+1,errorSummary:'',deliveryLease:'',deliveryLeaseUntil:now});return 'sent';
-  }catch{
-    await ref.update({status:'failed',lastAttemptAt:now,updatedAt:now,retryCount:Number(value.retryCount||0)+1,errorSummary:safeError(),nextRetryAt:new Date(now.getTime()+5*60*1000),deliveryLease:'',deliveryLeaseUntil:now});return 'failed';
+  }catch(error){
+    console.error('Transactional email delivery failed',{deliveryId:id,eventType:value.eventType});
+    await ref.update({status:'failed',lastAttemptAt:now,updatedAt:now,retryCount:Number(value.retryCount||0)+1,errorSummary:error instanceof Error&&error.message==='Delivery reconciliation required'?'Delivery reconciliation required before retry':safeError(),nextRetryAt:new Date(now.getTime()+5*60*1000),deliveryLease:'',deliveryLeaseUntil:now});return 'failed';
   }
+}
+
+// Persist alongside the business mutation; no provider calls occur in a transaction.
+export function writeEmailOutbox(tx:Transaction,events:TransactionalEmailEvent[]) {
+  const now=new Date();
+  for(const event of events) {
+    const recipientEmail=event.recipientEmail||'',idempotencyKey=keyFor(event,recipientEmail),id=idFor(idempotencyKey);
+    tx.create(deliveries().doc(id),{...event,id,recipientEmail,idempotencyKey,status:'pending',retryCount:0,createdAt:now,updatedAt:now,errorSummary:''});
+  }
+}
+export function dispatchEmailOutbox(events:TransactionalEmailEvent[]) {
+  after(async()=>{for(const event of events)try{await deliver(idFor(keyFor(event,event.recipientEmail||'')));}catch{console.error('Property email outbox dispatch failed',{eventType:event.eventType,eventId:event.eventId});}});
 }
 
 export async function enqueueTransactionalEmail(event:TransactionalEmailEvent) {
@@ -95,6 +111,6 @@ export async function retryEmailDelivery(request:Request,id:string) {
   if(Object.keys(req).length)throw new ApiError(400,'Retry does not accept message or recipient changes');
   const ref=deliveries().doc(id);
   const snapshot=await ref.get();if(!snapshot.exists)throw new ApiError(404,'Delivery not found');if(!await reminderIsCurrent(snapshot.data()!))throw new ApiError(409,'Reminder is obsolete and cannot be retried');
-  await getDatabase().runTransaction(async tx=>{const doc=await tx.get(ref);if(!doc.exists)throw new ApiError(404,'Delivery not found');const value=doc.data()!;if(value.status!=='failed'||Number(value.retryCount||0)>=5)throw new ApiError(409,'Delivery is not eligible for retry');tx.update(ref,{status:'pending',updatedAt:new Date(),errorSummary:'',nextRetryAt:null});});
+  await getDatabase().runTransaction(async tx=>{const doc=await tx.get(ref);if(!doc.exists)throw new ApiError(404,'Delivery not found');const value=doc.data()!;if(!(['failed','pending'].includes(s(value.status))||value.status==='sending'&&Number(value.deliveryLeaseUntil?.toMillis?.()||new Date(value.deliveryLeaseUntil||0).getTime())<=Date.now())||Number(value.retryCount||0)>=5)throw new ApiError(409,'Delivery is not eligible for retry');tx.update(ref,{status:'pending',updatedAt:new Date(),errorSummary:'',nextRetryAt:null});});
   after(()=>deliver(id));return jsonResponse({success:true,message:'Delivery queued for retry'});
 }
