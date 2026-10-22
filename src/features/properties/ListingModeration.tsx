@@ -15,8 +15,8 @@ export interface ListingReview {
 export default function ListingModeration({property,admin=false}:{property:ListingReview;admin?:boolean}) {
   const [current,setCurrent]=useState(property),[reason,setReason]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const queries=useQueryClient();
-  if(current.createdAs==='tenant'||!['rent','sell'].includes(current.listingType||''))return null;
-  const status=current.moderationStatus??'legacy_published';
+  if(!current.moderationStatus&&(current.createdAs==='tenant'||!['rent','sell'].includes(current.listingType||'')))return null;
+  const status=current.moderationStatus??'unreviewed';
   async function decide(action:string) {
     setBusy(true);setError('');
     try {
@@ -29,7 +29,7 @@ export default function ListingModeration({property,admin=false}:{property:Listi
   return <div className="space-y-2 mt-2">
     <Badge variant="outline">Listing: {status.replaceAll('_',' ')}</Badge>
     {current.moderationReason&&<p className="text-sm">Review reason: {current.moderationReason}</p>}
-    {admin&&status==='pending_review'&&<>
+    {admin&&['pending_review','unreviewed'].includes(status)&&<>
       <Textarea aria-label="Listing review reason" placeholder="Reason (required for rejection or changes)" maxLength={2000} value={reason} onChange={e=>setReason(e.target.value)} disabled={busy}/>
       <div className="flex flex-wrap gap-2">
         <Button disabled={busy} onClick={()=>decide('approve')}>Approve listing</Button>
