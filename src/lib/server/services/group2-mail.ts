@@ -1,7 +1,8 @@
 import 'server-only';
 import { templates } from './group2-email-templates';
 import { templates as propertyTemplates } from './property-email-templates';
-import { formatTemplate, queueEmail, sendEmail, bestEffort } from './property-effects';
+import { formatTemplate, queueEmail, sendEmail, bestEffort,escapeHtml,trustedTemplateHtml } from './property-effects';
+import {persistUserEvent} from './transactional-email';
 import { stringValue as s, type RecordData } from './contracts';
 
 export function formatIST(date:Date) {
@@ -20,13 +21,15 @@ export function tenantMail(property:RecordData,tenant:RecordData) {
 export function inquiryMail(req:RecordData) {
   const listing=req.inquiryType==='buy'?'Buying':req.inquiryType==='sell'?'Selling':'Renting';
   const visit=req.requestVisit?`Requested on ${s(req.visitDate)} at ${s(req.visitTime)}`:'Not requested';
-  queueEmail({to:process.env.ADMIN_EMAIL||'connectpropbank@gmail.com',subject:`📩 New Quick Inquiry: ${s(req.userName)}`,html:formatTemplate(templates.GeneralInquiry[0],[s(req.userName),s(req.userEmail),s(req.userPhone),listing,s(req.propertyType),visit,s(req.message),s(req.userEmail)])});
+  const subject=`📩 New Quick Inquiry: ${s(req.userName)}`;
+  return persistUserEvent({eventType:'enquiry.general_created',eventId:`${s(req.id)}:created`,recipients:[{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:s(req.id),templateId:'general-enquiry',subject,title:'New general enquiry',bodyHtml:formatTemplate(templates.GeneralInquiry[0],[s(req.userName),s(req.userEmail),s(req.userPhone),listing,s(req.propertyType),visit,s(req.message),s(req.userEmail)]),bodyText:`New ${listing.toLowerCase()} enquiry from ${s(req.userName)}. Review it in the administrator portal.`,action:{label:'Open enquiry inbox',path:'/admin?tab=notifications'}});
 }
 export function ownerTerminationMail(property:RecordData,owner:RecordData,tenant:RecordData,notice:boolean,terminationDate:string) {
   for(const isTenant of [true,false]) {
     const recipient=isTenant?tenant:owner;
     const details=[s(property.title),s(property.location),s(property.unitNumber),s(property.floor),s(property.propertyType),s(property.configuration),s(property.carpetArea),s(property.monthlyRent)];
-    const html=notice?formatTemplate(templates.AgreementNotice[0],[isTenant?'Termination Notice':'Notice Initiated',s(recipient.name),isTenant?`We have received a notice to terminate the lease agreement for <strong>${s(property.title)}</strong>. The agreement will be terminated on <strong>${terminationDate}</strong>.`:`You have successfully served a termination notice for <strong>${s(property.title)}</strong>. The agreement is scheduled to end on <strong>${terminationDate}</strong>.`,...details,terminationDate,'Owner']):formatTemplate(templates.AgreementTermination[0],[isTenant?'Agreement Termination Notice':'Agreement Terminated',s(recipient.name),isTenant?'The property owner has terminated your rental agreement. Please review the details below.':'The rental agreement has been successfully terminated.',terminationDate,'Agreement terminated by property owner','Owner',...details,s(property.agreementStartDate),s(property.agreementEndDate)]);
+    const statement=isTenant?`We have received a notice to terminate the lease agreement for ${s(property.title)}. The agreement will be terminated on ${terminationDate}.`:`You have successfully served a termination notice for ${s(property.title)}. The agreement is scheduled to end on ${terminationDate}.`;
+    const html=notice?formatTemplate(templates.AgreementNotice[0],[isTenant?'Termination Notice':'Notice Initiated',s(recipient.name),trustedTemplateHtml(escapeHtml(statement).replace(escapeHtml(s(property.title)),`<strong>${escapeHtml(s(property.title))}</strong>`).replace(escapeHtml(terminationDate),`<strong>${escapeHtml(terminationDate)}</strong>`)),...details,terminationDate,'Owner']):formatTemplate(templates.AgreementTermination[0],[isTenant?'Agreement Termination Notice':'Agreement Terminated',s(recipient.name),isTenant?'The property owner has terminated your rental agreement. Please review the details below.':'The rental agreement has been successfully terminated.',terminationDate,'Agreement terminated by property owner','Owner',...details,s(property.agreementStartDate),s(property.agreementEndDate)]);
     queueEmail({to:s(recipient.email),subject:notice?(isTenant?'📅 Agreement Termination Notice Served - Propbank':'✅ Notice Period Initiated - Propbank'):(isTenant?'⚠️ Agreement Termination Notice - Propbank':'✅ Agreement Terminated Successfully - Propbank'),html});
   }
 }

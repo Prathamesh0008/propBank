@@ -10,6 +10,20 @@ import {Button} from '@/ui/button';
 import {Input} from '@/ui/input';
 import {FurnishedChecklistModal} from './FurnishedChecklistModal';
 
+function calculateAgreementEndDate(startDate:string,period:string):string {
+ const months=Number(period);
+ const match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(startDate);
+ if(!match||!Number.isInteger(months)||months<1)return '';
+ const year=Number(match[1]),monthIndex=Number(match[2])-1,day=Number(match[3]);
+ const start=new Date(year,monthIndex,day);
+ if(start.getFullYear()!==year||start.getMonth()!==monthIndex||start.getDate()!==day)return '';
+ const targetMonthStart=new Date(year,monthIndex+months,1);
+ const targetMonthLastDay=new Date(year,monthIndex+months+1,0).getDate();
+ const end=new Date(targetMonthStart.getFullYear(),targetMonthStart.getMonth(),Math.min(day,targetMonthLastDay));
+ end.setDate(end.getDate()-1);
+ return `${end.getFullYear()}-${String(end.getMonth()+1).padStart(2,'0')}-${String(end.getDate()).padStart(2,'0')}`;
+}
+
 const fields=[['propertyTitle','Property title',true],['buildingName','Building name'],['unitNumber','Flat / Office / Shop / Unit / Plot number'],['floor','Floor'],['location','Location / address',true],['configuration','Configuration / Structure',true],['carpetArea','Carpet area'],['constructedArea','Built-up / Constructed area'],['plotArea','Plot area'],['monthlyRent','Monthly finalized rent',true],['securityDeposit','Security deposit'],['paymentDueDate','Payment due day (1–31)',true],['escalationPercentage','Rent escalation percentage'],['escalationAmount','Rent escalation fixed amount'],['agreementPeriod','Agreement period (months)',true],['agreementStartDate','Agreement start date',true],['agreementEndDate','Agreement end date',true],['noticePeriod','Notice / Early termination period (months)'],['lockInPeriod','Lock-in period (months)']] as const;
 const ownerFields=[['companyName','Flat owner / Company name'],['personName','Owner person name'],['phone','Owner contact number'],['alternatePhone','Owner alternate contact number'],['email','Owner email'],['workingProfile','Owner working profile']] as const;
 export default function TenantPropertyForm({category}:{category:string}) {
@@ -17,7 +31,11 @@ export default function TenantPropertyForm({category}:{category:string}) {
  const [values,setValues]=useState<Record<string,string>>({propertyType:category||'residential',propertyCategory:category||'residential',listingType:'rent',rentalStatus:'rented',areaUnit:'sq ft',carpetAreaUnit:'sq ft',constructedAreaUnit:'sq ft',plotAreaUnit:'sq m'});
  const [rentSchedule,setRentSchedule]=useState<Array<{year:string;months:string;amount:string;fromDate:string;toDate:string}>>([]);
  const [owner,setOwner]=useState<Record<string,string>>({}),[images,setImages]=useState<string[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState(false),[uploading,setUploading]=useState(false),[checklist,setChecklist]=useState<NonNullable<ComponentProps<typeof FurnishedChecklistModal>['initialChecklist']>>([]),[showChecklist,setShowChecklist]=useState(false);
- const change=(key:string,value:string)=>setValues(before=>({...before,[key]:value}));
+ const change=(key:string,value:string)=>setValues(before=>{
+  const next={...before,[key]:value};
+  if(key==='agreementPeriod'||key==='agreementStartDate')next.agreementEndDate=calculateAgreementEndDate(next.agreementStartDate||'',next.agreementPeriod||'');
+  return next;
+ });
  async function submit(event:React.FormEvent){event.preventDefault();setError('');if(!user)return setError('Please sign in.');if(!owner.companyName?.trim()&&!owner.personName?.trim())return setError('Enter the owner or company name.');if(!owner.phone?.trim())return setError('Enter the owner contact number.');if(values.agreementEndDate<values.agreementStartDate)return setError('Agreement end date must follow its start date.');setBusy(true);try{await workflowRequest('properties',{...values,createdAs:'tenant',rentSchedule,reportedOwner:owner,tenantFirstName:user.displayName||'Tenant',tenantLastName:'',tenantEmail:user.email||'',images,furnishedChecklist:checklist.filter(item=>item.checked)});await cache.invalidateQueries({queryKey:['userProperties']});await cache.invalidateQueries({queryKey:['allProperties']});navigate('/manage-property?tab=tenant');}catch(err){setError(err instanceof Error?err.message:'Could not save property.');}finally{setBusy(false);}}
  return <main className={`mx-auto max-w-5xl px-4 py-8 ${styles.workspace}`}><Button variant="ghost" onClick={()=>navigate('/select-property-type')}>Back</Button><h1 className="text-2xl font-bold my-4">Add Property as a Tenant</h1><p className="mb-6 text-muted-foreground">Record the home you rent. Owner details are supplied by you and await verification; this does not claim ownership or link another account.</p><form onSubmit={submit} className={`${styles.form} space-y-6`}>
  <fieldset className={`${styles.fieldset} grid gap-4 sm:grid-cols-2`}><legend className="font-semibold mb-3">Property details and rental terms</legend>

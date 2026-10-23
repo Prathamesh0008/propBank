@@ -15,7 +15,7 @@ export interface AuthenticatedUser {
 }
 
 export class AccessError extends Error {
-  constructor(public readonly status: 401 | 403, message: string) {
+  constructor(public readonly status: 401 | 403, message: string,public readonly code?:string) {
     super(message);
     this.name = 'AccessError';
   }
@@ -43,6 +43,7 @@ export async function requireUser(request: Request): Promise<AuthenticatedUser> 
   return userFromToken(token);
 }
 export async function userFromToken(token:DecodedIdToken):Promise<AuthenticatedUser> {
+  if(token.email_verified!==true)throw new AccessError(403,'Verify your email before accessing PropBank','EMAIL_VERIFICATION_REQUIRED');
   const profile = await getDatabase().collection(COLLECTIONS.users).doc(token.uid).get();
   const data = profile.data();
   if (!data || data.isActive === false) throw new AccessError(403, 'Active user profile required');

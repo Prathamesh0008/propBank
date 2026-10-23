@@ -6,7 +6,7 @@ import { createContext, useContext, useEffect, useState, useRef, ReactNode } fro
 import {apiFetch} from '@/lib/api-client';
 import {useToast} from '@/hooks/use-toast';
 import { auth } from "@/firebase";
-import { User, onAuthStateChanged } from "firebase/auth";
+import { User, onIdTokenChanged } from "firebase/auth";
 
 interface AuthContextType {
   user: User | null;
@@ -34,7 +34,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
       return sessionWork;
     };
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    const unsubscribe = onIdTokenChanged(auth, async (firebaseIdentity) => {
+      const firebaseUser=firebaseIdentity?.emailVerified===true?firebaseIdentity:null;
       const current=++generation;
       setLoading(true);
       if(previousUID.current!==firebaseUser?.uid)queryClient.clear();

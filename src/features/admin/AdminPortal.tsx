@@ -1,5 +1,6 @@
 "use client";
 import AdminVisits from './AdminVisits';
+import CommissionWorkspace from '@/features/commissions/CommissionWorkspace';
 import EnquiryInbox from '@/features/enquiries/EnquiryInbox';
 import {ProductDashboard} from '@/features/properties/PropertyHub';
 
@@ -425,6 +426,7 @@ const AdminPortal = () => {
           <TabsTrigger value="offers" className="flex items-center gap-2"><Handshake className="h-4 w-4"/>Offers</TabsTrigger>
           <TabsTrigger value="enquiries" className="flex items-center gap-2"><MessageSquareText className="h-4 w-4"/>Enquiries</TabsTrigger>
           <TabsTrigger value="visits" className="flex items-center gap-2"><CalendarDays className="h-4 w-4"/>Visits</TabsTrigger>
+          <TabsTrigger value="commissions" className="flex items-center gap-2"><Handshake className="h-4 w-4"/>Commissions</TabsTrigger>
         </TabsList>
         </aside>
         <div className={styles.content}>
@@ -432,6 +434,7 @@ const AdminPortal = () => {
         <TabsContent value="offers"><NegotiationPanel admin/></TabsContent>
         <TabsContent value="enquiries"><EnquiryInbox admin agents={agents}/></TabsContent>
         <TabsContent value="visits"><AdminVisits/></TabsContent>
+        <TabsContent value="commissions"><CommissionWorkspace admin/></TabsContent>
         <TabsContent value="service-requests" className="mt-6">
           <ServiceRequestHistory admin/>
           <AdminServiceRequestsTab

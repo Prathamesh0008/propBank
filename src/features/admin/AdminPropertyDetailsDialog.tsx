@@ -494,7 +494,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                             </div>
                         )}
 
-                        <div className="flex flex-wrap gap-4 mt-6"><Link to={`/attach-documents/${property.id}`}>Documents, receipts and report verification</Link><Link to={`/inspection-report/${property.id}`}>Inspection history</Link><Link to={`/review/${property.id}`}>Review history</Link></div>
+                        <div className="flex flex-wrap gap-4 mt-6"><Link to={`/add-tenant/${property.id}?admin=1`}>Assign, replace or remove tenant</Link><Link to={`/attach-documents/${property.id}`}>Documents, receipts and report verification</Link><Link to={`/inspection-report/${property.id}`}>Inspection history</Link><Link to={`/review/${property.id}`}>Review history</Link></div>
                         {/* Timestamps */}
                         <div className="mt-8 pt-6 border-t border-gray-300 flex justify-between text-xs font-bold text-slate-400 uppercase tracking-widest">
                             <span>Created: {formatDate(property.createdAt)}</span>

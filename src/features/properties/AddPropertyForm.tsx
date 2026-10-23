@@ -37,6 +37,7 @@ const formSchema = z.object({
   propertyType: z.string().min(1, "Property type is required"),
   configuration: z.string().min(1, "Configuration is required"),
   listingType: z.string().min(1, "Listing type is required"),
+  agentOwnerEmail: z.string().email("Enter the registered legal owner's email").optional().or(z.literal("")),
 
   // Unit Details (conditional based on property type)
   unitNumber: z.string().optional(),
@@ -178,7 +179,8 @@ const AddPropertyForm = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const selectedPropertyType = searchParams.get('type') || '';
-  const selectedRole = searchParams.get('role') || 'owner';
+  const selectedRole = searchParams.get('as') || searchParams.get('role') || 'owner';
+  const adminOwnerUID = searchParams.get('adminOwnerUID') || '';
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [uploadedInternalImages, setUploadedInternalImages] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -191,6 +193,7 @@ const AddPropertyForm = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [accountRole,setAccountRole]=useState('individual');
   const [userInfo, setUserInfo] = useState<any | null>(null);
   const [searchingUser, setSearchingUser] = useState(false);
   const [searchError, setSearchError] = useState<string | undefined>(undefined);
@@ -417,6 +420,7 @@ const AddPropertyForm = () => {
       propertyCategory:selectedPropertyType,
       configuration: "",
       listingType: "",
+      agentOwnerEmail: "",
       unitNumber: "",
       floor: "",
       location: "",
@@ -502,6 +506,11 @@ const AddPropertyForm = () => {
 
   const agreementStartDate = form.watch('agreementStartDate');
   const agreementPeriod = form.watch('agreementPeriod');
+
+  useEffect(() => {
+    const user=auth.currentUser;setCurrentUser(user);
+    if(user)void apiFetch(`${API_BASE_URL}/users/${user.uid}`).then(response=>response.json()).then(data=>setAccountRole(data.user?.role||'individual')).catch(()=>setAccountRole('individual'));
+  },[]);
 
   useEffect(() => {
     if (agreementStartDate && agreementPeriod) {
@@ -698,7 +707,8 @@ const AddPropertyForm = () => {
         images: buildingImages, // Ensure images from the latest form state are included
         internalImages: interiorImages,
         furnishedChecklist: checkedFurnishedItems, // Only include checked items
-        ownerUID: currentUser.uid,
+        ownerUID: adminOwnerUID || currentUser.uid,
+        ...(accountRole==='agent'?{agentOwnerEmail:data.agentOwnerEmail}:{}),
       };
 
 
@@ -792,7 +802,7 @@ const AddPropertyForm = () => {
       <div className={styles.shell}>
         {/* Header */}
         <div className={styles.pageIntro}>
-          <Button variant="ghost" onClick={() => navigate(`/select-property-type?role=${selectedRole}`)} className="mb-4">
+          <Button variant="ghost" onClick={() => navigate(`/select-property-type?as=${selectedRole}${adminOwnerUID?`&adminOwnerUID=${encodeURIComponent(adminOwnerUID)}`:''}`)} className="mb-4">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Property Type Selection
           </Button>
@@ -859,6 +869,8 @@ const AddPropertyForm = () => {
                       </FormItem>
                     )}
                   />
+
+                  {accountRole==='agent'&&<FormField control={form.control} name="agentOwnerEmail" render={({field})=><FormItem><FormLabel>Registered legal owner email</FormLabel><FormControl><Input type="email" placeholder="owner@example.com" {...field}/></FormControl><FormDescription>The owner remains legally separate and must have an active, verified PropBank account.</FormDescription><FormMessage/></FormItem>}/>}
 
                   <FormField
                     control={form.control}

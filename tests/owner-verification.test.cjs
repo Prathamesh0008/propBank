@@ -15,6 +15,7 @@ test('admin linking is atomic, preserves tenancy, uses Firebase email and preven
  const app=seed(),api=route(app,'owner-verification');app.state.users.owner.email='forged@invalid.test';
  assert.equal((await api.POST(request('/owner-verification','admin','POST',body))).status,200);
  assert.equal(app.state.properties.P.ownerUID,'owner');assert.equal(app.state.properties.P.ownerEmail,'owner@test.invalid');assert.equal(app.state.properties.P.ownershipVerification,'verified');assert.equal(app.state.properties.P.ownershipVerificationAudit.actorUID,'admin');assert.equal(app.state.tenants.T.ownerUID,'owner');assert.equal(app.state.tenants.T.userUID,'tenant');
+ const deliveries=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='owner_verification.approve');assert.equal(deliveries.length,3);assert.deepEqual(new Set(deliveries.map(row=>row.recipientUID)),new Set(['tenant','owner','admin']));assert.ok(deliveries.every(row=>row.html.includes('verified')));
  assert.equal((await api.POST(request('/owner-verification','admin','POST',body))).status,409);
 });
 test('verification rejects active tenant as owner and evidence from another property',async()=>{

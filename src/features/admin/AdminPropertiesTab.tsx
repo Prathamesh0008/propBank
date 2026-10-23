@@ -24,6 +24,19 @@ export const AdminPropertiesTab = ({loading,properties,handleViewPropertyDetails
     const date=new Date(property.createdAt);
     return Number.isNaN(date.getTime())?'Not recorded':date.toLocaleString();
   };
+  const presentation=(property:Property)=>{
+    const extended=property as Property&{buildingName?:string};
+    const reportedOwner=property.reportedOwner?.personName||property.reportedOwner?.companyName||'';
+    const awaitingOwnerVerification=property.createdAs==='tenant'&&property.ownershipVerification!=='approved';
+    const ownerName=awaitingOwnerVerification?reportedOwner:property.ownerName;
+    const ownerLabel=awaitingOwnerVerification&&ownerName?`Reported owner: ${ownerName}`:ownerName;
+    return {
+      heading:[extended.buildingName||property.title,property.unitNumber,ownerLabel].filter(Boolean).join(' – '),
+      ownerName,
+      ownerPrefix:awaitingOwnerVerification?'Reported owner':'Owner',
+      ownerEmail:awaitingOwnerVerification?property.reportedOwner?.email:property.ownerEmail,
+    };
+  };
   const visible=properties.filter(property=>filter==="all"||status(property)===filter);
   return (
   <section className={styles.directory} aria-label="All properties">
@@ -32,10 +45,10 @@ export const AdminPropertiesTab = ({loading,properties,handleViewPropertyDetails
       <option value="all">All Properties ({properties.length})</option>{states.map(state=><option key={state} value={state}>{label(state)} ({properties.filter(property=>status(property)===state).length})</option>)}
     </select></label>
     {loading ? <div className={styles.skeletons}>{[1,2,3].map(i=><Skeleton key={i} className="h-24 w-full"/>)}</div> : visible.length===0 ? <div className={styles.empty}><Building2 size={28}/><p>No properties found.</p></div> :
-    <div className={styles.list}>{visible.map(property=><article className={styles.record} key={property.id}>
-      <div className={styles.details}><h3>{property.title}</h3><p>Property ID: {property.id}</p><p>Submitted: {submitted(property)}</p><p className={styles.address}>{property.address}</p><div className={styles.attributes}><span>{property.propertyType}</span><span>{property.listingType}</span><span data-status={property.status}>{property.status}</span><span>{label(status(property))}</span></div><p className={styles.owner}>Owner: {property.ownerName||property.reportedOwner?.personName||property.reportedOwner?.companyName||'Not supplied'} | Email: {property.ownerEmail||property.reportedOwner?.email||'Not supplied'}{property.ownerPhone&&` | ${property.ownerPhone}`}</p>{property.createdAs==='tenant'&&<p className={styles.owner}>Tenant supplied | Owner verification: {property.ownershipVerification||'pending'} | Submitted by: {property.submittedByUID||'Not recorded'}</p>}</div>
+    <div className={styles.list}>{visible.map(property=>{const display=presentation(property);return <article className={styles.record} key={property.id}>
+      <div className={styles.details}>{display.heading&&<h3>{display.heading}</h3>}<div className={styles.meta}><p>Property ID: {property.id}</p><p>Submitted: {submitted(property)}</p></div><p className={styles.address}>{property.address||property.location}</p><div className={styles.attributes}><span>{property.propertyType}</span><span>{property.listingType}</span><span data-status={property.status}>{property.status}</span><span>{label(status(property))}</span></div><p className={styles.owner}>{display.ownerPrefix}: {display.ownerName||'Not supplied'} | Email: {display.ownerEmail||'Not supplied'}{property.ownerPhone&&` | ${property.ownerPhone}`}</p>{property.createdAs==='tenant'&&<p className={styles.owner}>Tenant supplied | Owner verification: {property.ownershipVerification||'pending'} | Submitted by: {property.submittedByUID||'Not recorded'}</p>}</div>
       <Button className={styles.action} variant="outline" size="sm" onClick={()=>handleViewPropertyDetails(property.id)} disabled={loadingProperty}>{loadingProperty&&selectedProperty?.id===property.id?<Loader2 className="h-4 w-4 animate-spin"/>:<ArrowUpRight size={16}/>}<span>View details</span></Button>
-    </article>)}</div>}
+    </article>})}</div>}
   </section>
 );
 };

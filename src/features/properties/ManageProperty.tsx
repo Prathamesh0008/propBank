@@ -3,6 +3,7 @@
 import workspaceStyles from './ManageProperty.module.css';
 import {OwnerVerificationStatus} from '@/features/admin/OwnerVerification';
 import {BrokerEnquiries} from '@/features/enquiries/EnquiryInbox';
+import CommissionWorkspace from '@/features/commissions/CommissionWorkspace';
 import ListingModeration from './ListingModeration';
 import {ProductDashboard} from './PropertyHub';
 import { propertyCategoryMatches } from '@/lib/client-workflows';
@@ -657,6 +658,7 @@ const ManageProperty = () => {
 
         <ProductDashboard/>
         <BrokerEnquiries/>
+        <CommissionWorkspace/>
         {/* Filters Card */}
         <Card className={`${workspaceStyles.filters} mb-8 border shadow-sm`}>
           <CardContent className="p-4 sm:p-6">

@@ -1,52 +1,74 @@
-# PropBank Email Events — Phase 2 Report
-
-Date: 2026-10-21
+# PropBank Phase 2 — Transactional Email Events
 
 ## Status
 
-- **PASS — Central delivery records:** Transactional events use deterministic idempotency keys and persist recipient role/UID, related property/record IDs, template/version, status, retry count, timestamps, and sanitized failures in the server-only `email_deliveries` collection.
-- **PASS — Recipient controls:** Registered-user mail resolves the current active persisted profile. Administrative mail accepts only the configured `ADMIN_EMAIL`. Failed-delivery retry cannot alter recipient or content.
-- **PASS — Provider behavior:** Resend receives an idempotency header and HTML/plaintext content. Missing provider configuration and provider errors produce a failed delivery instead of a false sent status.
-- **PASS — Main activity hooks:** Registration, verified mobile-number changes, property creation/admin creation, listing moderation, tenant assignment/replacement/removal, rental-term changes, agreement requests/termination, visit activity, negotiation updates, service-request updates, and owner-verification decisions now create explicit events after their business write.
-- **PASS — Mobile-number security:** A changed number requires a Firebase token with recent authentication and a matching verified `phone_number` claim. The API returns a blocked error when verified phone ownership is unavailable.
-- **PASS — Admin management:** Persisted admins can inspect privacy-masked delivery history, filter it, and retry eligible failures. Non-admin access is denied at the service/API layer. The UI uses its own CSS Module.
-- **PASS — Brand templates:** Central HTML/plaintext output uses the current PropBank wordmark and Basalt, Chalk, Limestone, and Clay palette with authenticated application links when an app URL is configured.
-- **BLOCKED — Live delivery:** No real email was sent. Resend domain/sender acceptance, production Firestore rules, and deployed delivery behavior remain unverified.
-- **NOT STARTED — Recurring reminders:** Rent and agreement reminder scheduling remains Phase 3 and was intentionally untouched.
+**PASS (local focused verification)** — Major persisted account, property, tenancy, agreement, visit, negotiation, maintenance, owner-verification and rent-payment activities now record branded transactional deliveries through the existing `email_deliveries` service. No live email was sent and no production data was accessed.
 
-## Files changed for Phase 2
+## Existing functionality reused
 
-- `src/lib/server/firestore.ts`
-- `src/lib/server/services/resend.ts`
+- Existing Resend server integration, stable provider idempotency keys and sanitized provider errors.
+- Existing `email_deliveries` records, retry leases, retry-count limits and admin-only history/retry APIs.
+- Existing admin email-delivery history UI and its CSS Module; no new UI was needed.
+- Existing Firestore transaction outbox for property submission and moderation decisions.
+- Existing PropBank Basalt, Chalk and Clay responsive HTML/plaintext template wrapper.
+- Existing notification records and all underlying business operations, authorization and relationship checks.
+
+## Implemented and repaired
+
+- Added reusable persisted user-event recording with recipient eligibility resolved from active server-side user records.
+- Registration welcome delivery for newly persisted accounts.
+- Verified mobile-number change protection: self-service only, Firebase-verified new phone claim, authentication no older than five minutes, user/admin email deliveries, and an administrator-visible security audit. When Firebase phone verification is absent or does not match, the change is blocked.
+- Property submission now addresses the selected persisted owner when an administrator creates a property for that user; administrator notification remains included.
+- Tenant assignment, replacement and removal events include the owner, current tenant, and affected former tenant only where applicable.
+- Rental-term update events for owners and active linked tenants.
+- Agreement renewal/termination activity events for the linked owner and active linked tenant.
+- Visit schedule/update/cancellation events for the requester and property owner.
+- Negotiation state events for only the persisted owner, customer and assigned broker participants.
+- Maintenance request creation/update events for the requester, related owner and administrator as applicable.
+- Owner-verification decision events for the submitting tenant, linked owner where applicable, and deciding administrator.
+- First transition of a monthly ledger entry to `paid` emits a rent-payment event for the owner and active linked tenants.
+- Stable event IDs and recipient-specific idempotency keys prevent duplicate delivery records for retries or repeated event submission. Retry APIs cannot change recipients or payloads.
+
+## Files modified in Phase 2
+
 - `src/lib/server/services/transactional-email.ts`
-- `src/lib/server/services/property-effects.ts`
 - `src/lib/server/services/users.ts`
 - `src/lib/server/services/properties.ts`
-- `src/lib/server/services/group2-mail.ts`
+- `src/lib/server/services/property-effects.ts`
 - `src/lib/server/services/tenants.ts`
 - `src/lib/server/services/agreements.ts`
 - `src/lib/server/services/visits.ts`
 - `src/lib/server/services/negotiations.ts`
 - `src/lib/server/services/migration-remainder.ts`
 - `src/lib/server/services/owner-verification.ts`
-- `src/app/api/admin/email-deliveries/route.ts`
-- `src/app/api/admin/email-deliveries/[id]/retry/route.ts`
-- `src/features/admin/AdminEmailDeliveries.tsx`
-- `src/features/admin/AdminEmailDeliveries.module.css`
-- `src/features/admin/AdminPortal.tsx`
-- `tests/fixtures/native-server.cjs`
+- `src/lib/server/services/property-hub.ts`
 - `tests/email-events-phase.test.cjs`
+- `EMAIL_EVENTS_PHASE_REPORT.md`
 
-## Verification
+Other dirty files shown by Git belong to the completed Phase 1 work or pre-existing workspace changes and were preserved.
 
-- **PASS — `npm run typecheck`:** exit 0.
-- **PASS — focused Node checks:** `node --test tests/email-events-phase.test.cjs tests/admin-property-operations.test.cjs` — 10 passed, 0 failed, 0 skipped.
-- Tests cover stable-event deduplication, delivery status persistence, inactive-recipient rejection, provider failure sanitization, persisted-admin access, non-admin denial, immutable retry payloads, successful retry, and regression of admin property/tenant operations.
-- Per instruction, Playwright, browser/E2E suites, the complete functional suite, production build, live email delivery, and production data operations were not run.
+## Focused verification
 
-## Remaining integration requirements
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | **PASS** — exit code 0 |
+| `node --test tests/email-events-phase.test.cjs` | **PASS** — 6 passed, 0 failed, 0 skipped |
+| Stable-event deduplication | **PASS** |
+| Current relationship recipient selection | **PASS** |
+| Ineligible recipient suppression | **PASS** |
+| Provider failure status and sanitized error | **PASS** |
+| Persisted-admin delivery-history restriction | **PASS** |
+| Retry payload/recipient immutability | **PASS** |
+| Recent Firebase phone verification and security audit | **PASS** |
+| `git diff --check` | **PASS** — no whitespace errors; Git emitted only line-ending conversion warnings |
 
-- Confirm `RESEND_API_KEY`, `FROM_EMAIL`, `ADMIN_EMAIL`, and `APP_URL`/`NEXT_PUBLIC_APP_URL` in the intended non-production environment without exposing their values.
-- Deploy Firestore rules that deny browser access to `email_deliveries`; the application accesses it only through admin-authorized server routes.
-- Exercise each event with isolated staging accounts and a Resend test recipient before production approval. Live delivery must not be claimed from mocked provider tests.
-- Production deployment, scheduler changes, real-recipient sends, and production-record changes require separate approval.
+Per instruction, Playwright, browser E2E, the full functional suite and a production build were not run.
+
+## Environment and unverified items
+
+- Required for live sending: `RESEND_API_KEY`, `FROM_EMAIL`, `ADMIN_EMAIL`, and `APP_URL` (or `NEXT_PUBLIC_APP_URL` for link construction). Values were not printed or changed.
+- **BLOCKED for live verification:** Resend credentials, sender-domain validation, approved recipients, Firestore production rules/indexes and deployed retry behavior were not exercised. No real message was sent.
+- **BLOCKED when Firebase phone authentication is not configured:** mobile-number changes correctly return an error instead of accepting an unverified number.
+- Property submission/moderation uses an atomic Firestore outbox in the same transaction. Other activity hooks persist delivery records immediately after their successful business commit, so email-provider failure is recoverable, but a Firestore outage precisely between the business commit and delivery-record creation can still lose that notification. Closing that narrow durability gap requires moving each legacy business mutation to an in-transaction outbox write; this was not claimed as verified here.
+- Browser rendering of templates and the existing admin delivery-history screen was not tested in this fast phase.
+- Monthly rent and agreement reminder schedules were not changed; they remain Phase 3 scope.

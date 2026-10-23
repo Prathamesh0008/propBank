@@ -7,7 +7,6 @@ import { COLLECTIONS, getDatabase } from '../firestore';
 import { ApiError, jsonResponse, plainError } from '../http';
 import { identity, readObject } from './domain-contracts';
 import { sendEmail } from './resend';
-import { getUser } from './users';
 import { isRecord, stringValue as s, wireValue, type RecordData } from './contracts';
 
 export type TransactionalEmailEvent={
@@ -33,9 +32,9 @@ export function brandedEmail(title:string,bodyHtml:string,bodyText:string,action
 
 async function resolveRecipient(event:TransactionalEmailEvent) {
   if(event.recipientUID) {
-    const profile=await getUser(event.recipientUID);
-    if(!profile||profile.isActive===false||!emailPattern.test(s(profile.email)))return '';
-    return s(profile.email).toLowerCase();
+    const snapshot=await getDatabase().collection(COLLECTIONS.users).doc(event.recipientUID).get(),profile=snapshot.data();
+    if(!snapshot.exists||profile?.isActive===false||!emailPattern.test(s(profile?.email)))return '';
+    return s(profile?.email).toLowerCase();
   }
   const configured=(process.env.ADMIN_EMAIL||'').trim().toLowerCase();
   return event.recipientRole==='admin'&&configured&&event.recipientEmail?.toLowerCase()===configured&&emailPattern.test(configured)?configured:'';
@@ -77,12 +76,20 @@ export async function enqueueTransactionalEmail(event:TransactionalEmailEvent) {
 }
 
 export function queueTransactionalEmail(event:TransactionalEmailEvent){after(async()=>{try{const result=await enqueueTransactionalEmail(event);if(result.queued&&result.id)await deliver(result.id);}catch{/* Business operation already committed; delivery remains best effort until a transactional caller supplies the outbox write. */}});}
-export async function processTransactionalEmail(event:TransactionalEmailEvent){const result=await enqueueTransactionalEmail(event);if(!result.id)return result.reason==='recipient_ineligible'?'skipped':'failed';return deliver(result.id);}
-export function queueUserEvent(event:UserEvent) {
+export async function processTransactionalEmail(event:TransactionalEmailEvent){
+  const result=await enqueueTransactionalEmail(event);if(!result.id)return result.reason==='recipient_ineligible'?'skipped':'failed';
+  const outcome=await deliver(result.id);if(outcome!=='skipped')return outcome;
+  const current=await deliveries().doc(result.id).get();return current.data()?.status==='sent'?'sent':current.data()?.status==='failed'?'failed':'skipped';
+}
+export async function persistUserEvent(event:UserEvent) {
   const content=brandedEmail(event.title||event.subject,event.bodyHtml,event.bodyText,event.action);
   const recipients:Array<{uid?:string;role:string;email?:string}>=event.recipients||event.recipientUIDs?.map(uid=>({uid,role:'user'}))||[];
-  for(const recipient of recipients)queueTransactionalEmail({eventType:event.eventType,eventId:event.eventId,recipientUID:recipient.uid,recipientRole:recipient.role,recipientEmail:recipient.email,propertyId:event.propertyId,recordId:event.recordId,templateId:event.templateId,templateVersion:1,subject:event.subject,...content});
+  const ids:string[]=[];
+  for(const recipient of recipients){const result=await enqueueTransactionalEmail({eventType:event.eventType,eventId:event.eventId,recipientUID:recipient.uid,recipientRole:recipient.role,recipientEmail:recipient.email,propertyId:event.propertyId,recordId:event.recordId,templateId:event.templateId,templateVersion:1,subject:event.subject,...content});if(result.queued&&result.id)ids.push(result.id);}
+  if(ids.length)after(async()=>{for(const id of ids)await deliver(id);});
+  return {recorded:ids.length};
 }
+export function queueUserEvent(event:UserEvent){after(async()=>{try{await persistUserEvent(event);}catch{console.error('Transactional email event persistence failed',{eventType:event.eventType,eventId:event.eventId});}});}
 
 export async function listEmailDeliveries(request:Request) {
   const user=await identity(request);if(user.role!=='admin')throw new AccessError(403,'Administrator access required');
@@ -99,10 +106,12 @@ async function reminderIsCurrent(value:RecordData){
   const snapshot=await getDatabase().collection(COLLECTIONS.properties).doc(s(value.propertyId)).get();if(!snapshot.exists)return false;
   const property=snapshot.data()!;if(property.isActive!==true||property.status==='inactive'||property.rentalStatus!=='rented'||['terminated','expired','cancelled'].includes(s(property.agreementStatus)))return false;
   const tenants=(Array.isArray(property.tenants)?property.tenants:[]).filter((tenant:RecordData)=>tenant&&tenant.isActive===true),tenant=tenants.find((entry:RecordData)=>s(entry.id||entry.userUID)===s(value.tenancyId));if(!tenant)return false;
-  if(value.eventType==='agreement.expiry_reminder')return reminderDate(tenant.leaseEndDate||property.agreementEndDate)===s(value.reminderDueDate)&&s(tenant.agreementVersion||property.agreementVersion||property.tenancyRevision||value.reminderDueDate)===s(value.agreementVersion);
+  if(value.recipientRole==='owner'&&s(value.recipientUID)!==s(property.ownerUID)||value.recipientRole==='tenant'&&s(value.recipientUID)!==s(tenant.userUID))return false;
+  const expectedSchedule=(due:string)=>{const parsed=Date.parse(`${due}T00:00:00Z`);return Number.isFinite(parsed)?new Date(parsed-Number(value.reminderOffset||0)*86400000).toISOString().slice(0,10):'';};
+  if(value.eventType==='agreement.expiry_reminder'){const due=reminderDate(tenant.leaseEndDate||property.agreementEndDate);return due===s(value.reminderDueDate)&&expectedSchedule(due)===s(value.scheduledFor)&&s(tenant.agreementVersion||property.agreementVersion||property.tenancyRevision||value.reminderDueDate)===s(value.agreementVersion);}
   const ledger=isRecord(property.rentLedger)?property.rentLedger:{},period=s(value.rentPeriod);if(isRecord(ledger[period])&&ledger[period].status==='paid')return false;
   const due=Number(tenant.paymentDueDate||property.paymentDueDate),match=/^(\d{4})-(\d{2})$/.exec(period);if(!match||!Number.isInteger(due)||due<1||due>31)return false;const year=Number(match[1]),month=Number(match[2]),day=Math.min(due,new Date(Date.UTC(year,month,0)).getUTCDate()),currentDue=`${period}-${String(day).padStart(2,'0')}`;
-  return currentDue===s(value.reminderDueDate)&&s(tenant.monthlyRent||property.monthlyRent)===s(value.reminderAmount);
+  return currentDue===s(value.reminderDueDate)&&expectedSchedule(currentDue)===s(value.scheduledFor)&&s(tenant.monthlyRent||property.monthlyRent)===s(value.reminderAmount);
 }
 
 export async function retryEmailDelivery(request:Request,id:string) {

@@ -30,10 +30,16 @@ export const AdminAgentsTab = ({
     try{await workflowRequest(`users/${uid}`,{role},'PATCH');await cache.invalidateQueries({queryKey:['allUsers']});}
     catch(error){setFailure(error instanceof Error?error.message:'Could not update user role');}finally{setBusy('');}
   }
+  async function changeStatus(uid:string,isActive:boolean){
+    if(!window.confirm(`${isActive?'Activate':'Deactivate'} this account?`))return;
+    setBusy(uid);setFailure('');
+    try{await workflowRequest(`users/${uid}`,{isActive},'PATCH');await cache.invalidateQueries({queryKey:['allUsers']});}
+    catch(error){setFailure(error instanceof Error?error.message:'Could not update account status');}finally{setBusy('');}
+  }
   return (
     <div className={`${styles.directory} space-y-6`}>
       {failure&&<p role="alert" className="text-destructive">{failure}</p>}
-      <Card className={styles.intro}><CardHeader><CardTitle>User roles</CardTitle><CardDescription>Owner and tenant access comes from property relationships. Agent access is assigned by an administrator.</CardDescription></CardHeader><CardContent className="space-y-3">{agents.filter(user=>user.role!=='admin').map(user=><div key={user.uid} className={`${styles.personRow} flex flex-wrap items-center justify-between gap-3`}><span className="min-w-0 break-words">{user.name} · {user.email}</span><Button variant="outline" disabled={busy===user.uid} onClick={()=>void changeRole(user.uid,user.role==='agent'?'individual':'agent')}>{user.role==='agent'?'Remove agent role':'Assign agent role'}: {user.name}</Button></div>)}</CardContent></Card>
+      <Card className={styles.intro}><CardHeader><CardTitle>User roles</CardTitle><CardDescription>Owner and tenant access comes from property relationships. New users may select an agent account during registration; later role changes remain administrator-controlled.</CardDescription></CardHeader><CardContent className="space-y-3">{agents.filter(user=>user.role!=='admin').map(user=><div key={user.uid} className={`${styles.personRow} flex flex-wrap items-center justify-between gap-3`}><span className="min-w-0 break-words">{user.name} · {user.email}</span><Button variant="outline" disabled={busy===user.uid} onClick={()=>void changeRole(user.uid,user.role==='agent'?'individual':'agent')}>{user.role==='agent'?'Remove agent role':'Assign agent role'}: {user.name}</Button></div>)}</CardContent></Card>
       {loading ? (
         <Card className={styles.section}>
           <CardContent className="pt-6">
@@ -80,6 +86,7 @@ export const AdminAgentsTab = ({
                         <Button variant="outline" size="sm" onClick={() => handleViewUserDetails(agent)}>
                           View Details
                         </Button>
+                        <Button variant="outline" size="sm" disabled={busy===agent.uid} onClick={()=>void changeStatus(agent.uid,!agent.isActive)}>{agent.isActive?'Deactivate':'Activate'}</Button>
                         <Badge variant={agent.isActive ? "default" : "secondary"} className="text-xs">
                           {agent.isActive ? "Active" : "Inactive"}
                         </Badge>
@@ -125,6 +132,7 @@ export const AdminAgentsTab = ({
                         <Button variant="outline" size="sm" onClick={() => handleViewUserDetails(agent)}>
                           View Details
                         </Button>
+                        <Button variant="outline" size="sm" disabled={busy===agent.uid} onClick={()=>void changeStatus(agent.uid,!agent.isActive)}>{agent.isActive?'Deactivate':'Activate'}</Button>
                         <div className="flex items-center gap-2">
                           <Badge variant="outline" className="text-xs capitalize text-purple-700 border-purple-200 bg-purple-50">
                             {agent.role}

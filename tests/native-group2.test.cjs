@@ -64,15 +64,15 @@ test('visit CRUD validates partial changes and never upserts a missing visit',as
  for(const uid of ['owner','admin'])assert.equal((await detail.PUT(request('/visits/missing',uid,'PUT',{}),context('missing'))).status,404);
  assert.equal((await root.GET(request('/visits?userId=owner','other'))).status,403);
  assert.equal((await detail.DELETE(request('/visits/'+visit.id,'owner','DELETE'),context(visit.id))).status,200);
- await app.flush();assert.ok(app.emails.some(mail=>/Visit Scheduled/.test(mail.subject)));assert.ok(app.emails.some(mail=>/Property visit updated/.test(mail.subject)));
+ await app.flush();assert.ok(!app.emails.some(mail=>/Visit Scheduled/.test(mail.subject)));assert.ok(app.emails.some(mail=>/Property visit updated/.test(mail.subject)));
 });
 
 test('visit status queries require recorded completion, perform no writes and retain omission of empty visits',async()=>{
  const app=isolated({users,visits:{past:{...defaults,id:'past',userId:'owner',visitDate:new Date('2020-01-01'),isCompleted:false,status:'scheduled'},future:{...defaults,id:'future',userId:'owner',visitDate:new Date('2099-01-01'),isCompleted:false},manual:{...defaults,id:'manual',userId:'owner',visitDate:new Date('2098-01-01'),isCompleted:true}}});
  const r=route(app,'visits');const active=await json(await r.GET(request('/visits?userId=owner&status=active','owner')));assert.deepEqual(active.visits.map(v=>v.id),['past','future']);assert.equal(app.state.visits.past.status,'scheduled');assert.equal(app.writes.length,0);
  const completed=await json(await r.GET(request('/visits?userId=owner&status=completed','owner')));assert.deepEqual(completed.visits.map(v=>v.id),['manual']);
- assert.deepEqual(await json(await r.GET(request('/visits?userId=tenant&status=active','tenant'))),{success:true,message:'Visits retrieved successfully'});
- const all=await json(await r.GET(request('/visits?userId=owner','owner')));assert.deepEqual(all.visits.map(v=>v.id),['past','manual','future']);assert.equal(app.reads.at(-1).order[0],'visitDate');
+ assert.deepEqual(await json(await r.GET(request('/visits?userId=tenant&status=active','tenant'))),{success:true,message:'Visits retrieved successfully',visits:[]});
+ const all=await json(await r.GET(request('/visits?userId=owner','owner')));assert.deepEqual(all.visits.map(v=>v.id),['past','manual','future']);assert.equal(app.reads.at(-1).order,null);
 });
 test('tenant creation preserves detailed and embedded schemas, historical fields, supplied UID and rental links',async()=>{
  const app=isolated({users,properties:{P:{...properties.P,tenants:[]}}}),r=route(app,'tenants');const input={propertyId:'P',ownerUID:'owner',tenants:[{firstName:'First',lastName:'Last',email:'tenant@test.invalid',phone:'456',userUID:'tenant',monthlyRent:'1000',noticePeriod:'1 Month',isMarried:true,spouse:{firstName:'Spouse'},leaseStartDate:'2025-01-01'}]};
@@ -126,7 +126,7 @@ test('tenant requests persist pending status without changing owner-approved ter
 });
 
 test('notifications retain anonymous inquiry, enrichment, property query precedence, admin permissions and array response',async()=>{
- const app=isolated({users,properties}),r=route(app,'admin/notifications');
+ const app=isolated({users,properties});app.env.ADMIN_EMAIL='admin@test.invalid';const r=route(app,'admin/notifications');
  const inquiry=await r.POST(request('/admin/notifications',null,'POST',{type:'general_inquiry',userName:'Guest',userEmail:'guest@test.invalid',inquiryType:'buy',propertyType:'residential',userPhone:'1234567890',requestVisit:true,visitDate:'2030-01-01',visitTime:'09:00 AM',message:'Keep'}));assert.equal(inquiry.status,201);assert.equal((await json(inquiry)).notification.priority,'medium');
  assert.equal((await r.POST(request('/admin/notifications',null,'POST',{type:'property_enquiry',userId:'owner'}))).status,401);
  assert.equal((await r.POST(request('/admin/notifications','tenant','POST',{type:'property_enquiry',userId:'owner'}))).status,403);

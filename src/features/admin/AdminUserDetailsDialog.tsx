@@ -29,10 +29,12 @@ const AdminUserDetailsDialog: React.FC<AdminUserDetailsDialogProps> = ({
 }) => {
     const [inspectionReports, setInspectionReports] = useState<any[]>([]);
     const [loadingReports, setLoadingReports] = useState(false);
+    const [account,setAccount]=useState<any>(user);
 
     useEffect(() => {
         if (isOpen && user?.uid) {
             fetchInspectionReports();
+            void apiFetch(`${API_BASE_URL}/users/${user.uid}`).then(response=>response.json()).then(data=>{if(data.user)setAccount(data.user);}).catch(()=>setAccount(user));
         }
     }, [isOpen, user?.uid]);
 
@@ -52,6 +54,7 @@ const AdminUserDetailsDialog: React.FC<AdminUserDetailsDialogProps> = ({
     };
 
     if (!user) return null;
+    const detail=account||user;
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -105,6 +108,16 @@ const AdminUserDetailsDialog: React.FC<AdminUserDetailsDialogProps> = ({
                                 </div>
                             </div>
                         </div>
+
+                        <div className={styles.authGrid}>
+                            <div><span>Verified email</span><strong>{detail.emailVerified?'Yes':'No'}</strong></div>
+                            <div><span>Authentication providers</span><strong>{detail.providerIds?.join(', ')||'Not recorded'}</strong></div>
+                            <div><span>Registered</span><strong>{detail.createdAt?new Date(detail.createdAt).toLocaleString():'Not recorded'}</strong></div>
+                            <div><span>Last recorded login</span><strong>{detail.lastSuccessfulSignInAt?new Date(detail.lastSuccessfulSignInAt).toLocaleString():'Not recorded'}</strong></div>
+                            <div><span>Owned properties</span><strong>{detail.relationships?.ownedPropertyIds?.length||0}</strong></div>
+                            <div><span>Rented properties</span><strong>{detail.relationships?.rentedPropertyIds?.length||0}</strong></div>
+                        </div>
+                        <div className={styles.activity}><h3>Authentication activity</h3>{detail.authActivity?.length?detail.authActivity.map((event:any)=><div key={event.id}><strong>{String(event.eventType).replaceAll('_',' ')}</strong><span>{event.createdAt?new Date(event.createdAt).toLocaleString():''}</span></div>):<p>No server-recorded activity.</p>}</div>
 
                         {/* Inspection Reports Section */}
                         <div className="mt-8 space-y-4">

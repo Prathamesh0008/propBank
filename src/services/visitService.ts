@@ -10,12 +10,13 @@ interface Visit {
   description: string;
   propertyId?: string;
   visitDate: string;
-  reminderType: 'email';
+  reminderType: 'email' | 'none';
   reminderTime: number;
   status: string;
   isCompleted: boolean;
   createdAt: string;
   updatedAt: string;
+  managementVersion?: number;
   notifiedAt?: string;
 }
 
@@ -24,7 +25,7 @@ interface CreateVisitRequest {
   description?: string;
   propertyId?: string;
   visitDate: string; // ISO 8601 format
-  reminderType: 'email';
+  reminderType: 'email' | 'none';
   reminderTime: number;
 }
 
@@ -36,6 +37,7 @@ interface UpdateVisitRequest {
   reminderTime?: number;
   status?: string;
   isCompleted?: boolean;
+  expectedVersion?: number;
 }
 
 interface VisitResponse {
@@ -46,39 +48,30 @@ interface VisitResponse {
 }
 
 class VisitService {
-  private async getAuthHeaders(): Promise<Record<string, string>> {
-    const user = auth.currentUser;
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    
-    if (user) {
-      headers['X-User-ID'] = user.uid;
-    }
-    
-    return headers;
+  private getHeaders(): Record<string, string> {
+    return {'Content-Type': 'application/json'};
+  }
+
+  private async read(response:Response):Promise<VisitResponse> {
+    const type=response.headers.get('content-type')||'';
+    const data=type.includes('application/json')?await response.json() as VisitResponse:null;
+    if(!response.ok||!data?.success)throw new Error(data?.message||`Visit request failed (${response.status})`);
+    return data;
   }
 
   async createVisit(visitData: CreateVisitRequest): Promise<Visit> {
-    const headers = await this.getAuthHeaders();
-    
     const response = await apiFetch(`${API_BASE_URL}/visits`, {
       method: 'POST',
-      headers,
+      headers: this.getHeaders(),
       body: JSON.stringify(visitData),
     });
 
-    const data: VisitResponse = await response.json();
-    
-    if (!data.success) {
-      throw new Error(data.message || 'Failed to create visit');
-    }
+    const data=await this.read(response);
 
     return data.visit!;
   }
 
-  async getVisitsByUser(userId?: string, status?: 'active' | 'completed'): Promise<Visit[]> {
-    const headers = await this.getAuthHeaders();
+  async getVisitsByUser(userId?: string, status?: 'active' | 'completed' | 'cancelled',signal?:AbortSignal): Promise<Visit[]> {
     const user = auth.currentUser;
     const targetUserId = userId || user?.uid;
 
@@ -93,66 +86,41 @@ class VisitService {
 
     const response = await apiFetch(url, {
       method: 'GET',
-      headers,
+      headers: this.getHeaders(),signal,
     });
-
-    const data: VisitResponse = await response.json();
-    
-    if (!data.success) {
-      throw new Error(data.message || 'Failed to fetch visits');
-    }
+    const data=await this.read(response);
 
     return data.visits || [];
   }
 
   async getVisitById(visitId: string): Promise<Visit> {
-    const headers = await this.getAuthHeaders();
-    
     const response = await apiFetch(`${API_BASE_URL}/visits/${visitId}`, {
       method: 'GET',
-      headers,
+      headers: this.getHeaders(),
     });
-
-    const data: VisitResponse = await response.json();
-    
-    if (!data.success) {
-      throw new Error(data.message || 'Failed to fetch visit');
-    }
+    const data=await this.read(response);
 
     return data.visit!;
   }
 
   async updateVisit(visitId: string, updateData: UpdateVisitRequest): Promise<Visit> {
-    const headers = await this.getAuthHeaders();
-    
     const response = await apiFetch(`${API_BASE_URL}/visits/${visitId}`, {
       method: 'PUT',
-      headers,
+      headers: this.getHeaders(),
       body: JSON.stringify(updateData),
     });
 
-    const data: VisitResponse = await response.json();
-    
-    if (!data.success) {
-      throw new Error(data.message || 'Failed to update visit');
-    }
+    const data=await this.read(response);
 
     return data.visit!;
   }
 
   async deleteVisit(visitId: string): Promise<void> {
-    const headers = await this.getAuthHeaders();
-    
     const response = await apiFetch(`${API_BASE_URL}/visits/${visitId}`, {
       method: 'DELETE',
-      headers,
+      headers: this.getHeaders(),
     });
-
-    const data: VisitResponse = await response.json();
-    
-    if (!data.success) {
-      throw new Error(data.message || 'Failed to delete visit');
-    }
+    await this.read(response);
   }
 
   async toggleVisitCompletion(visitId: string, isCompleted: boolean): Promise<Visit> {

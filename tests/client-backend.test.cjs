@@ -12,7 +12,7 @@ test('tenant-submitted properties link only the verified submitter, remain priva
  assert.equal((await route(app,'properties/[id]').GET(request(`/properties/${id}`,null),context(id))).status,404);
  assert.equal((await route(app,'properties/[id]').GET(request(`/properties/${id}`,'other'),context(id))).status,404);
  assert.equal((await route(app,'properties/[id]').PUT(request(`/properties/${id}`,'owner','PUT',{monthlyRent:'1'}),context(id))).status,403);
- await app.flush();assert.equal(app.emails.length,0);
+ await app.flush();assert.equal(app.emails.length,1);assert.equal(app.emails[0].to[0],'owner@test.invalid');
 });
 
 test('tenant property intake rejects invalid mode, spoofed owner fields and missing rental terms before writing',async()=>{
@@ -48,20 +48,25 @@ test('renewal keeps old terms until owner approval and persists snapshots and sy
  const proposal={propertyId:'P',terms:{monthlyRent:'35000',agreementStartDate:'2030-01-01',agreementEndDate:'2030-12-31'}};
  assert.equal((await req.POST(request('/agreements/request-renewal','other','POST',proposal))).status,403);
  const response=await req.POST(request('/agreements/request-renewal','tenant','POST',proposal));assert.equal(response.status,200);const body=await response.json();
+ let rows=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='agreement.renewal_request');assert.equal(rows.length,2);assert.deepEqual(new Set(rows.map(row=>row.recipientUID)),new Set(['owner','tenant']));
  assert.equal(app.state.properties.P.monthlyRent,'30000');assert.equal(body.request.status,'pending');assert.equal(body.request.requestedBy,'tenant');
  assert.equal((await req.POST(request('/agreements/request-renewal','tenant','POST',{...proposal,action:'approve',requestId:body.request.id}))).status,403);
  assert.equal((await owner.POST(request('/agreements/renew','admin','POST',{propertyId:'P',action:'approve',requestId:body.request.id}))).status,403);
  assert.equal((await owner.POST(request('/agreements/renew','owner','POST',{propertyId:'P',action:'approve',requestId:'stale'}))).status,409);
  assert.equal((await owner.POST(request('/agreements/renew','owner','POST',{propertyId:'P',action:'approve',requestId:body.request.id}))).status,200);
+ rows=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='agreement.renewal_approve');assert.equal(rows.length,2);assert.deepEqual(new Set(rows.map(row=>row.recipientUID)),new Set(['owner','tenant']));assert.ok(rows.every(row=>row.html.includes('renewed')));
  assert.equal(app.state.properties.P.monthlyRent,'35000');assert.equal(app.state.tenants.T.monthlyRent,'35000');assert.equal(app.state.properties.P.agreementHistory.length,2);assert.equal(app.state.properties.P.agreementHistory[1].previousTerms.monthlyRent,'30000');
  assert.equal((await owner.POST(request('/agreements/renew','owner','POST',{propertyId:'P',action:'approve',requestId:body.request.id}))).status,409);
 });
+
+test('renewal rejection notifies the current owner and tenant and preserves the active tenancy',async()=>{const app=isolated({users,properties}),tenant=route(app,'agreements/request-renewal'),owner=route(app,'agreements/renew');const requestResponse=await tenant.POST(request('/agreements/request-renewal','tenant','POST',{propertyId:'P',terms:{monthlyRent:'50000',agreementStartDate:'2030-01-01',agreementEndDate:'2030-12-31'}}));assert.equal(requestResponse.status,200);const id=(await requestResponse.json()).request.id;const response=await owner.POST(request('/agreements/renew','owner','POST',{propertyId:'P',action:'reject',requestId:id}));assert.equal(response.status,200);assert.equal(app.state.properties.P.agreementRequest.status,'rejected');assert.equal(app.state.properties.P.rentalStatus,'rented');const rows=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='agreement.renewal_reject');assert.equal(rows.length,2);assert.deepEqual(new Set(rows.map(row=>row.recipientUID)),new Set(['owner','tenant']));assert.ok(rows.every(row=>row.subject==='Agreement activity updated'));});
 
 test('termination records notice dates and retains inactive tenancy and prior agreement history',async()=>{
  const app=isolated({users,properties:{P:{...properties.P,agreementStartDate:'2029-01-01',agreementEndDate:'2030-12-31'}},tenants:{T:{...properties.P.tenants[0],propertyId:'P',ownerUID:'owner'}}});const r=route(app,'agreements/terminate');
  assert.equal((await r.POST(request('/agreements/terminate','other','POST',{propertyId:'P'}))).status,403);
  assert.equal((await r.POST(request('/agreements/terminate','owner','POST',{propertyId:'P',noticePeriod:'1 Month',noticeStartDate:'bad',terminationDate:'2030-02-01'}))).status,400);
  assert.equal((await r.POST(request('/agreements/terminate','owner','POST',{propertyId:'P',noticePeriod:'1 Month',noticeStartDate:'2030-01-01',terminationDate:'2030-02-01'}))).status,200);
+ let rows=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='agreement.termination_request');assert.equal(rows.length,2);assert.deepEqual(new Set(rows.map(row=>row.recipientUID)),new Set(['owner','tenant']));
  assert.equal(app.state.properties.P.agreementStatus,'notice_served');assert.equal(app.state.properties.P.noticeStartDate,'2030-01-01T00:00:00.000Z');
  assert.equal((await r.POST(request('/agreements/terminate','owner','POST',{propertyId:'P'}))).status,200);
  assert.equal(app.state.properties.P.rentalStatus,'available');assert.equal(app.state.properties.P.tenants[0].isActive,false);assert.equal(app.state.tenants.T.isActive,false);assert.equal(app.state.properties.P.agreementHistory[1].previousTerms.agreementEndDate,'2030-12-31');
@@ -70,13 +75,16 @@ test('termination records notice dates and retains inactive tenancy and prior ag
 
 test('service requests authorize property membership, validate admin resolutions and retain archive history',async()=>{
  const app=isolated({users,properties,services:{S:{...defaults,id:'S',name:'Plumbing',isActive:true}}});const root=route(app,'service-requests');
+ app.env.ADMIN_EMAIL='admin@test.invalid';
  const input={userUID:'other',propertyId:'P',serviceId:'S',message:'Leakage'};assert.equal((await root.POST(request('/service-requests','other','POST',input))).status,403);
  const response=await root.POST(request('/service-requests','tenant','POST',{...input,userUID:'tenant'}));assert.equal(response.status,201);const id=(await response.json()).serviceRequest.id;const detail=route(app,'service-requests/[id]');
  const notifications=await (await route(app,'admin/notifications').GET(request('/admin/notifications','admin'))).json();assert.ok(notifications.some(n=>n.relatedId===id));
+ let deliveries=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='maintenance.created');assert.equal(deliveries.length,3);assert.deepEqual(new Set(deliveries.map(row=>row.recipientUID||row.recipientEmail)),new Set(['tenant','owner','admin@test.invalid']));assert.ok(deliveries.every(row=>row.html.includes('Plumbing')));
  assert.equal((await detail.PUT(request(`/service-requests/${id}`,'owner','PUT',{status:'completed'}),context(id))).status,403);
  assert.equal((await detail.PUT(request(`/service-requests/${id}`,'admin','PUT',{status:'invalid'}),context(id))).status,400);
  assert.equal((await detail.PUT(request('/service-requests/missing','admin','PUT',{status:'completed'}),context('missing'))).status,404);
  assert.equal((await detail.PUT(request(`/service-requests/${id}`,'admin','PUT',{status:'resolved',adminNotes:'Fixed',resolutionReport:'Replaced pipe',adminImage:'data:image/png;base64,AQID',action:'archive'}),context(id))).status,200);
+ deliveries=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='maintenance.resolved');assert.equal(deliveries.length,3);assert.deepEqual(new Set(deliveries.map(row=>row.recipientUID)),new Set(['tenant','owner','admin']));assert.ok(deliveries.every(row=>row.html.includes('resolved')));
  assert.equal(app.state.service_requests[id].isArchived,true);assert.equal(app.state.service_requests[id].resolutionReport,'Replaced pipe');assert.equal(app.state.service_requests[id].history.length,2);
  const list=await (await root.GET(request('/service-requests?propertyId=P','owner'))).json();assert.equal(list.data[0].resolutionReport,'Replaced pipe');
  assert.equal((await detail.PUT(request(`/service-requests/${id}`,'admin','PUT',{action:'unarchive'}),context(id))).status,200);assert.equal(app.state.service_requests[id].isArchived,false);
@@ -84,8 +92,10 @@ test('service requests authorize property membership, validate admin resolutions
 test('owner can reject a tenant termination request without releasing the property',async()=>{
  const app=isolated({users,properties}),tenant=route(app,'agreements/request-termination'),owner=route(app,'agreements/terminate');
  const response=await tenant.POST(request('/agreements/request-termination','tenant','POST',{propertyId:'P'}));assert.equal(response.status,200);const id=(await response.json()).request.id;
+ let rows=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='agreement.termination_request');assert.equal(rows.length,2);assert.deepEqual(new Set(rows.map(row=>row.recipientUID)),new Set(['owner','tenant']));
  assert.equal((await owner.POST(request('/agreements/terminate','other','POST',{propertyId:'P',action:'reject',requestId:id}))).status,403);
  assert.equal((await owner.POST(request('/agreements/terminate','owner','POST',{propertyId:'P',action:'reject',requestId:id}))).status,200);assert.equal(app.state.properties.P.rentalStatus,'rented');assert.equal(app.state.properties.P.tenants[0].isActive,true);assert.equal(app.state.properties.P.agreementRequest.status,'rejected');
+ rows=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='agreement.termination_reject');assert.equal(rows.length,2);assert.deepEqual(new Set(rows.map(row=>row.recipientUID)),new Set(['owner','tenant']));
 });
 
 test('TDS and payment receipt reports reuse documents and preserve supplied metadata without tax computation',async()=>{
@@ -130,16 +140,16 @@ test('mobile delivery is explicitly rejected until an integration exists',async(
  const app=isolated({users});assert.equal((await route(app,'visits').POST(request('/visits','owner','POST',{title:'Visit',visitDate:'2030-01-01T00:00:00Z',reminderType:'mobile'}))).status,400);assert.equal(app.writes.length,0);
 });
 
-test('rent reminders clamp month end in IST and expiry notices use 90/60-day phases',async()=>{
+test('rent reminders clamp month end in IST and expiry notices use current 30/15/7-day phases',async()=>{
  const app=isolated({users});const service=app.load('@/lib/server/services/reminders');const property={...properties.P,paymentDueDate:'31',monthlyRent:'30000',agreementEndDate:'2030-05-01',tenants:[{...properties.P.tenants[0],paymentDueDate:'31',monthlyRent:'30000'}]};
- let events=service.propertyReminderEvents(property,new Date('2030-02-28T03:30:00Z'));assert.equal(events.filter(e=>e.kind==='rent_due').length,1);assert.equal(events.filter(e=>e.kind==='agreement_expiry').length,2);assert.match(events.find(e=>e.kind==='agreement_expiry').key,/:90$/);
- events=service.propertyReminderEvents(property,new Date('2030-03-02T03:30:00Z'));assert.match(events.find(e=>e.kind==='agreement_expiry').key,/:60$/);
- assert.equal(service.propertyReminderEvents({...property,agreementStatus:'terminated'},new Date('2030-02-28T03:30:00Z')).length,0);
+ let events=service.propertyReminderEvents(property,new Date('2030-02-28T03:30:00Z'));assert.equal(events.filter(e=>e.kind==='rent_due').length,2);assert.equal(events.filter(e=>e.kind==='agreement_expiry').length,0);
+ events=service.propertyReminderEvents(property,new Date('2030-04-01T03:30:00Z'));assert.equal(events.filter(e=>e.kind==='agreement_expiry'&&e.offset===30).length,2);
+ assert.equal(service.propertyReminderEvents({...property,agreementStatus:'terminated'},new Date('2030-04-01T03:30:00Z')).length,0);
 });
 
-test('property reminders lease concurrent jobs and freeze retry payloads and provider keys',async()=>{
+test('property reminders lease concurrent jobs and keep failed payloads frozen for controlled retry',async()=>{
  const now=new Date('2030-01-01T03:30:00Z');const app=isolated({users,properties:{P:{...properties.P,paymentDueDate:'1',monthlyRent:'30000',agreementEndDate:'2030-04-01',tenants:[{...properties.P.tenants[0],paymentDueDate:'1',monthlyRent:'30000'}]}}});app.env.FROM_EMAIL='staging@test.invalid';const service=app.load('@/lib/server/services/reminders');
- app.env.TEST_MAIL_FAIL='1';assert.equal((await service.runPropertyReminders(now)).failed,3);const first=structuredClone(app.emails);delete app.env.TEST_MAIL_FAIL;app.state.properties.P.title='Changed';
- await Promise.all([service.runPropertyReminders(new Date(now.getTime()+60000)),service.runPropertyReminders(new Date(now.getTime()+60000))]);assert.equal(app.emails.length,6);assert.deepEqual(app.emails.slice(3),first);assert.deepEqual(app.emailKeys.slice(3),app.emailKeys.slice(0,3));
- await service.runPropertyReminders(now);assert.equal(app.emails.length,6);assert.equal(Object.keys(app.state.admin_notifications).length,3);assert.ok(Object.values(app.state.properties.P.reminderDeliveries).every(d=>d.status==='sent'));
+ app.env.TEST_MAIL_FAIL='1';assert.equal((await service.runPropertyReminders(now)).failed,2);const first=structuredClone(app.emails);delete app.env.TEST_MAIL_FAIL;app.state.properties.P.title='Changed';
+ await Promise.all([service.runPropertyReminders(new Date(now.getTime()+6*60000)),service.runPropertyReminders(new Date(now.getTime()+6*60000))]);assert.equal(app.emails.length,2);assert.deepEqual(app.emails,first);assert.ok(Object.values(app.state.email_deliveries).every(row=>row.status==='failed'&&row.errorSummary==='Email provider delivery failed'));
+ await service.runPropertyReminders(now);assert.equal(app.emails.length,2);assert.equal(Object.keys(app.state.email_deliveries).length,2);
 });

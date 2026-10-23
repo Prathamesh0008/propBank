@@ -10,7 +10,7 @@ test('login returns the verified Firebase token even with a legacy JWT secret',a
  const body=await result.json();assert.equal(body.token,'owner');assert.equal(body.user.uid,'owner');
  assert.equal((await route(app,'properties').GET(request('/properties?ownerUID=owner',body.token))).status,200);
  delete app.env.JWT_SECRET;const native=await r.POST(request('/auth/login','owner','POST',{uid:'owner'}));assert.equal(native.status,200);assert.equal((await native.json()).token,'owner');
- assert.equal(app.writes.length,0);
+ assert.ok(app.writes.every(write=>['users','auth_activity'].includes(write.collection)));
 });
 test('services and service requests retain collections, omission, managed files and admin/self access',async()=>{
  const app=isolated({users,properties,services:{S:{...defaults,id:'S',name:'Legal',isActive:true},off:{...defaults,id:'off',isActive:false}}});
