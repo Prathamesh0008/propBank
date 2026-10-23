@@ -9,14 +9,13 @@ import { AccessError, type AuthenticatedUser } from '../auth';
 import { requireAdmin } from '../permissions';
 import { identity, readObject } from './domain-contracts';
 import { getProperty } from './properties';
-import { getUser } from './users';
 import { parsePrice, stringValue } from './contracts';
 import {
   escapeHtml,
-  queueEmail,
   bestEffort,
 } from './property-effects';
 import { createNotification } from './notifications';
+import { persistUserEvent } from './transactional-email';
 import type {
   Negotiation,
   NegotiationAction,
@@ -65,25 +64,7 @@ async function notify(n: Negotiation) {
     })
   );
 
-  for (
-    const uid of new Set(
-      [n.ownerUID, n.customerUID, n.brokerUID].filter(Boolean)
-    )
-  ) {
-    const user = await bestEffort(() => getUser(uid));
-
-    if (user?.email) {
-      queueEmail({
-        to: stringValue(user.email),
-        subject: `Negotiation update: ${n.propertyTitle}`,
-        html: `<p>${escapeHtml(
-          n.propertyTitle
-        )}: ${escapeHtml(
-          n.status.replaceAll('_', ' ')
-        )}</p><p>Open the property in Propbank to review the offer and its history.</p>`,
-      });
-    }
-  }
+  await bestEffort(()=>persistUserEvent({eventType:`negotiation.${n.status}`,eventId:`${n.id}:${n.version||0}:${n.status}`,recipients:Array.from(new Set([n.ownerUID,n.customerUID,n.brokerUID].filter(Boolean))).map(uid=>({uid,role:uid===n.ownerUID?'owner':uid===n.customerUID?'customer':'broker'})),propertyId:n.propertyId,recordId:n.id,templateId:'negotiation-activity',subject:`Negotiation update: ${n.propertyTitle}`,title:'Negotiation updated',bodyHtml:`<p><strong>${escapeHtml(n.propertyTitle)}</strong>: ${escapeHtml(n.status.replaceAll('_',' '))}</p><p>Open the property to review the offer and its history.</p>`,bodyText:`${n.propertyTitle}: ${n.status.replaceAll('_',' ')}. Open the property to review the offer and its history.`,action:{label:'Review negotiation',path:`/manage-property/${n.propertyId}`}}));
 }
 
 export async function createNegotiation(
@@ -150,7 +131,7 @@ export async function createNegotiation(
     propertyTitle: stringValue(property.title),
     ownerUID: stringValue(property.ownerUID),
     customerUID: user.uid,
-    brokerUID: '',
+    brokerUID: stringValue(property.submittingAgentUID||property.submittedByUID),
     originalAskingPrice: asking,
     customerOffer: offer,
     brokerProposedAmount: null,

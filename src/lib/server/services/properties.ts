@@ -10,6 +10,7 @@ import { projections } from './go-contracts';
 import { model, storeModel, propertyResponse, publicPropertyResponse, isRecord, stringValue as s, type RecordData } from './contracts';
 import { schemas } from './go-contracts';
 import { resolveTenantIdentity, getUser } from './users';
+import { getFirebaseAdminAuth } from '../firebase-admin';
 import { uploadPropertyImages } from './property-images';
 import {prepareMediaBindings,restoreFileReferences} from './media';
 import {readObject} from './domain-contracts';
@@ -20,6 +21,10 @@ import { writeEmailOutbox, dispatchEmailOutbox, type TransactionalEmailEvent } f
 const propertyError=(message:string,status:number)=>jsonResponse({success:false,message},status);
 
 const properties = () => getDatabase().collection(COLLECTIONS.properties);
+function requirePropertyEditor(user:Awaited<ReturnType<typeof requireUser>>,property:RecordData) {
+  if(user.role==='agent'&&property.submittedByUID===user.uid)return;
+  requireOwnerOrAdmin(user,{ownerUID:s(property.ownerUID)});
+}
 function fromDocument(doc:DocumentSnapshot,defaults=true):RecordData {
   const property={...doc.data(),...model('Property',doc.data() || {})};
   if (defaults) {
@@ -71,8 +76,10 @@ export async function listProperties(request:Request) {
     const user=await requireUser(request);
     requireSelfOrAdmin(user,ownerUID);
     const own=await queryProperties(properties().where('ownerUID','==',ownerUID));
+    const submitted=user.role==='agent'&&user.uid===ownerUID?await queryProperties(properties().where('submittedByUID','==',ownerUID)):[];
     const rented=await tenantProperties(ownerUID,user.uid===ownerUID&&user.token.email_verified===true?user.token.email||'':'');
     const merged=new Map(own.map(({property})=>[s(property.id),propertyResponse(property,'normal','owner')]));
+    for(const {property} of submitted)merged.set(s(property.id),propertyResponse(property,'normal','agent'));
     for (const property of rented) if(!merged.has(s(property.id))) merged.set(s(property.id),propertyResponse(property,'tenant','tenant'));
     return listResponse([...merged.values()],{ownerUID});
   }
@@ -126,7 +133,7 @@ export async function readProperty(request:Request,id:string) {
     const user=await requireUser(request);
     const tenants=Array.isArray(property.tenants)?property.tenants:[];
     const relationships={ownerUID:s(property.ownerUID),tenants:(tenants.some(t=>isRecord(t)&&t.isActive===true)?tenants:[{email:s(property.tenantEmail),isActive:property.rentalStatus==='rented'}]) as Parameters<typeof isPropertyTenant>[1]['tenants']};
-    const role=user.role==='admin'?'admin':user.uid===property.ownerUID?'owner':isPropertyTenant(user,relationships)?'tenant':'';
+    const role=user.role==='admin'?'admin':user.uid===property.ownerUID?'owner':user.role==='agent'&&user.uid===property.submittedByUID?'agent':isPropertyTenant(user,relationships)?'tenant':'';
     if(role)return jsonResponse({success:true,property:propertyResponse(property,'normal',role)});
   }
   if(!available(property,property))return propertyError('Property not found',404);
@@ -162,7 +169,7 @@ export async function createProperty(request:Request) {
     const canonical=(value:unknown):unknown=>Array.isArray(value)?value.map(canonical):isRecord(value)?Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])])):value;
     submissionFingerprint=createHash('sha256').update(JSON.stringify([user.uid,canonical(raw)])).digest('hex');
     if(raw.createdAs!==undefined&&!['owner','tenant'].includes(s(raw.createdAs)))throw new Error('Invalid property relationship');
-    req={...model('CreatePropertyRequest',raw,true),...Object.fromEntries(additiveFields.filter(key=>key in raw).map(key=>[key,raw[key]]))};
+    req={...model('CreatePropertyRequest',raw,true),...Object.fromEntries(additiveFields.filter(key=>key in raw).map(key=>[key,raw[key]])),...(typeof raw.agentOwnerEmail==='string'?{agentOwnerEmail:raw.agentOwnerEmail.trim().toLowerCase()}:{})};
     if(raw.createdAs==='tenant') {
       const details=raw.reportedOwner;
       if(!isRecord(details))throw new Error('Owner details are required');
@@ -174,15 +181,24 @@ export async function createProperty(request:Request) {
     }
   } catch(error) { return propertyError(`Invalid property data: ${error instanceof Error?error.message:'invalid request'}`,400); }
   const tenantCreated=req.createdAs==='tenant';
+  if(user.role==='agent'&&!tenantCreated) {
+    if(!req.agentOwnerEmail||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s(req.agentOwnerEmail)))return propertyError('A registered legal owner email is required for agent listings',400);
+    try {const account=await getFirebaseAdminAuth().getUserByEmail(s(req.agentOwnerEmail));if(account.disabled||account.emailVerified===false||account.uid===user.uid)return propertyError('Legal owner must be a separate active, verified account',400);req.ownerUID=account.uid;}
+    catch(error){if((error as {code?:string}).code==='auth/user-not-found')return propertyError('Registered legal owner account not found',400);throw error;}
+  }
   if(tenantCreated) {
     if(!s(req.monthlyRent).trim()||!Number.isFinite(Number(req.monthlyRent))||Number(req.monthlyRent)<=0||!req.paymentDueDate||!req.agreementPeriod)return propertyError('Rent, payment due day and agreement period are required',400);
     const dates=[s(req.agreementStartDate),s(req.agreementEndDate)];
     if(dates.some(value=>!/^\d{4}-\d{2}-\d{2}$/.test(value)||!Number.isFinite(Date.parse(value)))||dates[1]<dates[0])return propertyError('Valid agreement start and end dates are required',400);
   }
   if (!req.propertyTitle||!req.propertyType||!req.location||(!tenantCreated&&!req.ownerUID)) return propertyError('Missing required fields: propertyTitle, propertyType, location, ownerUID',400);
-  if(!tenantCreated)requireSelfOrAdmin(user,s(req.ownerUID));
+  if(!tenantCreated&&user.role!=='agent')requireSelfOrAdmin(user,s(req.ownerUID));
   const owner=await getUser(tenantCreated?user.uid:s(req.ownerUID));
-  if (!owner) return propertyError('Owner not found',400);
+  if (!owner||owner.isActive===false) return propertyError('Owner must have an active profile',400);
+  if(!tenantCreated&&user.role==='admin'&&user.uid!==s(req.ownerUID)){
+    try{const account=await getFirebaseAdminAuth().getUser(s(req.ownerUID));if(account.disabled||account.emailVerified===false)return propertyError('Owner account must be active and verified',400);}
+    catch(error){if((error as {code?:string}).code==='auth/user-not-found')return propertyError('Owner account does not exist',400);throw error;}
+  }
   const submissionRef=getDatabase().collection('property_submissions').doc(submissionFingerprint);
   const previous=await submissionRef.get();
   if(previous.exists) {
@@ -213,12 +229,16 @@ export async function createProperty(request:Request) {
   }
   if(req.isSold) property.buyers=[model('BuyerInfo',{id:`buyer_${BigInt(now.getTime())*1000000n}`,firstName:req.buyerFirstName,lastName:req.buyerLastName,phone:req.buyerPhone,isActive:true,createdAt:now,updatedAt:now})];
   property.createdAt=now;property.updatedAt=now;
+  if(!tenantCreated&&user.role==='admin'&&user.uid!==s(req.ownerUID))Object.assign(property,{createdByUID:user.uid,adminCreatedForUID:s(req.ownerUID),relationshipHistory:[{action:'property_created_for_user',actorUID:user.uid,userUID:s(req.ownerUID),relationship:'owner',propertyId:id,at:now}]});
+  if(!tenantCreated&&user.role==='agent')Object.assign(property,{submittedByUID:user.uid,submittingAgentUID:user.uid,submittingAgentName:s((await getUser(user.uid))?.name)});
   Object.assign(property,{moderationStatus:'pending_review',moderationRevision:1,moderationSubmittedAt:now,moderationHistory:[{action:'submitted',actorUID:user.uid,at:now,revision:1}]});
   // Atomic create avoids overwriting a property on a race or infrastructure failure.
   const data={...storeModel('Property',property),...Object.fromEntries(additiveFields.filter(key=>key in property).map(key=>[key,property[key]]))};
   if(tenantCreated)for(const key of ['createdAs','submittedByUID','ownershipVerification','reportedOwner'])data[key]=property[key];
+  for(const key of ['createdByUID','adminCreatedForUID','relationshipHistory','submittedByUID','submittingAgentUID','submittingAgentName'])if(key in property)data[key]=property[key];
   for(const key of moderationFields)if(key in property)data[key]=property[key];
-  const events=propertyNotificationEvents(property,await getUser(user.uid)||owner);
+  const notificationSubmitter=user.role==='agent'?(await getUser(user.uid)||owner):owner;
+  const events=propertyNotificationEvents(property,notificationSubmitter);
   const created=await writeProperty(id,data,user,true,{ref:submissionRef,events});
   if(!created){const receipt=await submissionRef.get(),saved=await getProperty(s(receipt.data()?.propertyId));return jsonResponse({success:true,message:'Property already submitted',property:propertyResponse(saved!,'create',tenantCreated?'tenant':'owner')});}
   property.tenants=data.tenants;
@@ -232,7 +252,11 @@ export async function updateProperty(request:Request,id:string) {
   try { const body:unknown=await readObject(request,20<<20); if(body!==null&&!isRecord(body)) throw new Error(); req=(body||{}) as RecordData; } catch { return propertyError('Invalid JSON',400); }
   const existing=await getProperty(id);
   if(!existing) return propertyError('Property not found',404);
-  requireOwnerOrAdmin(user,{ownerUID:s(existing.ownerUID)});
+  requirePropertyEditor(user,existing);
+  if(user.role==='agent'&&existing.submittedByUID===user.uid) {
+    const agentAllowed=new Set([...listingContentFields,'ownerUID','moderationAction','reason','expectedRevision']);
+    if(Object.keys(req).some(key=>!agentAllowed.has(key)))return propertyError('Agents may edit listing content only',403);
+  }
   if('moderationAction' in req)return moderateListing(req,id,user);
   if(Object.keys(req).some(key=>key.startsWith('moderation')))return propertyError('Moderation fields are server controlled',400);
   restoreFileReferences('properties',id,req,existing);
@@ -285,7 +309,7 @@ async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnTyp
     if(submission&&(await tx.get(submission.ref)).exists)return false;
     const before=await tx.get(ref);
     if(create&&before.exists)throw new Error('Property ID conflict');
-    if(!create) {if(!before.exists)throw new Error('Property not found');requireOwnerOrAdmin(user,{ownerUID:s(before.data()?.ownerUID)});}
+    if(!create) {if(!before.exists)throw new Error('Property not found');requirePropertyEditor(user,before.data()||{});}
     if(!create)applyListingEdit(before.data()||{},updates,user.uid);
     const records=Array.isArray(updates.tenants)?await tx.get(db.collection(COLLECTIONS.tenants).where('propertyId','==',id)):null;
     const bindMedia=await prepareMediaBindings(tx,user,'properties',id,id,{...(before.data()||{}),...updates},before.data()||{});
@@ -329,12 +353,12 @@ async function moderateListing(req:RecordData,id:string,user:Awaited<ReturnType<
   if(action!=='resubmit'&&user.role!=='admin')throw new AccessError(403,'Administrator access required');
   const ref=properties().doc(id);
   const current=await getProperty(id);
-  const recipient=await getUser(s(current?.ownerUID||current?.submittedByUID));
+  const recipient=await getUser(s(current?.submittedByUID||current?.ownerUID));
   let events:TransactionalEmailEvent[]=[];
   await getDatabase().runTransaction(async tx=>{
     const doc=await tx.get(ref),before=doc.data();
     if(!before)throw new ApiError(404,'Property not found');
-    requireOwnerOrAdmin(user,{ownerUID:s(before.ownerUID)});
+    requirePropertyEditor(user,before);
     if(!Number.isInteger(req.expectedRevision)||req.expectedRevision!==Number(before.moderationRevision||0))throw new ApiError(409,'Listing changed; refresh before deciding');
     if(action==='resubmit'?!['rejected','changes_requested'].includes(s(before.moderationStatus)):before.moderationStatus!==undefined&&before.moderationStatus!=='pending_review')throw new ApiError(409,'Invalid listing moderation transition');
     const history=Array.isArray(before.moderationHistory)?before.moderationHistory:[];

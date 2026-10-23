@@ -16,13 +16,13 @@ const Auth: React.FC = () => (
           Discover homes, manage listings and keep property conversations organised, all from one account.
         </p>
         <div className={styles.divider} aria-hidden="true" />
-        <p className={styles.note}>Sign in securely with Google to continue. New members can complete their profile after sign-in.</p>
+        <p className={styles.note}>Sign in securely with email or Google. New email accounts must be verified before accessing property workflows.</p>
       </section>
       <section className={styles.formArea} aria-label="PropBank account sign-in">
         <div className={styles.formHeader}>
           <span className={styles.eyebrow}>Access your account</span>
           <h2>Welcome to PropBank</h2>
-          <p>Use your Google account to sign in or register.</p>
+          <p>Use email and password or continue with Google.</p>
         </div>
         <GoogleAuth />
       </section>

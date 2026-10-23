@@ -22,7 +22,7 @@ export function handle<T extends unknown[]>(fn: (...args:T)=>Promise<Response>, 
   return async (...args:T) => {
     try { return await fn(...args); }
     catch (error) {
-      if (error instanceof AccessError || error instanceof ApiError) {const response=jsonResponse({success:false,message:error.message},error.status);if(error.status===429)response.headers.set('Retry-After','60');return response;}
+      if (error instanceof AccessError || error instanceof ApiError) {const response=jsonResponse({success:false,message:error.message,...(error instanceof AccessError&&error.code?{code:error.code}:{})},error.status);if(error.status===429)response.headers.set('Retry-After','60');return response;}
       // Do not expose SDK configuration, credentials or customer data in errors.
       return json ? jsonResponse({success:false,message},500) : plainError(message,500);
     }

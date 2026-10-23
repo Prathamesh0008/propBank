@@ -6,7 +6,7 @@ import type {Transaction} from 'firebase-admin/firestore';
 import {getDatabase} from '../firestore';
 import {getR2Client,getR2Configuration} from '../r2';
 import {getFirebaseAdminAuth,getFirebaseAdminStorage} from '../firebase-admin';
-import {requireUser,verifyFirebaseIdentity,userFromToken,AccessError,type AuthenticatedUser} from '../auth';
+import {requireUser,userFromToken,AccessError,type AuthenticatedUser} from '../auth';
 import {ApiError,jsonResponse} from '../http';
 import {requireAdmin,requirePropertyMember} from '../permissions';
 import {fileFields,mediaId,restoreFileReferences} from '../file-projection';
@@ -95,9 +95,7 @@ const cookieName='propbank_media';
 export async function mediaSession(request:Request) {
   const secure=process.env.NODE_ENV==='production'||new URL(request.url).protocol==='https:'?'; Secure':'';
   if(request.method==='DELETE')return new Response(null,{status:204,headers:{'Set-Cookie':`${cookieName}=; Path=/api/media; HttpOnly; SameSite=Strict; Max-Age=0${secure}`,'Cache-Control':'no-store'}});
-  // A newly signed-in user may still be completing profile registration. Minting
-  // a cookie grants no file access: every download rechecks the active profile.
-  await verifyFirebaseIdentity(request);
+  await requireUser(request);
   const token=request.headers.get('authorization')!.replace(/^Bearer\s+/i,'');
   const cookie=await getFirebaseAdminAuth().createSessionCookie(token,{expiresIn:20*60*1000});
   return new Response(null,{status:204,headers:{'Set-Cookie':`${cookieName}=${cookie}; Path=/api/media; HttpOnly; SameSite=Strict; Max-Age=1200${secure}`,'Cache-Control':'no-store'}});

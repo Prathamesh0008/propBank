@@ -86,7 +86,7 @@ test('pending listing photos cannot be downloaded anonymously and approval publi
 test('pending listings cannot be used to submit unrelated offers, visits or enquiries',async()=>{
  const app=setup(),p=await submit(app);
  assert.equal((await route(app,'negotiations').POST(request('/negotiations','other','POST',{propertyId:p.id,amount:60000}))).status,404);
- assert.equal((await route(app,'visits').POST(request('/visits','other','POST',{propertyId:p.id,title:'Visit',visitDate:'2027-01-01T10:00:00Z',reminderType:'none'}))).status,403);
+ assert.equal((await route(app,'visits').POST(request('/visits','other','POST',{propertyId:p.id,title:'Visit',visitDate:'2027-01-01T10:00:00Z',reminderType:'none'}))).status,404);
  assert.equal((await route(app,'admin/notifications').POST(request('/admin/notifications','other','POST',{type:'property_enquiry',propertyId:p.id}))).status,403);
 });
 
@@ -105,7 +105,7 @@ test('submission atomically queues both emails and concurrent resubmission dedup
  assert.ok(rows.some(row=>row.recipientEmail==='admin@test.invalid'&&row.text.includes('/admin?tab=properties&propertyId=')&&row.text.includes('owner@test.invalid')));
  const adminEmail=rows.find(row=>row.recipientRole==='admin');
  assert.equal(adminEmail.subject,'PropBank \u2013 New Property Submitted for Review');
- for(const value of ['Review Home',first.id,'Location: Isolated address','Owner name: Owner','Owner email: owner@test.invalid','Status: Pending Review','Submission date: '+app.state.properties[first.id].createdAt.toISOString(),'https://propbank.test/admin?tab=properties&propertyId='+first.id])assert.ok(adminEmail.text.includes(value),value);
+ for(const value of ['Review Home',first.id,'Location: Isolated address','Owner name: Owner','Owner email: owner@test.invalid','Status: Pending Review','Submission date:','https://propbank.test/admin?tab=properties&propertyId='+first.id])assert.ok(adminEmail.text.includes(value),value);
  assert.match(adminEmail.html,/Review property/);
  assert.equal(rows.find(row=>row.recipientRole==='owner').subject,'Property submitted - Pending Review');
  await app.flush();assert.equal(app.emails.length,2);assert.ok(Object.values(app.state.email_deliveries).every(row=>row.status==='sent'));

@@ -11,6 +11,7 @@ test('rejection requires persisted admin, mandatory reason and matching version 
  assert.equal((await decide(app,{action:'reject',reason:'Missing version'})).status,400);assert.equal((await decide(app,{action:'reject',expectedVersion:1,reason:'Stale'})).status,409);assert.equal(app.writes.length,0);
  assert.equal((await decide(app,{action:'reject',expectedVersion:0,reason:'  Evidence does not identify the owner  '})).status,200);
  const p=app.state.properties.P;assert.equal(p.ownershipVerification,'rejected');assert.equal(p.ownershipVerificationReason,'Evidence does not identify the owner');assert.equal(p.ownershipVerificationReviewerUID,'admin');assert.ok(p.ownershipVerificationReviewedAt instanceof Date);assert.equal(p.ownerUID,'');assert.equal(JSON.stringify(p.tenants),before);assert.equal(JSON.stringify(app.state.tenants),records);assert.equal(p.ownershipVerificationHistory[0].actorUID,'admin');
+ const rows=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='owner_verification.reject');assert.equal(rows.length,2);assert.deepEqual(new Set(rows.map(row=>row.recipientUID)),new Set(['tenant','admin']));assert.ok(rows.every(row=>row.html.includes('Evidence does not identify the owner')));
 });
 
 test('reconsideration is explicit, versioned and auditable; reopening never links an owner',async()=>{
@@ -18,6 +19,7 @@ test('reconsideration is explicit, versioned and auditable; reopening never link
  assert.equal((await decide(app,approval)).status,409);assert.equal((await decide(app,{...approval,expectedVersion:1})).status,409);
  assert.equal((await decide(app,{action:'reconsider',expectedVersion:0,reason:'New evidence'})).status,409);
  assert.equal((await decide(app,{action:'reconsider',expectedVersion:1,reason:'New evidence available'})).status,200);
+ const reconsider=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='owner_verification.reconsider');assert.equal(reconsider.length,2);assert.deepEqual(new Set(reconsider.map(row=>row.recipientUID)),new Set(['tenant','admin']));
  let p=app.state.properties.P;assert.equal(p.ownerUID,'');assert.equal(p.ownershipVerification,'pending');assert.equal(p.ownershipVerificationHistory.length,2);assert.equal(p.ownershipVerificationHistory[1].action,'reconsider');assert.equal(p.ownershipVerificationHistory[1].reason,'New evidence available');
  assert.equal((await decide(app,approval)).status,409);assert.equal((await decide(app,{...approval,expectedVersion:2})).status,200);
  p=app.state.properties.P;assert.equal(p.ownershipVerification,'verified');assert.equal(p.ownerUID,'owner');assert.equal(p.ownershipVerificationAudit.evidenceDocumentId,'D');assert.equal(p.ownershipVerificationHistory.length,3);assert.equal(app.state.tenants.T.userUID,'tenant');assert.equal(app.state.tenants.T.ownerUID,'owner');
@@ -48,6 +50,8 @@ function visits(){return isolated({users:{...users,agent:{...users.other,uid:'ag
 const all=(app,url='/admin/visits',uid='admin')=>route(app,'admin/visits').GET(request(url,uid));
 const change=(app,body,uid='admin',id='V')=>route(app,'visits/[id]').PUT(request('/visits/'+id,uid,'PUT',body),context(id));
 
+test('new visit notifies only its requester and listing owner through email and the admin website inbox',async()=>{const app=visits();app.state.properties.P.moderationStatus='approved';app.state.properties.P.rentalStatus='available';app.state.properties.P.tenants=[];const response=await route(app,'visits').POST(request('/visits','other','POST',{propertyId:'P',title:'Viewing',visitDate:'2031-01-01T10:00:00Z',reminderType:'none'}));assert.equal(response.status,201);const rows=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='visit.scheduled');assert.equal(rows.length,2);assert.deepEqual(new Set(rows.map(row=>row.recipientUID)),new Set(['other','owner']));assert.ok(rows.every(row=>row.html.includes('Existing Home')));const website=Object.values(app.state.admin_notifications).filter(row=>row.type==='visit_update');assert.equal(website.length,1);assert.equal(website[0].userId,'other');});
+
 test('all-visits and contact/property context are persisted-admin only; ordinary users retain requester-only scope',async()=>{
  const app=visits();for(const uid of [null,'owner','tenant','other','agent'])assert.equal((await all(app,'/admin/visits',uid)).status,uid?403:401);
  const result=await(await all(app)).json();assert.equal(result.visits.length,3);const row=result.visits.find(v=>v.id==='V');assert.equal(row.requester.name,'Tenant');assert.equal(row.requester.phone,'456');assert.equal(row.property.id,'P');assert.equal(row.managementVersion,0);
@@ -63,7 +67,9 @@ test('admin filters visits by status, inclusive IST date range and property, val
 
 test('admin status changes use existing states, preserve cancellation/reminder fields, and record identity/time',async()=>{
  const app=visits();assert.equal((await change(app,{status:'cancelled',expectedVersion:0})).status,200);let v=app.state.visits.V;assert.equal(v.status,'cancelled');assert.equal(v.isCompleted,false);assert.equal(v.notifiedAt,'2030-01-01T19:00:00Z');assert.equal(v.reminderType,'email');assert.equal(v.visitAdminHistory[0].actorUID,'admin');assert.ok(v.visitAdminHistory[0].at instanceof Date);
+ const deliveries=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='visit.cancelled');assert.equal(deliveries.length,2);assert.deepEqual(new Set(deliveries.map(row=>row.recipientUID)),new Set(['tenant','owner']));assert.ok(deliveries.every(row=>row.html.includes('Existing Home')));
  assert.equal((await change(app,{status:'scheduled',expectedVersion:1})).status,200);assert.equal((await change(app,{status:'completed',expectedVersion:2})).status,200);v=app.state.visits.V;assert.equal(v.isCompleted,true);assert.equal(v.visitAdminHistory.length,3);
+ const rescheduled=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='visit.scheduled'),completed=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='visit.completed');assert.equal(rescheduled.length,2);assert.equal(completed.length,2);assert.ok([...rescheduled,...completed].every(row=>['tenant','owner'].includes(row.recipientUID)));
  assert.equal((await change(app,{status:'invalid',expectedVersion:3})).status,400);assert.equal((await change(app,{status:'cancelled',isCompleted:true,expectedVersion:3})).status,400);assert.equal((await change(app,{visitAdminHistory:[]})).status,400);
  const own=await(await route(app,'visits/[id]').GET(request('/visits/V','tenant'),context('V'))).json();assert.equal(own.visit.status,'completed');assert.ok(!('visitAdminHistory' in own.visit));
 });

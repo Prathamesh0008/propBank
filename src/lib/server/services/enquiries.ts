@@ -6,6 +6,8 @@ import {getFirebaseAdminAuth} from '../firebase-admin';
 import {ApiError, jsonResponse} from '../http';
 import {readObject, knownFields, epoch} from './domain-contracts';
 import {stringValue as s, wireValue, type RecordData} from './contracts';
+import {bestEffort,escapeHtml} from './property-effects';
+import {persistUserEvent} from './transactional-email';
 
 // Separate from notification payloads: owners/customers never receive internal
 // tracking/history through existing notification or property endpoints.
@@ -54,7 +56,7 @@ export async function updateEnquiry(request:Request,id:string) {
     }
   }else if(typeof req.status!=='string'||!Object.hasOwn(enquiryStatuses,req.status)||'brokerUID' in req)throw new ApiError(400,'Valid enquiry status required; assignment changes are admin-only');
   const db=getDatabase(),ref=assignments().doc(id);
-  let result:unknown;
+  let result:unknown,mail:{action:string;version:number;brokerUID:string;previousBrokerUID:string;status:string;propertyId:string;propertyTitle:string}|null=null;
   await db.runTransaction(async tx=>{
     const notification=await tx.get(notifications().doc(id));
     if(!notification.exists||notification.data()?.type!=='property_enquiry')throw new ApiError(404,'Property enquiry not found');
@@ -77,7 +79,8 @@ export async function updateEnquiry(request:Request,id:string) {
     const now=new Date(),action=req.action==='status'?'status_updated':!brokerUID?'unassigned':before.brokerUID?'reassigned':'assigned';
     const tracking={notificationId:id,brokerUID,brokerName:brokerUID?brokerName:'',status,version:Number(before.version||0)+1,updatedAt:now,
       history:[...history,{action,actorUID:user.uid,at:now,notes:s(req.notes).trim(),previousBrokerUID:s(before.brokerUID),brokerUID,previousStatus:s(before.status)||'new',status}]};
-    tx.set(ref,tracking);result=project(id,notification.data()!,tracking);
+    tx.set(ref,tracking);result=project(id,notification.data()!,tracking);mail={action,version:tracking.version,brokerUID,previousBrokerUID:s(before.brokerUID),status,propertyId:s(notification.data()?.propertyId),propertyTitle:s(notification.data()?.propertyTitle)||'Property enquiry'};
   });
+  if(mail){const recipients:Array<{uid?:string;role:string;email?:string}>=[];for(const uid of [mail.brokerUID,mail.previousBrokerUID])if(uid&&!recipients.some(value=>value.uid===uid))recipients.push({uid,role:'agent'});if(user.role==='admin')recipients.push({uid:user.uid,role:'admin'});else recipients.push({role:'admin',email:process.env.ADMIN_EMAIL});const label=mail.action.replaceAll('_',' ');await bestEffort(()=>persistUserEvent({eventType:`enquiry.${mail!.action}`,eventId:`${id}:${mail!.version}:${mail!.action}`,recipients,propertyId:mail.propertyId,recordId:id,templateId:'enquiry-tracking',subject:`Enquiry ${label}`,title:'Enquiry assignment update',bodyHtml:`<p><strong>${escapeHtml(mail!.propertyTitle)}</strong></p><p>Tracking status: ${escapeHtml(mail!.status.replaceAll('_',' '))}. Assignment: ${escapeHtml(label)}.</p>`,bodyText:`${mail!.propertyTitle}. Tracking status: ${mail!.status.replaceAll('_',' ')}. Assignment: ${label}.`,action:{label:'Open enquiry inbox',path:'/admin?tab=enquiries'}}));}
   return jsonResponse({success:true,enquiry:result});
 }

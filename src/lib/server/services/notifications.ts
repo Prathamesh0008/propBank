@@ -12,7 +12,8 @@ import { model, storeModel, wireModel, stringValue as s, type RecordData } from 
 import { identity, propertyMember, readModel, readObject, knownFields, parseRFC3339, firestoreTime, goTimeString, epoch } from './domain-contracts';
 import { getProperty } from './properties';
 import { getUser } from './users';
-import { bestEffort, queueEmail, escapeHtml } from './property-effects';
+import { bestEffort, escapeHtml } from './property-effects';
+import {persistUserEvent} from './transactional-email';
 import { inquiryMail } from './group2-mail';
 const collection=()=>getDatabase().collection(COLLECTIONS.adminNotifications);
 export async function createNotification(input:RecordData,actor?:AuthenticatedUser) {
@@ -66,7 +67,7 @@ export async function postNotification(request:Request) {
     const now=new Date();
     const data=model('AdminNotification',{...req,id:randomUUID(),timestamp:now,createdAt:now,updatedAt:now});
     const saved=await persistInquiry(request,storeModel('AdminNotification',data));notification=model('AdminNotification',saved.notification);duplicate=saved.duplicate;
-    if(!duplicate)inquiryMail(notification);
+    if(!duplicate)await bestEffort(()=>inquiryMail(notification));
   }else {
     for(const field of ['serviceImage','adminImage'])if(req[field])req[field]=await prepareFile(s(req[field]),actor!,s(req.propertyId),field);
     notification=await createNotification(req,actor);
@@ -101,7 +102,7 @@ export async function remarksNotification(request:Request,id:string) {
   if(adminImage)adminImage=await prepareFile(s(req.adminImage),actor,s(before.data()?.propertyId),'response',s(before.data()?.adminImage));
   await saveMediaRecord(COLLECTIONS.adminNotifications,id,{...before.data(),adminRemarks:remarks,updatedAt:new Date(),...(adminImage?{adminImage}:{})},actor);
   const profile=before.data()?.userId?await getUser(s(before.data()?.userId)):null;
-  if(profile?.email)queueEmail({to:s(profile.email),subject:'Request response from Propbank',html:`<p>${escapeHtml(remarks)}</p>`});
+  if(profile?.email)await bestEffort(()=>persistUserEvent({eventType:'request.admin_response',eventId:`${id}:${String(before.data()?.updatedAt||'response')}:${remarks}`,recipients:[{uid:s(before.data()?.userId),role:'requester'}],propertyId:s(before.data()?.propertyId),recordId:id,templateId:'admin-response',subject:'Request response from PropBank',title:'PropBank request update',bodyHtml:`<p>${escapeHtml(remarks)}</p>`,bodyText:remarks,action:{label:'View your property',path:before.data()?.propertyId?`/manage-property/${s(before.data()?.propertyId)}`:'/manage-property'}}));
   return jsonResponse({success:true,message:'Admin remarks updated successfully',id,remarks,adminImage});
 }
 export async function deleteNotification(request:Request,id:string) {

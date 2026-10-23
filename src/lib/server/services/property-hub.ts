@@ -8,6 +8,8 @@ import {propertyMember,readObject,epoch} from './domain-contracts';
 import {propertyResponse,wireValue,isRecord} from './contracts';
 import {lifecycle,tenantLifecycle,dueDate,todayIST,ledgerStatus} from '../../property-product';
 import type {ProductRecord as RecordData} from '../../property-product';
+import {persistUserEvent} from './transactional-email';
+import {bestEffort,escapeHtml} from './property-effects';
 
 async function records(collection:string,id?:string){const base=getDatabase().collection(collection);const snapshot=await (id?base.where('propertyId','==',id):base).get();return snapshot.docs.map(doc=>({...doc.data(),id:doc.id})) as RecordData[];}
 export async function propertyHub(request:Request){
@@ -69,7 +71,7 @@ export async function propertyHub(request:Request){
 export async function updatePropertyHub(request:Request){
  const user=await requireUser(request),body=await readObject(request,16384);const id=typeof body.propertyId==='string'?body.propertyId:'';
  if(!id)throw new ApiError(400,'Property ID required');
- const db=getDatabase(),ref=db.collection(COLLECTIONS.properties).doc(id);
+ const db=getDatabase(),ref=db.collection(COLLECTIONS.properties).doc(id);let paidEvent:RecordData|null=null;
  await db.runTransaction(async tx=>{
   const snapshot=await tx.get(ref);if(!snapshot.exists)throw new ApiError(404,'Property not found');const p=snapshot.data()!;
   if(body.action==='internal_note'){
@@ -86,6 +88,8 @@ export async function updatePropertyHub(request:Request){
   const ledger=p.rentLedger||{},history=p.rentLedgerHistory||[];
   if(!ledger[month]&&Object.keys(ledger).length>=120||history.length>=500)throw new ApiError(409,'Rent tracking history limit reached');
   const now=new Date();tx.update(ref,{rentLedger:{...ledger,[month]:{month,expectedRent,dueDate:date,status,receiptId,notes,updatedAt:now,actorUID:user.uid}},rentLedgerVersion:(p.rentLedgerVersion||0)+1,rentLedgerHistory:[...history,{month,status,actorUID:user.uid,at:now,previousEntry:ledger[month]||null}]});
+  if(status==='paid'&&ledger[month]?.status!=='paid')paidEvent={property:p,month,expectedRent,version:(p.rentLedgerVersion||0)+1};
  });
+ if(paidEvent){const event=paidEvent as RecordData,p=event.property as RecordData,tenants=(Array.isArray(p.tenants)?p.tenants:[]).filter((tenant:RecordData)=>tenant.isActive===true&&tenant.userUID);await bestEffort(()=>persistUserEvent({eventType:'rent.payment_recorded',eventId:`${id}:${String(event.month)}:${String(event.version)}:paid`,recipients:[{uid:String(p.ownerUID||''),role:'owner'},...tenants.map((tenant:RecordData)=>({uid:String(tenant.userUID),role:'tenant'}))],propertyId:id,recordId:`${id}:${String(event.month)}`,templateId:'rent-payment-recorded',subject:'Rent payment recorded',title:'Rent payment recorded',bodyHtml:`<p>Rent for <strong>${escapeHtml(String(p.title||id))}</strong> was recorded as paid for ${escapeHtml(String(event.month))}.</p>`,bodyText:`Rent for ${String(p.title||id)} was recorded as paid for ${String(event.month)}.`,action:{label:'View rent history',path:`/manage-property/${id}#rent`}}));}
  return jsonResponse({success:true,message:'Property tracking updated'});
 }

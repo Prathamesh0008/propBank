@@ -4,9 +4,9 @@ import { getDatabase, COLLECTIONS } from '../firestore';
 import { ApiError, jsonResponse } from '../http';
 import { epoch } from './domain-contracts';
 import { isRecord, stringValue, type RecordData } from './contracts';
-import { resolveTenantIdentity, getUser } from './users';
-import { sendEmail, escapeHtml, type Email } from './property-effects';
+import { escapeHtml } from './property-effects';
 import { formatIST } from './group2-mail';
+import { brandedEmail, processTransactionalEmail, type TransactionalEmailEvent } from './transactional-email';
 
 export function requireCron(request:Request) {
   const secret=process.env.CRON_SECRET;
@@ -24,7 +24,7 @@ export function dueReminder(visit:Record<string,unknown>,now:number) {
     && Number.isFinite(at)&&at>=now&&at-minutes*60000<=now;
 }
 export async function runVisitReminders(now=new Date()) {
-  if(!process.env.RESEND_API_KEY||!process.env.FROM_EMAIL)throw new ApiError(503,'Reminder email delivery is not configured');
+  if(!process.env.RESEND_API_KEY||!process.env.FROM_EMAIL||!process.env.ADMIN_EMAIL)throw new ApiError(503,'Reminder email delivery is not configured');
   const db=getDatabase();
   const snapshot=await db.collection(COLLECTIONS.visits).where('visitDate','>=',now).where('visitDate','<=',new Date(now.getTime()+7*86400000)).orderBy('visitDate','asc').limit(1000).get();
   const results={scanned:snapshot.docs.length,sent:0,failed:0,skipped:0,needsReconciliation:0,limited:snapshot.docs.length>=1000};
@@ -60,19 +60,21 @@ export async function runVisitReminders(now=new Date()) {
             results.needsReconciliation++;return null;
           }
         }
-        const profile=await tx.get(db.collection(COLLECTIONS.users).doc(stringValue(visit.userId)));
-        if(!profile.exists||profile.data()?.isActive===false||!profile.data()?.email)return null;
-        // Freeze the provider payload so retries with the same key are identical.
-        const mail:Email=delivery.generation===key&&isRecord(delivery.mail)?delivery.mail as unknown as Email:{
-          to:stringValue(profile.data()!.email),subject:`Visit reminder: ${stringValue(visit.title)}`,
-          html:`<p>Hello ${escapeHtml(stringValue(profile.data()!.name))},</p><p>Your visit to ${escapeHtml(stringValue(visit.title))} is scheduled for ${escapeHtml(formatIST(new Date(epoch(visit.visitDate))))}.</p><p>${escapeHtml(stringValue(visit.description))}</p>`,
-        };
-        tx.update(ref,{reminderDelivery:{generation:key,status:'sending',lease,leaseUntil:new Date(now.getTime()+120000),firstAttemptAt:delivery.generation===key?delivery.firstAttemptAt:now,mail}});
-        return {key,mail};
+        const uid=stringValue(visit.userId),profile=await tx.get(db.collection(COLLECTIONS.users).doc(uid));
+        if(!profile.exists||profile.data()?.isActive===false||profile.data()?.emailVerified===false||!profile.data()?.email)return null;
+        const title=stringValue(visit.title),when=formatIST(new Date(epoch(visit.visitDate))),details=stringValue(visit.description);
+        const bodyHtml=`<p><strong>${escapeHtml(title)}</strong></p><p>Scheduled: ${escapeHtml(when)}</p>${details?`<p>${escapeHtml(details)}</p>`:''}`;
+        const bodyText=`${title}. Scheduled: ${when}.${details?` Details: ${details}`:''}`;
+        const events:TransactionalEmailEvent[]=delivery.generation===key&&Array.isArray(delivery.events)?delivery.events as TransactionalEmailEvent[]:[
+          {eventType:'visit.reminder',eventId:`${doc.id}:${key}:requester`,recipientUID:uid,recipientRole:'requester',recordId:doc.id,templateId:'visit-reminder-requester',templateVersion:1,subject:`Visit reminder: ${title}`,...brandedEmail('Your visit is in 30 minutes',bodyHtml,bodyText,{label:'Open Visit Planner',path:'/visit-planner'}),idempotencyKey:`visit.reminder:${doc.id}:${key}:requester`,scheduledFor:new Date(epoch(visit.visitDate)-30*60000).toISOString(),reminderOffset:30},
+          ...(stringValue(profile.data()!.email).toLowerCase()===stringValue(process.env.ADMIN_EMAIL).toLowerCase()?[]:[{eventType:'visit.reminder',eventId:`${doc.id}:${key}:admin`,recipientRole:'admin',recipientEmail:process.env.ADMIN_EMAIL,recordId:doc.id,templateId:'visit-reminder-admin',templateVersion:1,subject:`Visit reminder: ${title}`,...brandedEmail('A visit starts in 30 minutes',`<p>Requester: ${escapeHtml(stringValue(profile.data()!.name)||'Registered user')}<br>Verified email: ${escapeHtml(stringValue(profile.data()!.email))}</p>${bodyHtml}`,`Requester: ${stringValue(profile.data()!.name)||'Registered user'} (${stringValue(profile.data()!.email)}). ${bodyText}`,{label:'Open admin visits',path:'/admin?tab=visits'}),idempotencyKey:`visit.reminder:${doc.id}:${key}:admin`,scheduledFor:new Date(epoch(visit.visitDate)-30*60000).toISOString(),reminderOffset:30} as TransactionalEmailEvent]),
+        ];
+        tx.update(ref,{reminderDelivery:{generation:key,status:'sending',lease,leaseUntil:new Date(now.getTime()+120000),firstAttemptAt:delivery.generation===key?delivery.firstAttemptAt:now,events}});
+        return {key,events};
       });
       if(!claim){results.skipped++;continue;}
-      let sent=false;
-      try{await sendEmail(claim.mail,`visit-${doc.id}-${claim.key}`);sent=true;}catch{/* Retry with the same provider key on the next eligible run. */}
+      const outcomes=[];for(const event of claim.events)outcomes.push(await processTransactionalEmail(event));
+      const sent=outcomes.every(outcome=>outcome==='sent');
       await db.runTransaction(async tx=>{
         const fresh=await tx.get(ref);const data=fresh.data();
         if(!fresh.exists||data?.reminderDelivery?.lease!==lease)return;
@@ -90,77 +92,76 @@ export async function remindersEndpoint(request:Request) {
   return jsonResponse({success:result.failed===0&&properties.failed===0,...result,properties},result.failed||properties.failed?503:200);
 }
 
-export function propertyReminderEvents(property:RecordData,now:Date) {
-  if(property.isActive!==true||property.status==='inactive'||property.rentalStatus!=='rented'||property.agreementStatus==='terminated')return [];
-  const local=new Date(now.getTime()+330*60000),day=local.getUTCDate(),month=local.getUTCMonth(),year=local.getUTCFullYear();
-  const monthKey=`${year}-${String(month+1).padStart(2,'0')}`;
-  const today=Date.UTC(year,month,day);
-  const tenants=Array.isArray(property.tenants)?property.tenants.filter(isRecord).filter(t=>t.isActive===true):[];
-  const candidates=tenants.length?tenants:property.tenantEmail?[{email:property.tenantEmail,isActive:true}]:[];
-  const events=candidates.flatMap((tenant,index)=>{
-    const events:Array<{key:string;kind:string;tenant:RecordData;amount:string;period:string}>=[];
-    const due=Number(tenant.paymentDueDate||property.paymentDueDate);
-    const amount=stringValue(tenant.monthlyRent||property.monthlyRent);
-    const identity=stringValue(tenant.userUID||tenant.id||tenant.email)||String(index);
-    if(Number.isInteger(due)&&due>=1&&due<=31&&day===Math.min(due,new Date(Date.UTC(year,month+1,0)).getUTCDate())&&amount)events.push({key:`rent:${identity}:${monthKey}`,kind:'rent_due',tenant,amount,period:monthKey});
-    const end=epoch(tenant.leaseEndDate||property.agreementEndDate);
-    if(Number.isFinite(end)) {
-      const endLocal=new Date(end+330*60000),endDay=Date.UTC(endLocal.getUTCFullYear(),endLocal.getUTCMonth(),endLocal.getUTCDate());
-      const remaining=Math.round((endDay-today)/86400000);
-      if(remaining>=0&&remaining<=90) {
-        const threshold=remaining<=60?60:90;
-        events.push({key:`expiry:${identity}:${endDay}:${threshold}`,kind:'agreement_expiry',tenant,amount:'',period:`${remaining} days`});
-      }
-    }
-    return events;
-  });
-  const expiry=events.find(event=>event.kind==='agreement_expiry');
-  if(expiry&&property.ownerUID&&property.ownerEmail)events.push({...expiry,key:`owner:${expiry.key}`,tenant:{userUID:property.ownerUID,email:property.ownerEmail}});
+type ReminderCandidate={kind:'rent_due'|'agreement_expiry';recipientUID:string;recipientRole:'owner'|'tenant';tenancyId:string;period:string;amount:string;dueDate:string;offset:number;agreementVersion:string};
+const isoDate=(year:number,month:number,day:number)=>`${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+function localDate(now:Date,timezone:string){
+  let zone=timezone||'Asia/Kolkata';try{new Intl.DateTimeFormat('en-CA',{timeZone:zone}).format(now);}catch{zone='Asia/Kolkata';}
+  const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now).filter(part=>part.type!=='literal').map(part=>[part.type,Number(part.value)]));
+  return {year:parts.year,month:parts.month,day:parts.day,date:isoDate(parts.year,parts.month,parts.day)};
+}
+function calendarDays(from:string,to:string){return Math.round((Date.parse(`${to}T00:00:00Z`)-Date.parse(`${from}T00:00:00Z`))/86400000);}
+function dateOnly(value:unknown){const match=/^(\d{4})-(\d{2})-(\d{2})/.exec(stringValue(value));if(!match)return '';const y=Number(match[1]),m=Number(match[2]),d=Number(match[3]);return m>=1&&m<=12&&d>=1&&d<=new Date(Date.UTC(y,m,0)).getUTCDate()?isoDate(y,m,d):'';}
+
+export function propertyReminderEvents(property:RecordData,now:Date):ReminderCandidate[] {
+  if(property.isActive!==true||property.status==='inactive'||property.rentalStatus!=='rented'||['terminated','expired','cancelled'].includes(stringValue(property.agreementStatus)))return [];
+  const local=localDate(now,stringValue(property.timezone)),period=`${local.year}-${String(local.month).padStart(2,'0')}`;
+  const ledger=isRecord(property.rentLedger)?property.rentLedger:{},paid=isRecord(ledger[period])&&ledger[period].status==='paid';
+  const tenants=(Array.isArray(property.tenants)?property.tenants:[]).filter(isRecord).filter(tenant=>tenant.isActive===true&&stringValue(tenant.userUID));
+  const events:ReminderCandidate[]=[];
+  for(const tenant of tenants){
+    const tenancyId=stringValue(tenant.id||tenant.userUID),amount=stringValue(tenant.monthlyRent||property.monthlyRent),dueDay=Number(tenant.paymentDueDate||property.paymentDueDate);
+    const dueDate=Number.isInteger(dueDay)&&dueDay>=1&&dueDay<=31?isoDate(local.year,local.month,Math.min(dueDay,new Date(Date.UTC(local.year,local.month,0)).getUTCDate())):'';
+    const rentOffset=dueDate?calendarDays(local.date,dueDate):-1;
+    const expiryDate=dateOnly(tenant.leaseEndDate||property.agreementEndDate),expiryOffset=expiryDate?calendarDays(local.date,expiryDate):-1;
+    const agreementVersion=stringValue(tenant.agreementVersion||property.agreementVersion||property.tenancyRevision||expiryDate);
+    const recipients:Array<{recipientUID:string;recipientRole:'owner'|'tenant'}>=[{recipientUID:stringValue(tenant.userUID),recipientRole:'tenant'}];
+    if(property.ownerUID)recipients.push({recipientUID:stringValue(property.ownerUID),recipientRole:'owner'});
+    if(!paid&&amount&&[7,1,0].includes(rentOffset))for(const recipient of recipients)events.push({kind:'rent_due',...recipient,tenancyId,period,amount,dueDate,offset:rentOffset,agreementVersion});
+    if(expiryDate&&[30,15,7].includes(expiryOffset))for(const recipient of recipients)events.push({kind:'agreement_expiry',...recipient,tenancyId,period:expiryDate.slice(0,7),amount:'',dueDate:expiryDate,offset:expiryOffset,agreementVersion});
+  }
   return events;
 }
 
-export async function runPropertyReminders(now=new Date(),after='') {
+type Cursor={after:string;property:string;event:number};
+function cursorSecret(){return process.env.CRON_SECRET||'';}
+function encodeCursor(value:Cursor){const payload=Buffer.from(JSON.stringify({v:1,...value})).toString('base64url'),signature=createHash('sha256').update(`${cursorSecret()}:${payload}`).digest('base64url');return `${payload}.${signature}`;}
+function decodeCursor(token:string):Cursor {
+  if(!token)return {after:'',property:'',event:0};
+  const [payload,signature,extra]=token.split('.');if(!payload||!signature||extra)throw new ApiError(400,'Invalid reminder cursor');
+  const expected=createHash('sha256').update(`${cursorSecret()}:${payload}`).digest();let supplied:Buffer;try{supplied=Buffer.from(signature,'base64url');}catch{throw new ApiError(400,'Invalid reminder cursor');}
+  if(supplied.length!==expected.length||!timingSafeEqual(supplied,expected))throw new ApiError(400,'Invalid reminder cursor');
+  let parsed:RecordData;try{parsed=JSON.parse(Buffer.from(payload,'base64url').toString('utf8'));}catch{throw new ApiError(400,'Invalid reminder cursor');}
+  if(parsed.v!==1||typeof parsed.after!=='string'||typeof parsed.property!=='string'||!Number.isInteger(parsed.event)||Number(parsed.event)<0||[parsed.after,parsed.property].some(value=>stringValue(value).includes('/')||stringValue(value).length>1500))throw new ApiError(400,'Invalid reminder cursor');
+  return {after:stringValue(parsed.after),property:stringValue(parsed.property),event:Number(parsed.event)};
+}
+function transactionalEvent(property:RecordData,event:ReminderCandidate,scheduledFor:string):TransactionalEmailEvent {
+  const propertyId=stringValue(property.id),title=stringValue(property.title)||propertyId;
+  const eventType=event.kind==='rent_due'?'rent.reminder':'agreement.expiry_reminder';
+  const eventId=event.kind==='rent_due'?`${propertyId}:${event.tenancyId}:${event.period}:${event.offset}`:`${propertyId}:${event.tenancyId}:${event.agreementVersion}:${event.offset}`;
+  const subject=event.kind==='rent_due'?event.offset===0?'Rent is due today':`Rent due in ${event.offset} day${event.offset===1?'':'s'}`:`Rental agreement expires in ${event.offset} days`;
+  const bodyText=event.kind==='rent_due'?`${title}: rent ${event.amount} for ${event.period} is due on ${event.dueDate}.`:`${title}: the current rental agreement expires on ${event.dueDate}. Review renewal or move-out arrangements in PropBank.`;
+  const bodyHtml=event.kind==='rent_due'?`<p><strong>${escapeHtml(title)}</strong></p><p>Rent amount: ${escapeHtml(event.amount)}<br>Rental period: ${escapeHtml(event.period)}<br>Due date: ${escapeHtml(event.dueDate)}</p>`:`<p><strong>${escapeHtml(title)}</strong></p><p>The current rental agreement expires on ${escapeHtml(event.dueDate)}. Review renewal or move-out arrangements in PropBank.</p>`;
+  return {eventType,eventId,recipientUID:event.recipientUID,recipientRole:event.recipientRole,propertyId,recordId:propertyId,templateId:event.kind==='rent_due'?'rent-reminder':'agreement-expiry-reminder',templateVersion:1,subject,...brandedEmail(subject,bodyHtml,bodyText,{label:event.kind==='rent_due'?'View rental information':'View agreement',path:`/manage-property/${propertyId}`}),idempotencyKey:`${eventType}:${eventId}:${event.recipientUID}`,tenancyId:event.tenancyId,rentPeriod:event.kind==='rent_due'?event.period:undefined,agreementVersion:event.kind==='agreement_expiry'?event.agreementVersion:undefined,scheduledFor,reminderOffset:event.offset,reminderDueDate:event.dueDate,reminderAmount:event.kind==='rent_due'?event.amount:undefined};
+}
+
+export async function runPropertyReminders(now=new Date(),cursorToken='') {
   if(!process.env.RESEND_API_KEY||!process.env.FROM_EMAIL)throw new ApiError(503,'Reminder email delivery is not configured');
-  const db=getDatabase();let query:FirebaseFirestore.Query=db.collection(COLLECTIONS.properties).where('isActive','==',true).orderBy('__name__').limit(1000);
-  if(after) {if(after.includes('/'))throw new ApiError(400,'Invalid reminder cursor');query=query.startAfter(after);}
-  const snapshot=await query.get();
-  const result={scanned:snapshot.docs.length,sent:0,failed:0,skipped:0,needsReconciliation:0,limited:snapshot.docs.length>=1000,nextCursor:snapshot.docs.length>=1000?snapshot.docs.at(-1)!.id:null};
-  let attempted=0;
-  for(const doc of snapshot.docs) {
-    for(const event of propertyReminderEvents(doc.data(),now)) {
-      if(attempted>=20){result.limited=true;continue;}
-      const key=createHash('sha256').update(event.key).digest('hex'),lease=randomUUID(),ref=db.collection(COLLECTIONS.properties).doc(doc.id);
-      const existing=isRecord(doc.data().reminderDeliveries)?doc.data().reminderDeliveries:{};
-      if(isRecord(existing[key])&&(existing[key].status==='sent'||epoch(existing[key].leaseUntil)>now.getTime())){result.skipped++;continue;}
-      const claim=await db.runTransaction(async tx=>{
-        const fresh=await tx.get(ref);if(!fresh.exists)return null;
-        const property=fresh.data()!;
-        const current=propertyReminderEvents(property,now).find(candidate=>candidate.key===event.key);if(!current)return null;
-        const deliveries=isRecord(property.reminderDeliveries)?property.reminderDeliveries:{};
-        const delivery=isRecord(deliveries[key])?deliveries[key]:{};
-        if(delivery.status==='sent'||epoch(delivery.leaseUntil)>now.getTime())return null;
-        if(epoch(delivery.firstAttemptAt)>0&&now.getTime()-epoch(delivery.firstAttemptAt)>=23*3600000){result.needsReconciliation++;return null;}
-        const uid=await resolveTenantIdentity(stringValue(current.tenant.email),stringValue(current.tenant.userUID));
-        const profile=uid?await getUser(uid):null;
-        // Email-only off-platform tenants may still receive owner-assigned reminders.
-        const email=profile?.email||current.tenant.email;if(!email)return null;
-        const mail:Email=isRecord(delivery.mail)?delivery.mail as unknown as Email:{to:stringValue(email),subject:current.kind==='rent_due'?'Monthly rent due':'Agreement expiry reminder',html:`<p>${escapeHtml(stringValue(property.title))}</p><p>${current.kind==='rent_due'?`Rent ${escapeHtml(current.amount)} is due for ${escapeHtml(current.period)}.`:`Your agreement expires in ${escapeHtml(current.period)}. Contact the owner to discuss renewal.`}</p>`};
-        tx.update(ref,{[`reminderDeliveries.${key}`]:{status:'sending',lease,leaseUntil:new Date(now.getTime()+120000),firstAttemptAt:delivery.firstAttemptAt||now,mail,kind:current.kind,period:current.period}});
-        return mail;
-      });
-      if(!claim){result.skipped++;continue;}attempted++;
-      let sent=false;try{await sendEmail(claim,`property-${doc.id}-${key}`);sent=true;}catch{/* Same provider key and frozen payload are retried within its retention window. */}
-      await db.runTransaction(async tx=>{
-        const fresh=await tx.get(ref),deliveries=fresh.data()?.reminderDeliveries;
-        if(!fresh.exists||!isRecord(deliveries)||!isRecord(deliveries[key])||deliveries[key].lease!==lease)return;
-        tx.update(ref,{[`reminderDeliveries.${key}`]:{...deliveries[key],status:sent?'sent':'failed',leaseUntil:now,...(sent?{sentAt:now}:{})}});
-        if(sent) {
-          const id=`reminder-${doc.id}-${key}`;
-          tx.set(db.collection(COLLECTIONS.adminNotifications).doc(id),{id,type:event.kind,title:event.kind==='rent_due'?'Monthly Rent Due':'Agreement Expiry Reminder',message:claim.subject,propertyId:doc.id,ownerId:fresh.data()?.ownerUID||'',timestamp:now,isRead:false,priority:'medium',createdAt:now,updatedAt:now});
-        }
-      });
-      if(sent)result.sent++;else result.failed++;
+  const cursor=decodeCursor(cursorToken),db=getDatabase();let query:FirebaseFirestore.Query=db.collection(COLLECTIONS.properties).where('isActive','==',true).orderBy('__name__').limit(250);
+  if(cursor.after)query=query.startAfter(cursor.after);
+  const snapshot=await query.get(),result={scanned:snapshot.docs.length,sent:0,failed:0,skipped:0,needsReconciliation:0,limited:false,nextCursor:null as string|null};
+  let completed=cursor.after,attempted=0;
+  for(let documentIndex=0;documentIndex<snapshot.docs.length;documentIndex++){
+    const doc=snapshot.docs[documentIndex];
+    if(cursor.property&&documentIndex===0&&doc.id!==cursor.property)throw new ApiError(409,'Reminder cursor is stale');
+    const property={...doc.data(),id:doc.id} as RecordData,events=propertyReminderEvents(property,now);let eventIndex=documentIndex===0&&cursor.property===doc.id?cursor.event:0;
+    if(eventIndex>events.length)throw new ApiError(409,'Reminder cursor is stale');
+    for(;eventIndex<events.length;eventIndex++){
+      if(attempted>=20){result.limited=true;result.nextCursor=encodeCursor({after:completed,property:doc.id,event:eventIndex});return result;}
+      attempted++;const outcome=await processTransactionalEmail(transactionalEvent(property,events[eventIndex],localDate(now,stringValue(property.timezone)).date));
+      if(outcome==='sent')result.sent++;else if(outcome==='failed')result.failed++;else result.skipped++;
     }
+    completed=doc.id;
   }
+  if(snapshot.docs.length===250){result.limited=true;result.nextCursor=encodeCursor({after:completed,property:'',event:0});}
   return result;
 }

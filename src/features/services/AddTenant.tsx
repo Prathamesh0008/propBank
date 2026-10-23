@@ -81,12 +81,15 @@ const AddTenant = () => {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const readOnly = searchParams.get('mode') === 'view';
+  const adminMode = searchParams.get('admin') === '1';
+  const selectedTenantUID = searchParams.get('tenantUID') || '';
   const { toast } = useToast();
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [propertyOwner,setPropertyOwner]=useState("");
   const [existingTenants, setExistingTenants] = useState<TenantData[]>([]);
   const [propertyTitle, setPropertyTitle] = useState<string>('');
   const [propertyRentSchedule, setPropertyRentSchedule] = useState<any[]>([]);
+  const [tenancyRevision,setTenancyRevision]=useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
@@ -141,6 +144,7 @@ const AddTenant = () => {
           const property = data.property;
           setPropertyTitle(property.title);
           setPropertyOwner(property.ownerUID);
+          setTenancyRevision(Number(property.tenancyRevision||0));
           if (property.rentSchedule) {
             setPropertyRentSchedule(property.rentSchedule);
           }
@@ -153,6 +157,7 @@ const AddTenant = () => {
               email: tenant.email,
               phone: tenant.phone,
               emergencyContact: tenant.emergencyContact,
+              userUID: tenant.userUID,
               isMarried: tenant.isMarried || false,
               spouse: tenant.spouse || null,
               leaseStartDate: tenant.leaseStartDate,
@@ -178,6 +183,13 @@ const AddTenant = () => {
 
     fetchPropertyData();
   }, [propertyId]);
+
+  useEffect(()=>{
+    if(!adminMode||!selectedTenantUID)return;
+    let active=true;
+    void apiFetch(`${API_BASE_URL}/users/${encodeURIComponent(selectedTenantUID)}`).then(async response=>{const data=await response.json();if(!response.ok||!data.user)throw new Error(data.message||'Selected user could not be loaded');if(!active)return;const account=data.user,name=String(account.name||'').trim().split(/\s+/);setTenants(current=>[{...current[0],firstName:name[0]||'Tenant',lastName:name.slice(1).join(' ')||'User',email:account.email||'',phone:account.phoneNumber||'',userUID:account.uid,userInfo:{uid:account.uid,name:account.name||'',email:account.email||'',photoURL:account.photoURL||'',phoneNumber:account.phoneNumber||''}}]);}).catch(error=>{if(active)toast({title:'Unable to load tenant',description:error instanceof Error?error.message:'Selected user could not be loaded',variant:'destructive'});});
+    return()=>{active=false;};
+  },[adminMode,selectedTenantUID,toast]);
 
   const searchUserByPhone = async (tenantId: string, phoneNumber: string) => {
     if (!phoneNumber || phoneNumber.trim().length < 10) {
@@ -533,13 +545,17 @@ const AddTenant = () => {
         isActive: true
       }));
 
-      // Call the dedicated tenant creation endpoint which handles notifications
-      const response = await apiFetch(`${API_BASE_URL}/tenants`, {
+      if(adminMode&&(newTenantInfos.length!==1||!newTenantInfos[0].userUID))throw new Error('Select one registered tenant before saving');
+      const response = await apiFetch(adminMode?`${API_BASE_URL}/admin/properties/${propertyId}/tenancy`:`${API_BASE_URL}/tenants`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
+        body: JSON.stringify(adminMode?{
+          action:existingTenants.length?'replace':'assign',
+          expectedRevision:tenancyRevision,
+          tenant:newTenantInfos[0]
+        }:{
           propertyId: propertyId,
           ownerUID: property.ownerUID,
           tenants: newTenantInfos
@@ -557,7 +573,7 @@ const AddTenant = () => {
         });
 
         setTimeout(() => {
-          navigate("/manage-property");
+          navigate(adminMode?"/admin":"/manage-property");
         }, 1500);
       } else {
         setIsSubmitting(false);
@@ -576,6 +592,14 @@ const AddTenant = () => {
         variant: "destructive"
       });
     }
+  };
+
+  const removeExistingTenant=async(tenantId:string)=>{
+    if(!adminMode||isSubmitting)return;
+    setIsSubmitting(true);
+    try{const response=await apiFetch(`${API_BASE_URL}/admin/properties/${propertyId}/tenancy`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'remove',expectedRevision:tenancyRevision,tenantId})});const data=await response.json();if(!response.ok)throw new Error(data.message||'Tenant could not be removed');setExistingTenants([]);setTenancyRevision(Number(data.tenancyRevision));toast({title:'Tenant removed',description:'The previous tenancy remains in relationship history.'});}
+    catch(error){toast({title:'Unable to remove tenant',description:error instanceof Error?error.message:'Please refresh and try again.',variant:'destructive'});}
+    finally{setIsSubmitting(false);}
   };
 
   return (
@@ -622,7 +646,7 @@ const AddTenant = () => {
                   </div>
                   <div className="ml-3">
                     <p className="text-sm text-orange-800">
-                      This property is currently occupied. You cannot add or edit tenants while the property has active tenants.
+                      {adminMode?'Saving the selected registered user will replace the current active tenancy and preserve its history.':'This property is currently occupied. You cannot add or edit tenants while the property has active tenants.'}
                     </p>
                   </div>
                 </div>
@@ -641,6 +665,7 @@ const AddTenant = () => {
                         <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded-full">
                           Active Tenant
                         </span>
+                        {adminMode&&<Button type="button" variant="outline" size="sm" disabled={isSubmitting} onClick={()=>void removeExistingTenant(tenant.id)}>Remove tenant</Button>}
                       </div>
                     </div>
                   </CardHeader>
@@ -802,19 +827,19 @@ const AddTenant = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold">
-                  {existingTenants.length > 0 ? 'Add New Tenants' : 'Tenant Information'}
+                  {adminMode&&existingTenants.length>0?'Replacement tenant':existingTenants.length > 0 ? 'Add New Tenants' : 'Tenant Information'}
                 </h2>
                 <p className="text-muted-foreground">
                   {existingTenants.length > 0
-                    ? 'Add additional tenants to this property'
+                    ? adminMode?'Enter the replacement tenant and rental details.':'Add additional tenants to this property'
                     : 'Enter tenant details for this property'
                   }
                 </p>
               </div>
-              <Button onClick={addTenant} variant="outline">
+              {!adminMode&&<Button onClick={addTenant} variant="outline">
                 <Plus className="h-4 w-4 mr-2" />
                 {existingTenants.length > 0 ? 'Add Another Tenant' : 'Add New Tenant'}
-              </Button>
+              </Button>}
             </div>
 
             {tenants.map((tenant, index) => (
@@ -1269,7 +1294,7 @@ const AddTenant = () => {
                 ) : (
                   <>
                     <UserPlus className="h-4 w-4 mr-2" />
-                    Add Tenant{tenants.length > 1 ? 's' : ''}
+                    {adminMode?(existingTenants.length?'Replace Tenant':'Assign Tenant'):`Add Tenant${tenants.length > 1 ? 's' : ''}`}
                   </>
                 )}
               </Button>

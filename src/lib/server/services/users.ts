@@ -3,7 +3,9 @@ import { AccessError, requireUser, verifyFirebaseIdentity } from '../auth';
 import { COLLECTIONS, getDatabase } from '../firestore';
 import { getFirebaseAdminAuth } from '../firebase-admin';
 import { jsonResponse } from '../http';
-import { model, storeModel, stringValue, wireModel, type RecordData, isRecord } from './contracts';
+import { persistUserEvent } from './transactional-email';
+import { authMetadata, recordAuthActivity } from './auth-activity';
+import { model, storeModel, stringValue, wireModel, wireValue, type RecordData, isRecord } from './contracts';
 
 export const normalizePhone = (phone: string) => phone.replace(/[^0-9+]/g,'');
 const duplicateMessage = 'This phone number is already registered with another account';
@@ -39,11 +41,11 @@ export async function resolveTenantIdentity(email:string,uid=''):Promise<string>
     throw error;
   }
 }
-export async function userIdentity(request: Request, target?: string) {
-  const token = await verifyFirebaseIdentity(request);
+export async function userIdentity(request: Request, target?: string,allowUnverifiedOnboarding=false) {
+  const token = allowUnverifiedOnboarding?await verifyFirebaseIdentity(request):(await requireUser(request)).token;
   const existing = await getUser(token.uid);
   if (existing?.isActive === false) throw new AccessError(403,'Active user profile required');
-  const admin = existing?.role === 'admin';
+  const admin = !allowUnverifiedOnboarding&&existing?.role === 'admin';
   if (target && target !== token.uid && !admin) throw new AccessError(403,'Access denied');
   return {token,admin,existing};
 }
@@ -61,6 +63,8 @@ async function parseUser(request: Request): Promise<RecordData | null> {
       if (value != null && typeof value !== 'string') return null;
       result[key] = value ?? '';
     }
+    const activeKey=Object.keys(data||{}).find(key=>key.toLowerCase()==='isactive');
+    if(activeKey){if(typeof (data as RecordData)[activeKey]!=='boolean')return null;result.isActive=(data as RecordData)[activeKey];}
     return result;
   } catch { return null; }
 }
@@ -68,8 +72,8 @@ async function checkPhone(uid:string,phone:string) {
   const other = await findUser('phoneNumber',phone);
   return !!other && other.uid !== uid;
 }
-function checkRole(admin:boolean,requested:unknown,existing:RecordData|null) {
-  if (!admin && requested === 'agent' && existing?.role !== 'agent') throw new AccessError(403,'Administrator access required to assign agent role');
+function checkRole(admin:boolean,requested:unknown,existing:RecordData|null,initialRegistration=false) {
+  if (!admin && requested === 'agent' && existing?.role !== 'agent' && !(initialRegistration&&!existing)) throw new AccessError(403,'Agent role may only be selected during initial registration');
   if (!admin && requested === 'admin' && existing?.role !== 'admin') throw new AccessError(403,'Administrator access required to assign admin role');
   if (!admin && existing?.role === 'admin' && requested && requested !== existing.role) throw new AccessError(403,'Administrator access required to change admin role');
 }
@@ -80,7 +84,7 @@ export async function listUsers(request:Request) {
   const docs = await userCollection().get();
   const users: RecordData[] = [];
   for (const doc of docs.docs) {
-    try { const user=model('User',doc.data()); if(!user.uid) user.uid=doc.id; users.push(wireModel('User',user)); } catch { /* Go skips invalid documents. */ }
+    try { const user=model('User',doc.data()); if(!user.uid) user.uid=doc.id;let authentication:RecordData={};try{authentication=authMetadata(await getFirebaseAdminAuth().getUser(doc.id));}catch{authentication={accountStatus:'missing_auth_account',providerIds:[],emailVerified:false};}users.push({...wireModel('User',user),...authentication}); } catch { /* Skip invalid documents. */ }
   }
   return jsonResponse({success:true,message:'Users fetched successfully',...(users.length?{data:users}:{})});
 }
@@ -107,7 +111,9 @@ export async function readUser(request:Request,uid:string) {
   const identity=await userIdentity(request);
   const user=await getUser(uid);
   if(user && !identity.admin && uid!==identity.token.uid)return jsonResponse({success:true,message:'User fetched successfully',user:{uid:user.uid,name:user.name,photoURL:user.photoURL,role:user.role}});
-  return user ? success('User fetched successfully',user) : jsonResponse({success:false,message:'User not registered'});
+  if(!user)return jsonResponse({success:false,message:'User not registered'});
+  if(identity.admin){let authentication:RecordData={};try{authentication=authMetadata(await getFirebaseAdminAuth().getUser(uid));}catch{authentication={accountStatus:'missing_auth_account',providerIds:[],emailVerified:false};}const properties=await getDatabase().collection(COLLECTIONS.properties).get(),owned:string[]=[],rented:string[]=[];for(const doc of properties.docs){const property=doc.data();if(property.ownerUID===uid)owned.push(doc.id);if(Array.isArray(property.tenants)&&property.tenants.some((tenant:RecordData)=>tenant.isActive===true&&tenant.userUID===uid))rented.push(doc.id);}const activity=await getDatabase().collection('auth_activity').where('targetUID','==',uid).get();const authActivity=activity.docs.map(doc=>wireValue({...doc.data(),id:doc.id})).sort((a,b)=>+new Date((b as RecordData).createdAt as string)-+new Date((a as RecordData).createdAt as string)).slice(0,100);return jsonResponse({success:true,message:'User fetched successfully',user:{...wireModel('User',user),...authentication,relationships:{ownedPropertyIds:owned,rentedPropertyIds:rented},authActivity}});}
+  return success('User fetched successfully',user);
 }
 export async function searchUser(request:Request) {
   const caller=await requireUser(request);
@@ -124,21 +130,24 @@ export async function searchUser(request:Request) {
 }
 
 export async function createUser(request:Request,authRegistration=false) {
-  const identity=await userIdentity(request);
+  const identity=await userIdentity(request,undefined,authRegistration);
   const req=await parseUser(request);
   if (!req) return fail(authRegistration?'Invalid request body':'Invalid JSON',400);
-  if (!req.uid || !req.email || !req.name || (authRegistration && !req.phoneNumber)) return fail(authRegistration?'Missing required fields: uid, email, name, phoneNumber':'Missing required fields: uid, email, name',400);
+  if (!req.uid || !req.email || !req.name) return fail('Missing required fields: uid, email, name',400);
   const uid=stringValue(req.uid);
   if (uid!==identity.token.uid && !identity.admin) throw new AccessError(403,'Access denied');
   req.role ||= 'individual';
   if (!['admin','agent','individual'].includes(stringValue(req.role))) return fail("Invalid role. Must be 'admin', 'agent', or 'individual'",400);
   const existing=await getUser(uid);
-  checkRole(identity.admin,req.role,existing);
+  if(authRegistration&&existing?.role)req.role=existing.role;
+  checkRole(identity.admin,req.role,existing,authRegistration);
+  if(identity.admin&&uid===identity.token.uid&&(req.role&&req.role!==existing?.role||'isActive' in req&&req.isActive!==existing?.isActive))throw new AccessError(403,'Use another administrator to change your own role or account status');
   if(uid===identity.token.uid && stringValue(req.email).toLowerCase()!==identity.token.email?.toLowerCase())return fail('Email must match Firebase identity',400);
   const phone=normalizePhone(stringValue(req.phoneNumber));
   if (phone && await checkPhone(uid,phone)) return fail(duplicateMessage,409);
   const now=new Date();
-  const user={...existing,...model('User',{...req,phoneNumber:phone,isActive:existing?.isActive!==false,createdAt:existing?.createdAt||now,updatedAt:now})};
+  let metadata:RecordData={};try{metadata=authMetadata(await getFirebaseAdminAuth().getUser(uid));}catch{/* Identity token validation remains authoritative. */}
+  const user={...existing,...metadata,...model('User',{...req,phoneNumber:phone,isActive:existing?.isActive!==false,createdAt:existing?.createdAt||now,updatedAt:now})};
   if(!identity.admin && existing?.role)user.role=existing.role;
   if (authRegistration && existing) {
     user.createdAt=existing.createdAt;
@@ -146,6 +155,9 @@ export async function createUser(request:Request,authRegistration=false) {
     else if (existing.role && req.role==='individual') user.role=existing.role;
   }
   await saveUser(user);
+  if(authRegistration&&!existing)await recordAuthActivity({eventType:'registration',actorUID:uid,targetUID:uid,context:{providerIds:metadata.providerIds||[],emailVerified:metadata.emailVerified===true,source:'firebase'}}).catch(()=>null);
+  if(authRegistration&&!existing)await persistUserEvent({eventType:'user.registration_welcome',eventId:`user:${uid}:registered`,recipients:[{uid,role:'user'}],recordId:uid,templateId:'registration-welcome',subject:'Welcome to PropBank',title:'Welcome to PropBank',bodyHtml:'<p>Your PropBank account is ready. You can now manage property and rental activity from your secure account.</p>',bodyText:'Your PropBank account is ready. You can now manage property and rental activity from your secure account.',action:{label:'Open your account',path:'/manage-property'}}).catch(()=>null);
+  if(authRegistration&&!existing&&user.role==='agent')await persistUserEvent({eventType:'agent.registration',eventId:`agent:${uid}:registered`,recipients:[{uid,role:'agent'},{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:uid,templateId:'agent-registration',subject:'Real estate agent account registered',title:'Agent account registered',bodyHtml:'<p>A Real Estate Agent account was registered with PropBank. Email verification is required before protected access.</p>',bodyText:'A Real Estate Agent account was registered with PropBank. Email verification is required before protected access.',action:{label:'Open PropBank',path:'/manage-property'}}).catch(()=>null);
   return success(authRegistration?(existing?'User updated successfully':'User created successfully'):'User created/updated successfully',user,authRegistration?200:201);
 }
 export async function updateUser(request:Request,uid:string) {
@@ -164,14 +176,34 @@ export async function updateUser(request:Request,uid:string) {
     await saveUser(user);
     return success('User created successfully',user,201);
   }
+  const previousRole=stringValue(existing.role),previousStatus=existing.isActive!==false;let phoneChanged=false;
   for (const key of ['name','photoURL','email']) if(req[key]) existing[key]=req[key];
   if (req.phoneNumber) {
     const phone=normalizePhone(stringValue(req.phoneNumber));
     if (await checkPhone(uid,phone)) return fail(duplicateMessage,409);
+    if(phone!==normalizePhone(stringValue(existing.phoneNumber))){
+      if(uid!==identity.token.uid)return fail('Only the account owner can change the registered mobile number',403);
+      const authenticatedAt=Number(identity.token.auth_time||0),verifiedPhone=normalizePhone(stringValue(identity.token.phone_number));
+      if(!authenticatedAt||Date.now()/1000-authenticatedAt>300)return fail('Recent authentication is required to change the mobile number',403);
+      if(!verifiedPhone||verifiedPhone!==phone)return fail('Verified phone ownership is not configured or the new number has not been verified',503);
+      phoneChanged=true;
+    }
     existing.phoneNumber=phone;
   }
   if (['admin','agent','individual'].includes(stringValue(req.role))) existing.role=req.role;
+  if('isActive' in req){if(!identity.admin)throw new AccessError(403,'Administrator access required to change account status');existing.isActive=req.isActive;await getFirebaseAdminAuth().updateUser(uid,{disabled:req.isActive===false});}
   existing.updatedAt=new Date();
   await saveUser(existing);
+  if(previousRole!==existing.role)await recordAuthActivity({eventType:'role_changed',actorUID:identity.token.uid,targetUID:uid,context:{previousRole,role:existing.role,source:'admin'}}).catch(()=>null);
+  if(previousStatus!==(existing.isActive!==false))await recordAuthActivity({eventType:'account_status_changed',actorUID:identity.token.uid,targetUID:uid,context:{previousStatus:previousStatus?'active':'inactive',status:existing.isActive===false?'inactive':'active',source:'admin'}}).catch(()=>null);
+  if(['name','photoURL','email'].some(key=>req[key]))await recordAuthActivity({eventType:'profile_changed',actorUID:identity.token.uid,targetUID:uid,context:{source:identity.admin?'admin':'self'}}).catch(()=>null);
+  if(phoneChanged){
+    const phone=normalizePhone(stringValue(req.phoneNumber)),eventId=`user:${uid}:phone:${phone}`;
+    const audit=getDatabase().collection(COLLECTIONS.adminNotifications).doc(eventId.replaceAll(':','-'));
+    await Promise.allSettled([
+      persistUserEvent({eventType:'user.mobile_number_changed',eventId,recipients:[{uid,role:'user'},{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:uid,templateId:'mobile-number-changed',subject:'Your PropBank mobile number changed',title:'Mobile number updated',bodyHtml:'<p>The verified mobile number on this PropBank account was changed.</p><p>If you did not make this change, review your account immediately.</p>',bodyText:'The verified mobile number on this PropBank account was changed. If you did not make this change, review your account immediately.',action:{label:'Review account',path:'/manage-property'}}),
+      audit.set({id:audit.id,type:'security_mobile_changed',title:'Verified mobile number changed',message:'A user changed their verified mobile number.',userId:uid,timestamp:new Date(),createdAt:new Date(),updatedAt:new Date(),isRead:false,priority:'high'}),
+    ]);
+  }
   return success('User updated successfully',existing);
 }

@@ -14,6 +14,7 @@ test('rent tracking uses explicit owner/admin records, versioning and property r
  assert.equal((await api.PATCH(request('/property-hub','owner','PATCH',{...body,receiptId:'missing'}))).status,400);
  assert.equal((await api.PATCH(request('/property-hub','owner','PATCH',{...body,dueDate:'2026-10-32'}))).status,400);
  assert.equal((await api.PATCH(request('/property-hub','owner','PATCH',body))).status,200);
+ const deliveries=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='rent.payment_recorded');assert.equal(deliveries.length,2);assert.deepEqual(new Set(deliveries.map(row=>row.recipientUID)),new Set(['owner','tenant']));assert.ok(deliveries.every(row=>row.html.includes('2026-10')));
  assert.equal((await api.PATCH(request('/property-hub','owner','PATCH',body))).status,409);
  const view=await (await api.GET(request('/property-hub?propertyId=P','tenant'))).json();assert.equal(view.hubs[0].ledger[0].displayStatus,'Paid');assert.equal(app.state.properties.P.rentLedgerHistory.length,1);
  assert.equal((await api.PATCH(request('/property-hub','owner','PATCH',{propertyId:'P',action:'internal_note',note:'secret'}))).status,403);

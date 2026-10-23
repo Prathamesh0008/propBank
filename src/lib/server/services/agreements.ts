@@ -6,9 +6,9 @@ import { isPropertyTenant } from '../permissions';
 import { wireValue, isRecord, stringValue as s, type RecordData } from './contracts';
 import { identity, readObject } from './domain-contracts';
 import { getUser } from './users';
-import { bestEffort, queueEmail, escapeHtml } from './property-effects';
+import { bestEffort, escapeHtml } from './property-effects';
 import { createNotification } from './notifications';
-import { ownerTerminationMail, tenantRequestMail } from './group2-mail';
+import { persistUserEvent } from './transactional-email';
 
 const terms=['monthlyRent','securityDeposit','paymentDueDate','escalationPercentage','escalationAmount','agreementPeriod','agreementStartDate','agreementEndDate','noticePeriod','lockInPeriod','unitCondition','maintenanceToBePaidBy'];
 const entries=(v:unknown):RecordData[]=>Array.isArray(v)?v.filter(isRecord):[];
@@ -118,9 +118,7 @@ async function agreement(request:Request,renew:boolean,tenantRequest:boolean) {
   if(changed) {
     const owner=await getUser(s(before.ownerUID)),tenantName=s(tenant.name)||[s(tenant.firstName),s(tenant.lastName)].join(' ');
     await bestEffort(()=>createNotification({type:renew?'agreement_renewal':'agreement_termination',title:renew?(tenantRequest?'Renewal Requested by Tenant':'Agreement Renewal Update'):(tenantRequest?'Termination Requested by Tenant':'Agreement Termination Update'),message:(renew?'Renewal':'Termination')+' '+action+' for '+s(before.title)+'. Notice Starts From: '+s(req.noticeStartDate),propertyId:id,ownerId:before.ownerUID,ownerName:owner?.name||before.ownerName,ownerEmail:owner?.email||before.ownerEmail,userId:user.uid,tenantName,tenantEmail:tenant.email,tenantPhone:tenant.phone,priority:'high'}));
-    if(tenantRequest)await tenantRequestMail(before,{name:owner?.name||before.ownerName,email:owner?.email||before.ownerEmail},{...tenant,name:tenantName},renew,s(req.noticePeriod));
-    else if(!renew&&action!=='reject')ownerTerminationMail(before,owner||{},{...tenant,name:tenantName},!!req.noticePeriod,s(req.terminationDate)||now.toISOString());
-    else if(tenant.email)queueEmail({to:s(tenant.email),subject:'Agreement renewal update',html:'<p>'+escapeHtml(s(before.title))+': '+escapeHtml(s(updated.agreementStatus))+'</p>'});
+    await bestEffort(()=>persistUserEvent({eventType:`agreement.${renew?'renewal':'termination'}_${action}`,eventId:`${id}:${s(updated.agreementHistory?.length)}:${renew?'renewal':'termination'}:${action}`,recipients:[{uid:s(before.ownerUID),role:'owner'},...(tenant.userUID?[{uid:s(tenant.userUID),role:'tenant'}]:[])],propertyId:id,recordId:s(updated.agreementRequest?.id)||id,templateId:'agreement-activity',subject:'Agreement activity updated',title:'Agreement activity updated',bodyHtml:`<p><strong>${escapeHtml(s(before.title))}</strong>: ${escapeHtml(s(updated.agreementStatus||action).replaceAll('_',' '))}.</p>`,bodyText:`${s(before.title)}: ${s(updated.agreementStatus||action).replaceAll('_',' ')}.`,action:{label:'View agreement',path:`/manage-property/${id}`}}));
   }
   return jsonResponse({success:true,message:renew?'Agreement renewal request updated successfully.':'Agreement termination updated successfully.',property:wireValue(updated),request:wireValue(updated.agreementRequest||null)});
 }

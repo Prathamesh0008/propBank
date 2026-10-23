@@ -33,3 +33,10 @@ firebase-service-account.json
 # Local sensitive migration manifests and browser artifacts
 phase-1-security/private-inventory.local.json
 .storage-security-browser-results/
+
+# Local Firebase emulator identities and persisted emulator state
+.env.test-accounts.local
+.firebase-emulator-data/
+
+# Local live-notification attempt journals (contain recipient/provider metadata)
+.notification-live-test-*.json

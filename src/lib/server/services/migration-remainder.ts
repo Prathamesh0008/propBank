@@ -9,9 +9,11 @@ import { identity, propertyMember, readObject, readModel, knownFields, getRecord
 import { getUser } from './users';
 import { getProperty } from './properties';
 import { createNotification } from './notifications';
-import { bestEffort, queueEmail, escapeHtml } from './property-effects';
+import { bestEffort, escapeHtml } from './property-effects';
+import { persistUserEvent } from './transactional-email';
 import {prepareFile,saveMediaRecord,prepareMediaBindings,restoreFileReferences} from './media';
 import {fileFields} from '../file-projection';
+import {syncAuthenticationProfile} from './auth-activity';
 
 const fail = (message:string,status:number) => jsonResponse({success:false,message},status);
 async function strings(request:Request,fields:string[]) {
@@ -24,8 +26,10 @@ export async function login(request:Request) {
   if(!req.uid)return fail('UID is required',400);
   const tokenIdentity=await verifyFirebaseIdentity(request);
   if(tokenIdentity.uid!==req.uid)throw new AccessError(403,'Access denied');
+  if(tokenIdentity.email_verified!==true)throw new AccessError(403,'Verify your email before signing in','EMAIL_VERIFICATION_REQUIRED');
   const profile=await getUser(s(req.uid));if(!profile)return fail('User not found',401);
   if(profile.isActive===false)throw new AccessError(403,'Active user profile required');
+  await syncAuthenticationProfile(s(req.uid),tokenIdentity,'session_established');
   // Native APIs accept Firebase ID tokens, never legacy application JWTs.
   return jsonResponse({success:true,token:request.headers.get('authorization')!.replace(/^Bearer\s+/i,''),user:wireModel('User',profile),message:'Login successful'});
 }
@@ -74,6 +78,7 @@ export async function createServiceRequest(request:Request) {
   await bestEffort(async()=>{
     await createNotification({...notificationContext(property,profile,s(req.userUID),s(req.propertyId)),relatedId:value.id,type:'service_request',title:'New Service Request',message:`Service request from ${s(profile.name)} for ${s(service.name)}`,serviceType:service.name,serviceComment:req.message,serviceImage:image});
   });
+  await bestEffort(()=>persistUserEvent({eventType:'maintenance.created',eventId:`${s(value.id)}:created`,recipients:[{uid:s(req.userUID),role:'requester'},...(property?.ownerUID?[{uid:s(property.ownerUID),role:'owner'}]:[]),{role:'admin',email:process.env.ADMIN_EMAIL}],propertyId:s(req.propertyId),recordId:s(value.id),templateId:'maintenance-activity',subject:'Maintenance request created',title:'Maintenance request created',bodyHtml:`<p>${escapeHtml(s(service.name))} was submitted successfully.</p>`,bodyText:`${s(service.name)} was submitted successfully.`,action:{label:'View request',path:req.propertyId?`/manage-property/${s(req.propertyId)}`:'/manage-property'}}));
   return jsonResponse({success:true,message:'Service request created successfully. One of our members will reach out to you soon!',serviceRequest:wireModel('ServiceRequest',value)},201);
 }
 export async function updateServiceRequest(request:Request,id:string) {
@@ -95,7 +100,8 @@ export async function updateServiceRequest(request:Request,id:string) {
     updated={...before,...updates};const bind=await prepareMediaBindings(tx,user,COLLECTIONS.serviceRequests,id,s(before.propertyId),updated,before);
     bind();tx.update(ref,updates);
   });
-  const profile=await getUser(s(updated.userUID));if(profile?.email)queueEmail({to:s(profile.email),subject:'Service request updated',html:`<p>${escapeHtml(s(updated.serviceName))}: ${escapeHtml(s(updated.status))}</p><p>${escapeHtml(s(updated.adminNotes))}</p>`});
+  const property=updated.propertyId?await getProperty(s(updated.propertyId)):null;
+  await bestEffort(()=>persistUserEvent({eventType:`maintenance.${s(updated.status)||'updated'}`,eventId:`${id}:${Array.isArray(updated.history)?updated.history.length:0}:${s(updated.status)}`,recipients:[{uid:s(updated.userUID),role:'requester'},...(property?.ownerUID?[{uid:s(property.ownerUID),role:'owner'}]:[]),{uid:user.uid,role:'admin'}],propertyId:s(updated.propertyId),recordId:id,templateId:'maintenance-activity',subject:'Service request updated',title:'Service request updated',bodyHtml:`<p>${escapeHtml(s(updated.serviceName))}: ${escapeHtml(s(updated.status))}</p>${updated.adminNotes?`<p>${escapeHtml(s(updated.adminNotes))}</p>`:''}`,bodyText:`${s(updated.serviceName)}: ${s(updated.status)}${updated.adminNotes?`. ${s(updated.adminNotes)}`:''}`,action:{label:'View request',path:updated.propertyId?`/manage-property/${s(updated.propertyId)}`:'/manage-property'}}));
   return jsonResponse({success:true,message:'Service request updated successfully'});
 }
 

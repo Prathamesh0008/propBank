@@ -5,10 +5,9 @@ import { requireOwnerOrAdmin, requireSelfOrAdmin } from '../permissions';
 import { ApiError, jsonResponse, plainError } from '../http';
 import { model, storeModel, wireModel, wireValue, isRecord, stringValue as s, type RecordData } from './contracts';
 import { identity, propertyMember, readModel, readObject, getRecord, getRecords } from './domain-contracts';
-import { bestEffort } from './property-effects';
+import { bestEffort, escapeHtml } from './property-effects';
 import { getUser, saveUser, resolveTenantIdentity } from './users';
-import { tenantMail } from './group2-mail';
-import { queueUserEvent } from './transactional-email';
+import { persistUserEvent } from './transactional-email';
 const collection=()=>getDatabase().collection(COLLECTIONS.tenants);
 export async function createTenants(request:Request) {
   const user=await identity(request);let req:RecordData;
@@ -55,9 +54,9 @@ export async function createTenants(request:Request) {
     tx.update(ref,{...tenancy,tenants:[...previous,...added],rentalStatus:'rented',listingType:'rent',noticePeriod:tenants[0].noticePeriod,updatedAt:new Date()});
   });
   for(const tenant of added) {
-    tenantMail(property,tenant);
     if(tenant.userUID)await bestEffort(async()=>{const target=await getUser(s(tenant.userUID));if(!target)return;Object.assign(target,{rentedPropertyId:req.propertyId,rentedPropertyOwnerId:property.ownerUID,rentedPropertyOwnerName:property.ownerName,updatedAt:new Date()});await saveUser(target);});
   }
+  await bestEffort(()=>persistUserEvent({eventType:'tenancy.tenant_assigned',eventId:`${s(req.propertyId)}:${added.map(t=>s(t.id)).join(',')}:assigned`,recipients:[{uid:s(property.ownerUID),role:'owner'},...added.filter(t=>t.userUID).map(t=>({uid:s(t.userUID),role:'tenant'}))],propertyId:s(req.propertyId),recordId:s(req.propertyId),templateId:'tenant-assigned',subject:'Tenant assignment confirmed',title:'Tenant relationship updated',bodyHtml:`<p>A tenant was assigned to <strong>${escapeHtml(s(property.title))}</strong>.</p>`,bodyText:`A tenant was assigned to ${s(property.title)}.`,action:{label:'View rental details',path:`/manage-property/${s(req.propertyId)}`}}));
   return jsonResponse({success:true,message:`${added.length} tenant(s) added successfully`,tenants:wireValue(added)});
 }
 export async function listTenants(request:Request) {
@@ -154,11 +153,10 @@ export async function manageAdminTenancy(request:Request,propertyId:string) {
     propertyForNotification={...property,...terms,tenants:next,tenancyRevision:revision+1};
   });
   if(added&&propertyForNotification) {
-    tenantMail(propertyForNotification,added);
     await bestEffort(async()=>{const target=await getUser(s(added!.userUID));if(!target)return;Object.assign(target,{rentedPropertyId:propertyId,rentedPropertyOwnerId:ownerUID,rentedPropertyOwnerName:propertyForNotification!.ownerName,updatedAt:new Date()});await saveUser(target);});
   }
-  if(removedUID)await bestEffort(async()=>{const target=await getUser(removedUID);if(!target||target.rentedPropertyId!==propertyId)return;Object.assign(target,{rentedPropertyId:'',rentedPropertyOwnerId:'',rentedPropertyOwnerName:'',updatedAt:new Date()});await saveUser(target);});
-  if(removedUIDs.length&&propertyForNotification)queueUserEvent({eventType:action==='replace'?'tenancy.tenant_replaced':'tenancy.tenant_removed',eventId:`${propertyId}:${Number(req.expectedRevision)+1}:${action}`,recipientUIDs:[ownerUID,...removedUIDs],propertyId,recordId:propertyId,templateId:'tenant-relationship-ended',subject:`Tenant ${action} completed`,title:'Tenant relationship updated',bodyHtml:`<p>The tenant relationship for <strong>${s(propertyForNotification.title)}</strong> was ${action==='replace'?'replaced':'removed'}.</p>`,bodyText:`The tenant relationship for ${s(propertyForNotification.title)} was ${action==='replace'?'replaced':'removed'}.`});
+  for(const uid of removedUIDs)await bestEffort(async()=>{const target=await getUser(uid);if(!target||target.rentedPropertyId!==propertyId)return;Object.assign(target,{rentedPropertyId:'',rentedPropertyOwnerId:'',rentedPropertyOwnerName:'',updatedAt:new Date()});await saveUser(target);});
+  if(propertyForNotification)await bestEffort(()=>persistUserEvent({eventType:`tenancy.tenant_${action}`,eventId:`${propertyId}:${Number(req.expectedRevision)+1}:${action}`,recipients:[{uid:ownerUID,role:'owner'},...(added?.userUID?[{uid:s(added.userUID),role:'tenant'}]:[]),...removedUIDs.map(uid=>({uid,role:'former_tenant'}))],propertyId,recordId:propertyId,templateId:`tenant-${action}`,subject:`Tenant ${action} completed`,title:'Tenant relationship updated',bodyHtml:`<p>The tenant relationship for <strong>${escapeHtml(s(propertyForNotification.title))}</strong> was ${action==='replace'?'replaced':action==='remove'?'removed':'assigned'}.</p>`,bodyText:`The tenant relationship for ${s(propertyForNotification.title)} was ${action==='replace'?'replaced':action==='remove'?'removed':'assigned'}.`,action:{label:'View property',path:`/manage-property/${propertyId}`}}));
   return jsonResponse({success:true,message:`Tenant ${action} completed`,tenancyRevision:Number(req.expectedRevision)+1,tenant:added?wireValue(added):undefined});
 }
 async function syncTenant(id:string,updates:RecordData,user:Awaited<ReturnType<typeof identity>>) {

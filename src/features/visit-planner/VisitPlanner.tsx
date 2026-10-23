@@ -1,22 +1,21 @@
 "use client";
 
 import { useLocation } from '@/lib/navigation';
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 import { DatePicker } from "@/ui/date-picker";
 import { Label } from "@/ui/label";
 import { Textarea } from "@/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/ui/tabs";
-import { Calendar, Clock, Bell, Plus, Trash2, MapPin, CheckCircle, Loader2 } from "lucide-react";
+import { Calendar, Clock, Bell, Plus, MapPin, CheckCircle, Loader2, RefreshCw, Pencil, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { visitService, Visit, CreateVisitRequest } from "@/services/visitService";
-import { auth } from "../../firebase";
-import { User, onAuthStateChanged } from "firebase/auth";
+import { propertyService, type Property } from "@/services/propertyService";
 import { TimePicker } from "@/ui/time-picker";
 import styles from "./VisitPlanner.module.css";
+import {useAuth} from '@/contexts/AuthContext';
 
 
 const VisitPlanner = () => {
@@ -26,48 +25,65 @@ const VisitPlanner = () => {
   const [isAddingVisit, setIsAddingVisit] = useState(false);
   const [activeTab, setActiveTab] = useState('active');
   const [loading, setLoading] = useState(true);
+  const [loadError,setLoadError]=useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
-  const [formData, setFormData] = useState({
+  const [editingVisit,setEditingVisit]=useState<Visit|null>(null);
+  const [changingVisit,setChangingVisit]=useState('');
+  const [properties,setProperties]=useState<Property[]>([]);
+  const [propertySearch,setPropertySearch]=useState('');
+  const [propertiesLoading,setPropertiesLoading]=useState(false);
+  const [propertiesError,setPropertiesError]=useState('');
+  const requestRef=useRef<AbortController|null>(null);
+  const requestGeneration=useRef(0);
+  const {user,loading:authLoading}=useAuth();
+  const [formData, setFormData] = useState<{
+    title:string;description:string;date:string;time:string;propertyId:string;
+  }>({
     title: '',
     description: '',
     date: '',
     time: '',
-    reminderType: 'email' as const,
-    reminderTime: 15,
+    propertyId:linkedPropertyId,
   });
   const { toast } = useToast();
 
-  // Authentication and data loading
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
-      if (firebaseUser) {
-        loadVisits();
-      } else {
-        setVisits([]);
-        setLoading(false);
-      }
-    });
-    return () => unsubscribe();
-  }, []);
-
-  const loadVisits = async () => {
+  const loadVisits = useCallback(async () => {
+    const generation=++requestGeneration.current;
+    requestRef.current?.abort();
+    const controller=new AbortController();requestRef.current=controller;
     try {
       setLoading(true);
-      const allVisits = await visitService.getVisitsByUser();
+      setLoadError('');
+      const allVisits = await visitService.getVisitsByUser(undefined,undefined,controller.signal);
+      if(generation!==requestGeneration.current)return;
       setVisits(allVisits);
     } catch (error) {
-      
+      if(controller.signal.aborted||generation!==requestGeneration.current)return;
+      const message=error instanceof Error?error.message:'Failed to load visits';
+      setLoadError(message);
       toast({
-        title: "Error",
-        description: "Failed to load visits. Please refresh the page.",
+        title: "Visits unavailable",
+        description: message,
         variant: "destructive",
       });
     } finally {
-      setLoading(false);
+      if(generation===requestGeneration.current)setLoading(false);
     }
-  };
+  },[toast]);
+
+  useEffect(()=>{
+    if(authLoading)return;
+    if(user)void loadVisits();
+    else {requestRef.current?.abort();setVisits([]);setLoadError('Sign in with a verified account to view visits.');setLoading(false);}
+    return ()=>requestRef.current?.abort();
+  },[authLoading,user,loadVisits]);
+
+  useEffect(()=>{
+    let active=true;
+    setPropertiesLoading(true);setPropertiesError('');
+    propertyService.getAllProperties().then(rows=>{if(active)setProperties(rows);}).catch(()=>{if(active)setPropertiesError('Properties could not be loaded. You can still schedule a general visit.');}).finally(()=>{if(active)setPropertiesLoading(false);});
+    return()=>{active=false;};
+  },[]);
 
   const handleInputChange = (field: string, value: string | number) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -99,33 +115,37 @@ const VisitPlanner = () => {
       
       // Combine date and time into ISO string
       const visitDateTime = new Date(`${formData.date}T${formData.time}`);
+      if(!Number.isFinite(visitDateTime.getTime())||visitDateTime.getTime()<=Date.now()){
+        toast({title:'Choose a future time',description:'Visits must be scheduled for a future date and time.',variant:'destructive'});return;
+      }
       
       const visitRequest: CreateVisitRequest = {
         title: formData.title,
-        ...(linkedPropertyId?{propertyId:linkedPropertyId}:{}),
+        ...(formData.propertyId?{propertyId:formData.propertyId}:{}),
         description: formData.description,
         visitDate: visitDateTime.toISOString(),
-        reminderType: formData.reminderType,
-        reminderTime: formData.reminderTime,
+        reminderType: 'email',
+        reminderTime: 30,
       };
 
-      await visitService.createVisit(visitRequest);
+      const saved=editingVisit
+        ?await visitService.updateVisit(editingVisit.id,{title:visitRequest.title,description:visitRequest.description,visitDate:visitRequest.visitDate,expectedVersion:editingVisit.managementVersion||0,status:'scheduled',isCompleted:false})
+        :await visitService.createVisit(visitRequest);
+      setVisits(current=>editingVisit?current.map(visit=>visit.id===saved.id?saved:visit):[...current,saved]);
     
       setFormData({
         title: '',
         description: '',
         date: '',
         time: '',
-        reminderType: 'email',
-        reminderTime: 15,
+        propertyId:'',
       });
       setIsAddingVisit(false);
-      
-      await loadVisits();
+      setEditingVisit(null);
       
       toast({
-        title: "Visit Scheduled",
-        description: "Property visit added to your planner with reminder set",
+        title: editingVisit?"Visit Rescheduled":"Visit Scheduled",
+        description: editingVisit?"The visit schedule was updated":"Your visit was scheduled with an automatic 30-minute reminder.",
       });
     } catch (error) {
       
@@ -139,22 +159,27 @@ const VisitPlanner = () => {
     }
   };
 
-  const deleteVisit = async (visitId: string) => {
+  const changeStatus=async(visit:Visit,status:'cancelled'|'completed')=>{
     try {
-      await visitService.deleteVisit(visitId);
-      await loadVisits();
+      setChangingVisit(visit.id);
+      const updated=await visitService.updateVisit(visit.id,{status,isCompleted:status==='completed',expectedVersion:visit.managementVersion||0});
+      setVisits(current=>current.map(row=>row.id===updated.id?updated:row));
       toast({
-        title: "Visit Deleted",
-        description: "Visit removed from your planner",
+        title: status==='cancelled'?"Visit Cancelled":"Visit Completed",
+        description: status==='cancelled'?"The visit remains in your cancelled history.":"The visit is now listed as visited.",
       });
     } catch (error) {
-      
       toast({
-        title: "Error",
-        description: "Failed to delete visit",
+        title: "Visit update failed",
+        description: error instanceof Error?error.message:'The visit could not be updated.',
         variant: "destructive",
       });
-    }
+    }finally{setChangingVisit('');}
+  };
+
+  const beginReschedule=(visit:Visit)=>{
+    const date=new Date(visit.visitDate),local=new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString();
+    setEditingVisit(visit);setFormData({title:visit.title,description:visit.description||'',date:local.slice(0,10),time:local.slice(11,16),propertyId:visit.propertyId||''});setIsAddingVisit(true);
   };
 
   const formatDate = (dateString: string) => {
@@ -174,14 +199,11 @@ const VisitPlanner = () => {
     });
   };
 
-  const now = new Date();
   const activeVisits = visits.filter(visit => {
-    const visitDate = new Date(visit.visitDate);
     return !visit.isCompleted && (!visit.status || visit.status === "scheduled");
   });
   
   const completedVisits = visits.filter(visit => {
-    const visitDate = new Date(visit.visitDate);
     return visit.status!=="cancelled" && (visit.isCompleted || visit.status==="completed");
   });
 
@@ -236,7 +258,14 @@ const VisitPlanner = () => {
                   <p className="text-sm sm:text-base text-muted-foreground">Please wait while we fetch your visits</p>
                 </div>
               ) 
-              : getCurrentVisits().length === 0 ? (
+              : loadError ? (
+                <div className={styles.errorState} role="alert">
+                  <XCircle aria-hidden="true" />
+                  <h3>Visits could not be loaded</h3>
+                  <p>{loadError}</p>
+                  {user&&<Button type="button" variant="outline" onClick={()=>void loadVisits()}><RefreshCw aria-hidden="true" /> Retry</Button>}
+                </div>
+              ) : getCurrentVisits().length === 0 ? (
                 <div className={styles.emptyState}>
                   {activeTab === 'active' ? (
                     <>
@@ -306,17 +335,16 @@ const VisitPlanner = () => {
                                 {activeTab === 'active' && (
                                   <div className="flex items-center gap-1">
                                     <Bell className="h-3 w-3 sm:h-4 sm:w-4" />
-                                    <span className="text-xs sm:text-sm">{visit.reminderTime} min before via {visit.reminderType}</span>
+                                    <span className="text-xs sm:text-sm">30 min before via email</span>
                                   </div>
                                 )}
                               </div>
                             </div>
-                            {activeTab === 'active' && (
-                              <Button variant="ghost" size="icon" aria-label={`Delete visit ${visit.title}`} onClick={() => deleteVisit(visit.id)}
-                                className="text-destructive hover:text-destructive h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0">
-                                <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
-                              </Button>
-                            )}
+                            {activeTab === 'active' && <div className={styles.recordActions}>
+                              <Button variant="outline" size="sm" disabled={changingVisit===visit.id} onClick={()=>beginReschedule(visit)}><Pencil aria-hidden="true" /> Reschedule</Button>
+                              <Button variant="outline" size="sm" disabled={changingVisit===visit.id} onClick={()=>void changeStatus(visit,'completed')}><CheckCircle aria-hidden="true" /> Visited</Button>
+                              <Button variant="ghost" size="sm" disabled={changingVisit===visit.id} onClick={()=>void changeStatus(visit,'cancelled')} className="text-destructive hover:text-destructive"><XCircle aria-hidden="true" /> Cancel</Button>
+                            </div>}
                           </div>
                         </CardContent>
                       </Card>
@@ -327,7 +355,7 @@ const VisitPlanner = () => {
           </div>
 
           <aside className={styles.scheduler}>
-            <Button onClick={() => setIsAddingVisit(true)}  size="lg" className="gap-2 w-full text-sm sm:text-base">
+            <Button onClick={() => {setEditingVisit(null);setIsAddingVisit(true);}}  size="lg" className="gap-2 w-full text-sm sm:text-base">
               <Plus className="h-3 w-3 sm:h-4 sm:w-4" /> Schedule New Visit
             </Button>
 
@@ -336,7 +364,7 @@ const VisitPlanner = () => {
                 <CardHeader className="pb-3 sm:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                     <MapPin className="h-4 w-4 sm:h-5 sm:w-5" />
-                    Schedule Property Visit
+                    {editingVisit?'Reschedule Property Visit':'Schedule Property Visit'}
                   </CardTitle>
                   <CardDescription className="text-xs sm:text-sm">
                     Plan your property visit and get notified before the appointment
@@ -350,6 +378,21 @@ const VisitPlanner = () => {
                         onChange={(e) => handleInputChange('title', e.target.value)}placeholder="E.g., Visit Apartment in Downtown"/>
                     </div>
 
+                    <div className={styles.propertySelector}>
+                      <Label htmlFor="propertySearch" className="text-xs sm:text-sm">Property (optional)</Label>
+                      <Input id="propertySearch" value={propertySearch} className="text-sm" disabled={!!editingVisit}
+                        onChange={(event)=>setPropertySearch(event.target.value)} placeholder="Search by property name, location or type" />
+                      <select aria-label="Select an optional property" value={formData.propertyId}
+                        onChange={(event)=>handleInputChange('propertyId',event.target.value)} disabled={propertiesLoading||!!editingVisit}>
+                        <option value="">General visit — no property selected</option>
+                        {properties.filter(property=>`${property.title} ${property.location||property.address||''} ${property.propertyType||''}`.toLowerCase().includes(propertySearch.trim().toLowerCase())).map(property=><option key={property.id} value={property.id}>{property.title} · {property.location||property.address||'Location unavailable'}{property.propertyType?` · ${property.propertyType}`:''}</option>)}
+                      </select>
+                      {propertiesLoading&&<p className={styles.fieldHelp}>Loading eligible properties…</p>}
+                      {propertiesError&&<p className={styles.fieldNotice}>{propertiesError}</p>}
+                      {!propertiesLoading&&!propertiesError&&properties.length===0&&<p className={styles.fieldHelp}>No eligible properties are currently listed. You can schedule a general visit.</p>}
+                      {editingVisit&&<p className={styles.fieldHelp}>The linked property stays unchanged when a visit is rescheduled.</p>}
+                    </div>
+
                     <div className="space-y-1 sm:space-y-2">
                       <Label htmlFor="date" className="text-xs sm:text-sm">Visit Date *</Label>
                       <DatePicker value={formData.date} className="text-sm"
@@ -360,41 +403,26 @@ const VisitPlanner = () => {
                     <TimePicker value={formData.time} onChange={(time) => handleInputChange('time', time)} required />
 
                     <div className="space-y-1 sm:space-y-2">
-                      <Label htmlFor="reminderTime" className="text-xs sm:text-sm">Email Reminder</Label>
-                      <Select value={formData.reminderTime.toString()} onValueChange={(value) => handleInputChange('reminderTime', parseInt(value))}>
-                        <SelectTrigger className="text-sm">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="5" className="text-sm">5 minutes before</SelectItem>
-                          <SelectItem value="15" className="text-sm">15 minutes before</SelectItem>
-                          <SelectItem value="30" className="text-sm">30 minutes before</SelectItem>
-                          <SelectItem value="60" className="text-sm">1 hour before</SelectItem>
-                          <SelectItem value="120" className="text-sm">2 hours before</SelectItem>
-                          <SelectItem value="1440" className="text-sm">1 day before</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1 sm:space-y-2">
                       <Label htmlFor="description" className="text-xs sm:text-sm">Visit Details</Label>
                       <Textarea id="description" value={formData.description} rows={3} className="resize-none text-sm"
                         onChange={(e) => handleInputChange('description', e.target.value)} 
                         placeholder="Property address, contact person, special notes..."/>
                     </div>
 
+                    <p className={styles.reminderHelp}>You and the PropBank administrator will receive an email reminder 30 minutes before your visit.</p>
+
                     <div className="flex flex-col gap-2 pt-3 sm:pt-4 border-t">
                       <Button type="submit" disabled={submitting}
                         className="flex items-center gap-2 w-full text-sm sm:text-base">
                         {submitting ? (
-                          <><Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />Scheduling...</>
+                          <><Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />{editingVisit?'Updating...':'Scheduling...'}</>
                         ) : 
                         (
-                          <> <Calendar className="h-3 w-3 sm:h-4 sm:w-4" /> Schedule Visit </>
+                          <> <Calendar className="h-3 w-3 sm:h-4 sm:w-4" /> {editingVisit?'Update Visit':'Schedule Visit'} </>
                         )}
                       </Button>
 
-                      <Button type="button" variant="outline" onClick={() => setIsAddingVisit(false)} 
+                      <Button type="button" variant="outline" onClick={() => {setIsAddingVisit(false);setEditingVisit(null);}}
                         className="w-full text-sm sm:text-base">
                         Cancel
                       </Button>

@@ -118,7 +118,7 @@ export function propertyResponse(property: RecordData, projection = 'normal', us
 
 export function publicPropertyResponse(property:RecordData) {
   const full=propertyResponse(property);
-  const allowed=['id','title','description','price','address','city','state','zipCode','propertyType','propertyCategory','listingType','configuration','unitNumber','floor','location','carpetArea','constructedArea','plotArea','areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit','squareFeet','buildingName','structure','bedrooms','bathrooms','monthlyRent','sellingPrice','rentalStatus','status','isActive','isSold','projectCondition','createdAt','updatedAt','ownerUID','ownerName'];
+  const allowed=['id','title','description','price','address','city','state','zipCode','propertyType','propertyCategory','listingType','configuration','unitNumber','floor','location','carpetArea','constructedArea','plotArea','areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit','squareFeet','buildingName','structure','bedrooms','bathrooms','monthlyRent','sellingPrice','rentalStatus','status','isActive','isSold','projectCondition','createdAt','updatedAt'];
   const result:RecordData=Object.fromEntries(allowed.filter(key=>key in full).map(key=>[key,full[key]]));
   // Retain empty legacy keys so existing screens can safely render their defaults.
   for(const key of ['ownerEmail','ownerPhone','tenantName','personName','mobileNumber','primaryNo','ultNo','tenantDetails','specificComments','agreementStartDate','agreementEndDate','agreementPeriod','securityDeposit','paymentDueDate'])result[key]='';

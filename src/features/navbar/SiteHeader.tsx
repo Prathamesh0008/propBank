@@ -3,7 +3,7 @@
 import { Link } from "@/lib/navigation";
 import { useState, useEffect } from "react";
 import { auth, signOutUser } from "@/firebase";
-import { User, onAuthStateChanged } from "firebase/auth";
+import { User, onIdTokenChanged } from "firebase/auth";
 import { API_BASE_URL } from "@/utils/config";
 import axios from "axios";
 import { firebaseAuthorizationHeaders } from '@/lib/api-client';
@@ -21,7 +21,8 @@ const SiteHeader = () => {
   const [userRole, setUserRole] = useState<string>("");
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onIdTokenChanged(auth, (identity) => {
+      const firebaseUser=identity?.emailVerified===true?identity:null;
       setUser(firebaseUser);
       if (firebaseUser) {
         // Avoid showing the previous account’s privileged navigation during user changes.

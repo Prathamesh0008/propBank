@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, connectAuthEmulator } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -12,6 +12,8 @@ const firebaseConfig = {
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+const emulator=process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_URL;
+if(process.env.NODE_ENV!=='production'&&emulator&&!(globalThis as typeof globalThis&{__propbankAuthEmulator?:boolean}).__propbankAuthEmulator){connectAuthEmulator(auth,emulator,{disableWarnings:true});(globalThis as typeof globalThis&{__propbankAuthEmulator?:boolean}).__propbankAuthEmulator=true;}
 export const provider = new GoogleAuthProvider();
 provider.addScope('email');
 provider.addScope('profile');

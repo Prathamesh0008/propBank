@@ -1,89 +1,59 @@
-# Admin Property Phase Report
+# PropBank Admin Property Phase Report
 
-## Scope and result
+Date: 2026-10-23
 
-Phase 1 implements admin-assisted property creation and tenant relationship management only. No Phase 2 email/outbox, phone-change, notification-management, or Phase 3 reminder work was started. No production data, Firebase accounts, stored files, emails, or deployments were changed.
+## Repository verification
 
-Status: **PASS — implemented and verified with isolated data.** Live Firebase behavior remains **BLOCKED** until an approved staging environment and test accounts are available.
+- Working directory and Git root: `C:\Users\Nova Tech\Desktop\propBank`
+- Branch: `feature/property-management-improvements`
+- Remote: `Prathamesh0008/propBank`
+- Verified as the PropBank Next.js 16 application from its package metadata, native API routes, Firebase Auth/Firestore services, property workflows and admin portal.
 
-## What already existed
+## Existing Phase 1 functionality
 
-- Properties already used `ownerUID` as the authoritative owner relationship and appeared in the owner's Manage Property account.
-- Tenant relationships already existed in the property `tenants` array and mirrored `tenants` collection; no duplicate tenant model was added.
-- Owners could use the existing Add Tenant form, and linked active tenants could see rented properties through the tenant property API.
-- Property and tenant APIs already enforced persisted owner/admin/member permissions.
-- Owner-created sale/rent listings already entered `pending_review`; tenant-submitted records already used the private owner-verification workflow.
-- Property creation and tenant assignment already invoked their established post-persistence notification effects.
+- Persisted administrator roles are resolved server-side from Firestore rather than trusted from token claims or UI state.
+- Admin user search supports name, email and phone, verifies the Firebase account is enabled, and limits results.
+- A transactional tenancy service already supports assign, replace and remove with `tenancyRevision` concurrency checks.
+- Active tenant records use the existing tenant collection and embedded property relationship; former tenants and relationship history are retained.
+- Owner and tenant property queries already use `ownerUID` and active tenant `userUID` relationships.
+- Property creation already enforces listing moderation and starts owner-created rent/sale listings at `pending_review`.
+- Private tenant-submitted properties retain their separate owner-verification workflow.
+- The admin portal already contained account search and entry points for owner creation and tenant linking.
 
-## Implemented
+## Repairs implemented
 
-- Added persisted-admin-only user search by name, email, or phone, limited to 20 results and reporting combined profile/Auth active state.
-- Added an Admin Portal account-assistance panel that confirms the selected user and active status.
-- Added **Add Property for User**, retaining property-type selection and the existing property form while assigning the selected active user as the actual owner.
-- Admin-created public listings retain the existing `pending_review` moderation path and are visible to the selected owner.
-- Added admin-assisted property metadata and relationship history with actor UID, user UID, property ID, relationship, action, revision, and server timestamp.
-- Added atomic admin tenant assignment, replacement, and removal through the existing tenancy model.
-- Added `tenancyRevision` optimistic concurrency checks so stale admin actions return conflict instead of overwriting a newer relationship.
-- Replacement/removal preserves prior tenant records as inactive and preserves property ownership.
-- Duplicate active assignment, inactive/unregistered accounts, private unverified properties, invalid rental terms, and unauthorized callers are rejected server-side.
-- The existing tenant form is reused and prefilled from the selected registered account. It retains rental terms, rent schedule, security deposit, due day, agreement dates, and other existing fields.
-- Admin property details now link directly to tenant relationship management.
-- Owner and tenant visibility continues through the existing property APIs; profile rental pointers are updated or cleared after the tenancy transaction commits.
-- Existing property-created and tenant-assignment notification effects remain post-commit. No new email architecture was introduced in this phase.
-
-## Files created
-
-- `src/app/api/admin/users/search/route.ts`
-- `src/app/api/admin/properties/[id]/tenancy/route.ts`
-- `src/features/admin/AdminPropertyOperations.tsx`
-- `src/features/admin/AdminPropertyOperations.module.css`
-- `tests/admin-property-operations.test.cjs`
-- `ADMIN_PROPERTY_PHASE_REPORT.md`
+- Preserved `adminOwnerUID` from the admin portal through property-type selection and the existing Add Property form.
+- The Add Property form now submits the selected user as the actual owner while the API continues to authorize the administrator.
+- Added server validation for active persisted owner profiles and enabled/verified Firebase accounts.
+- Added `createdByUID`, `adminCreatedForUID`, and an auditable owner relationship-history event for administrator-created properties.
+- Connected the admin tenant screen to the transactional assign/replace/remove endpoint instead of the legacy owner tenant-creation endpoint.
+- Added selected-account prefill, current tenancy revision handling, replacement messaging and explicit tenant removal.
+- Added an Assign/Replace/Remove Tenant link to the existing admin property-details dialog.
+- Fixed replacement cleanup so every former tenant loses the denormalized `rentedPropertyId` link while historical tenant records remain preserved.
+- No homepage hero, brand styling, global CSS, email architecture, reminders or production records were changed.
 
 ## Files modified
 
-- `src/lib/server/services/users.ts`
-- `src/lib/server/services/properties.ts`
-- `src/lib/server/services/tenants.ts`
-- `src/lib/server/services/contracts.ts`
-- `src/features/admin/AdminPortal.tsx`
 - `src/features/admin/AdminPropertyDetailsDialog.tsx`
 - `src/features/properties/AddPropertyForm.tsx`
 - `src/features/properties/SelectPropertyType.tsx`
 - `src/features/services/AddTenant.tsx`
-- `scripts/audit-active-api.cjs`
+- `src/lib/server/services/properties.ts`
+- `src/lib/server/services/tenants.ts`
+- `tests/admin-property-operations.test.cjs`
+- `ADMIN_PROPERTY_PHASE_REPORT.md`
 
 ## Verification
 
-- `npm run typecheck` — **PASS**, exit 0.
-- Focused Phase 1 and property regression run — **PASS**, 34 passed, 0 failed, 0 skipped.
-- New Phase 1 tests alone — **PASS**, 6 passed, 0 failed, 0 skipped.
-- Initial `npm run test` — **FAIL**, 159 passed, 1 failed, 5 skipped. The API inventory scanner did not normalize the new `q` query parameter.
-- API inventory regression after the scanner fix — **PASS**, 8 passed, 0 failed.
-- Final `npm run test` — **PASS**, 160 passed, 0 failed, 5 skipped. The five existing skips require unavailable original Go reference sources.
-- `npm run build` — **PASS**, Next.js 16.4.0 production build compiled, typechecked, and generated all 32 static pages. Both new admin API routes were included as dynamic routes.
-- Targeted Playwright property workflows — **PASS**, 3 passed: owner/tenant add-property paths, tenant-intake privacy/admin visibility, and assigned-tenant account visibility.
-- `git diff --check` — **PASS**; only existing line-ending warnings were reported for two unrelated files.
+- **PASS — `npm run typecheck`:** exit 0.
+- **PASS — `node --test tests/admin-property-operations.test.cjs`:** 6 passed, 0 failed, 0 skipped.
+- Focused tests cover persisted-admin search, unauthorized access, admin-created ownership and pending moderation, inactive/disabled owner rejection, assignment visibility, duplicate and stale-update rejection, replacement/removal history, tenant isolation and denormalized-link cleanup.
 
-All tests used isolated fixtures. They did not send real emails or modify live accounts or records.
+## Unverified
 
-## Preserved behavior
+- **NOT TESTED — Browser interaction and responsive presentation:** Playwright and browser E2E were explicitly excluded.
+- **NOT TESTED — Live Firebase:** No real account, Firestore record, upload or production customer data was accessed or modified.
+- **NOT TESTED — Full application regression/build:** The complete functional suite and production build were intentionally not run.
+- Photo upload behavior was not changed and remains dependent on its existing storage configuration.
 
-- Ownership, archive/restore, listing moderation, tenant intake/owner verification, private storage, visits, negotiations, agreements, service requests, Firebase project separation, and existing notification/reminder behavior remain intact.
-- The homepage hero and its dependencies were not modified.
-- No API contract used by an existing workflow was removed or replaced.
-
-## Remaining integration requirements
-
-- Live end-to-end verification is **BLOCKED** because the configured environment is not an approved isolated staging environment with dedicated admin, owner, and tenant accounts.
-- Production execution requires approval to create disposable staging users/properties/tenancies and verify cleanup.
-- Phase 2 must design the centralized transactional email/outbox system. The current post-commit legacy notification effects were reused, but live email delivery was not tested or claimed.
-- No Firestore migration is required for legacy properties: missing `tenancyRevision` safely reads as revision `0`, and relationship history begins with the first new admin action.
-
-## Actions requiring approval
-
-- Creating or modifying real Firebase users, properties, or tenancy records.
-- Sending live emails.
-- Deploying these routes/UI changes.
-- Running any production migration or backfill.
-
+Phase 1 is complete within the requested focused verification. Phase 2 and Phase 3 were not started as part of this fresh Phase 1 task.

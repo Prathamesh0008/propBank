@@ -1,8 +1,8 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {isolated,users,properties,defaults,request,route,context}=require('./fixtures/native-server.cjs');
-const brokers={broker:{...users.other,uid:'broker',name:'Test Broker',role:'agent'},broker2:{...users.other,uid:'broker2',name:'Second Broker',role:'agent'}};
+const brokers={broker:{...users.other,uid:'broker',email:'broker@test.invalid',name:'Test Broker',role:'agent'},broker2:{...users.other,uid:'broker2',email:'broker2@test.invalid',name:'Second Broker',role:'agent'}};
 const enquiry={...defaults,id:'E',type:'property_enquiry',propertyId:'P',propertyTitle:'Existing Home',userId:'other',userName:'Customer',userEmail:'other@test.invalid',userPhone:'123456',timestamp:new Date(),isRead:false,adminRemarks:'EXISTING_SHARED_RESPONSE',ownerEmail:'OWNER_SECRET',adminImage:'PRIVATE_FILE'};
-const setup=()=>isolated({users:{...users,...brokers},properties,admin_notifications:{E:enquiry,H:{...enquiry,id:'H',timestamp:undefined,isRead:true},G:{...enquiry,id:'G',type:'general_inquiry'}}});
+const setup=()=>{const app=isolated({users:{...users,...brokers},properties,admin_notifications:{E:enquiry,H:{...enquiry,id:'H',timestamp:undefined,isRead:true},G:{...enquiry,id:'G',type:'general_inquiry'}}});app.env.ADMIN_EMAIL='admin@test.invalid';return app;};
 const list=(app,uid,url='/enquiries')=>route(app,'enquiries').GET(request(url,uid));
 const update=(app,uid,body,id='E')=>route(app,'enquiries/[id]').PATCH(request('/enquiries/'+id,uid,'PATCH',body),context(id));
 const assign=(app,brokerUID,version=0,extra={})=>update(app,'admin',{action:'assign',brokerUID,expectedVersion:version,...extra});
@@ -13,13 +13,13 @@ test('admin inbox includes historical archived enquiries without assignment and 
  assert.equal((await list(app)).status,401);assert.equal((await list(app,'other')).status,403);assert.equal((await list(app,'owner')).status,403);
 });
 
-test('admin assigns only existing active registered agents and records private history without notifications',async()=>{
+test('admin assignment records private history and notifies only the assigned agent and administrator',async()=>{
  const app=setup();
  for(const uid of ['missing','other','owner','admin'])assert.equal((await assign(app,uid)).status,400);
  app.state.users.broker.isActive=false;assert.equal((await assign(app,'broker')).status,400);app.state.users.broker.isActive=true;
  app.claims.broker={disabled:true};assert.equal((await assign(app,'broker')).status,400);delete app.claims.broker.disabled;
  const response=await assign(app,'broker',0,{notes:'PRIVATE_ASSIGNMENT_NOTE'});assert.equal(response.status,200);const e=(await response.json()).enquiry;assert.equal(e.brokerUID,'broker');assert.equal(e.brokerName,'Test Broker');assert.equal(e.version,1);assert.equal(e.history[0].actorUID,'admin');assert.ok(Date.parse(e.history[0].at));assert.equal(e.history[0].notes,'PRIVATE_ASSIGNMENT_NOTE');
- assert.equal(app.state.admin_notifications.E.type,'property_enquiry');assert.equal(app.emails.length,0);assert.ok(app.writes.every(w=>w.collection==='enquiry_assignments'));
+ assert.equal(app.state.admin_notifications.E.type,'property_enquiry');const deliveries=Object.values(app.state.email_deliveries);assert.equal(deliveries.length,2);assert.deepEqual(new Set(deliveries.map(row=>row.recipientUID||row.recipientEmail)),new Set(['broker','admin']));assert.ok(deliveries.every(row=>row.eventType==='enquiry.assigned'&&!row.html.includes('PRIVATE_ASSIGNMENT_NOTE')&&!row.html.includes('OWNER_SECRET')));await app.flush();assert.deepEqual(new Set(app.emails.map(mail=>mail.to[0])),new Set(['broker@test.invalid','admin@test.invalid']));
 });
 
 test('broker inbox is assignment scoped even with forged UID and property filters',async()=>{
@@ -44,8 +44,10 @@ test('assigned brokers track every supported progress state and notes without ch
  for(const status of ['contacted','visit_scheduled','negotiating','closed_won','closed_lost','new']){
   const r=await progress(app,'broker',status,version++,{notes:'PRIVATE_PROGRESS_'+status});assert.equal(r.status,200);assert.equal((await r.json()).enquiry.status,status);
  }
- const stored=app.state.enquiry_assignments.E;assert.equal(stored.history.length,7);assert.equal(stored.history.at(-1).actorUID,'broker');assert.equal(app.emails.length,0);assert.ok(!app.state.visits);assert.ok(!app.state.negotiations);
+ const stored=app.state.enquiry_assignments.E;assert.equal(stored.history.length,7);assert.equal(stored.history.at(-1).actorUID,'broker');const statusRows=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='enquiry.status_updated');assert.equal(statusRows.length,12);assert.ok(statusRows.every(row=>!row.html.includes('PRIVATE_PROGRESS_')));await app.flush();assert.equal(app.emails.length,14);assert.ok(!app.state.visits);assert.ok(!app.state.negotiations);
 });
+
+test('notification persistence failure never rolls back a committed enquiry assignment',async()=>{const app=setup();app.env.TEST_DB_WRITE_COLLECTION='email_deliveries';const response=await assign(app,'broker');assert.equal(response.status,200);assert.equal(app.state.enquiry_assignments.E.brokerUID,'broker');assert.equal(app.state.enquiry_assignments.E.version,1);assert.equal(Object.keys(app.state.email_deliveries||{}).length,0);});
 
 test('brokers cannot self-assign, reassign, unassign or mutate another brokers enquiry',async()=>{
  const app=setup();
@@ -86,6 +88,7 @@ test('existing property/general enquiry intake cannot forge tracking and remains
  const r=await api.POST(request('/admin/notifications','tenant','POST',{type:'property_enquiry',propertyId:'P',userId:'tenant',brokerUID:'broker',status:'closed_won',notes:'FORGED_PRIVATE',history:[]}));assert.equal(r.status,201);const id=(await r.json()).notification.id;
  assert.ok(!app.state.enquiry_assignments);assert.ok(!JSON.stringify(app.state.admin_notifications[id]).includes('FORGED_PRIVATE'));
  const general=await api.POST(request('/admin/notifications',null,'POST',{type:'general_inquiry',userName:'Guest',userEmail:'guest@test.invalid',userPhone:'1234567890',inquiryType:'rent',propertyType:'residential'}));assert.equal(general.status,201);
+ const generalRows=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='enquiry.general_created');assert.equal(generalRows.length,1);assert.equal(generalRows[0].recipientEmail,'admin@test.invalid');assert.ok(generalRows[0].html.includes('Guest'));assert.ok(!generalRows[0].html.includes('OWNER_SECRET'));
  const admin=(await(await list(app,'admin')).json()).enquiries;assert.equal(admin.length,3);assert.ok(admin.some(e=>e.id===id&&e.status==='new'&&e.brokerUID===''));
  assert.equal((await api.GET(request('/admin/notifications','admin'))).status,200);
 });
@@ -94,5 +97,6 @@ test('notification archival and shared responses cannot overwrite private assign
  const app=setup();await assign(app,'broker',0,{notes:'KEEP_PRIVATE'});
  assert.equal((await route(app,'admin/notifications/[id]/read').PUT(request('/admin/notifications/E/read','admin','PUT',{}),context('E'))).status,200);
  assert.equal((await route(app,'admin/notifications/[id]/remarks').PUT(request('/admin/notifications/E/remarks','admin','PUT',{remarks:'Shared customer response'}),context('E'))).status,200);
+ const responseRows=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='request.admin_response');assert.equal(responseRows.length,1);assert.equal(responseRows[0].recipientUID,'other');assert.ok(responseRows[0].html.includes('Shared customer response'));
  assert.equal(app.state.enquiry_assignments.E.version,1);assert.equal(app.state.enquiry_assignments.E.history[0].notes,'KEEP_PRIVATE');assert.equal((await(await list(app,'admin')).json()).enquiries.length,2);
 });

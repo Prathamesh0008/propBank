@@ -6,13 +6,15 @@ import { requireAdmin, requireSelfOrAdmin } from '../permissions';
 import {AccessError} from '../auth';
 import { ApiError, jsonResponse, plainError } from '../http';
 import { model, storeModel, wireModel, wireValue, stringValue as s, type RecordData } from './contracts';
-import { identity, propertyMember, readModel, readObject, getRecord, getRecords, epoch, parseRFC3339, firestoreTime, goTimeString } from './domain-contracts';
-import { bestEffort, queueEmail, escapeHtml } from './property-effects';
+import { identity, readModel, readObject, getRecord, epoch, parseRFC3339, firestoreTime, goTimeString } from './domain-contracts';
+import { bestEffort, escapeHtml } from './property-effects';
 import { getUser } from './users';
 import { getProperty } from './properties';
 import { createNotification } from './notifications';
-import { visitMail } from './group2-mail';
-const response=(success:boolean,message:string,visit?:RecordData|null,visits?:RecordData[])=>jsonResponse({success,message,...(visit?{visit:wireModel('Visit',visit)}:{}),...(visits?.length?{visits:visits.map(v=>wireModel('Visit',v))}:{})});
+import { persistUserEvent } from './transactional-email';
+import {formatIST} from './group2-mail';
+const wireVisit=(visit:RecordData)=>({...wireModel('Visit',visit),managementVersion:Number(visit.managementVersion||0)});
+const response=(success:boolean,message:string,visit?:RecordData|null,visits?:RecordData[])=>jsonResponse({success,message,...(visit?{visit:wireVisit(visit)}:{}),...(visits?{visits:visits.map(wireVisit)}:{})});
 const collection=()=>getDatabase().collection(COLLECTIONS.visits);
 async function visitID() {
   for(let attempt=0;attempt<10;attempt++) {
@@ -29,42 +31,51 @@ function validateVisit(req:RecordData) {
   if(req.visitDate&&!parseRFC3339(req.visitDate))throw new ApiError(400,'Invalid visit date');
 }
 async function notifyVisit(visit:RecordData,uid:string) {
-  if(!visit.propertyId)return;
-  const property=await getProperty(s(visit.propertyId));if(!property)return;
-  const owner=property.ownerUID?await getUser(s(property.ownerUID)):null;
-  if(owner?.email)queueEmail({to:s(owner.email),subject:'Property visit updated',html:`<p>${escapeHtml(s(property.title))}</p><p>${escapeHtml(s(visit.status))}: ${escapeHtml(String(visit.visitDate))}</p>`});
-  await bestEffort(()=>createNotification({type:'visit_update',title:'Property Visit Update',message:`Visit ${s(visit.status)} for ${s(property.title)}`,propertyId:property.id,ownerId:property.ownerUID,userId:uid}));
+  const property=visit.propertyId?await getProperty(s(visit.propertyId)):null,requester=await getUser(uid),owner=property?.ownerUID?await getUser(s(property.ownerUID)):null;
+  const status=s(visit.status)||'scheduled',version=Number(visit.managementVersion||0),visitTitle=s(visit.title),propertyTitle=s(property?.title)||'General property visit',when=formatIST(new Date(String(visit.visitDate))),details=s(visit.description),eventId=`${s(visit.id)}:${version}:${status}`;
+  const commonHtml=`<p><strong>${escapeHtml(visitTitle)}</strong><br>${escapeHtml(propertyTitle)}</p><p>Status: ${escapeHtml(status)}<br>Scheduled: ${escapeHtml(when)}</p>${details?`<p>${escapeHtml(details)}</p>`:''}`;
+  const commonText=`${visitTitle}. ${propertyTitle}. Status: ${status}. Scheduled: ${when}.${details?` Details: ${details}`:''}`;
+  await bestEffort(()=>persistUserEvent({eventType:`visit.${status}`,eventId:`${eventId}:requester`,recipients:[{uid,role:'requester'}],propertyId:s(property?.id),recordId:s(visit.id),templateId:'visit-activity-requester',subject:'Property visit updated',title:'Property visit updated',bodyHtml:commonHtml,bodyText:commonText,action:{label:'Open Visit Planner',path:'/visit-planner'}}));
+  const adminHtml=`<p>Requester: ${escapeHtml(s(requester?.name)||'Registered user')}<br>Verified email: ${escapeHtml(s(requester?.email))}</p>${commonHtml}<p>Visit reference: ${escapeHtml(s(visit.id))}${property?.location?`<br>Location: ${escapeHtml(s(property.location))}`:''}</p>`;
+  if(s(requester?.email).toLowerCase()!==s(process.env.ADMIN_EMAIL).toLowerCase())await bestEffort(()=>persistUserEvent({eventType:`visit.${status}`,eventId:`${eventId}:admin`,recipients:[{role:'admin',email:process.env.ADMIN_EMAIL}],propertyId:s(property?.id),recordId:s(visit.id),templateId:'visit-activity-admin',subject:'PropBank visit activity',title:'Visit activity requires attention',bodyHtml:adminHtml,bodyText:`Requester: ${s(requester?.name)||'Registered user'} (${s(requester?.email)}). ${commonText} Visit reference: ${s(visit.id)}.`,action:{label:'Open admin visits',path:'/admin?tab=visits'}}));
+  if(property?.ownerUID&&s(property.ownerUID)!==uid&&owner?.isActive!==false&&owner?.emailVerified!==false)await bestEffort(()=>persistUserEvent({eventType:`visit.${status}`,eventId:`${eventId}:owner`,recipients:[{uid:s(property.ownerUID),role:'owner'}],propertyId:s(property.id),recordId:s(visit.id),templateId:'visit-activity-owner',subject:'Property visit updated',title:'Visit scheduled for your property',bodyHtml:`<p><strong>${escapeHtml(propertyTitle)}</strong></p><p>Visitor: ${escapeHtml(s(requester?.name)||'Registered PropBank user')}<br>Status: ${escapeHtml(status)}<br>Scheduled: ${escapeHtml(when)}</p>`,bodyText:`${propertyTitle}. Visitor: ${s(requester?.name)||'Registered PropBank user'}. Status: ${status}. Scheduled: ${when}.`,action:{label:'View property',path:`/manage-property/${s(property.id)}`}}));
+  await bestEffort(()=>createNotification({type:'visit_update',title:'Property Visit Update',message:`Visit ${status} for ${propertyTitle}`,propertyId:s(property?.id),ownerId:s(property?.ownerUID),userId:uid,relatedId:s(visit.id)}));
 }
 export async function createVisit(request:Request) {
   const user=await identity(request);
   let req:RecordData;try{req=await readModel(request,'CreateVisitRequest');}catch{return jsonResponse({success:false,message:'Invalid request body'},400);}
-  if(!req.title||!req.visitDate||!req.reminderType)return jsonResponse({success:false,message:'Missing required fields: title, visitDate, reminderType'},400);
+  if(!req.title||!req.visitDate)return jsonResponse({success:false,message:'Missing required fields: title, visitDate'},400);
   const date=parseRFC3339(req.visitDate);if(!date)return jsonResponse({success:false,message:'Invalid date format. Use ISO 8601 format'},400);
-  validateVisit(req);
-  if(req.propertyId) {const property=await getProperty(s(req.propertyId));if(!property||property.isActive!==true||property.status==='inactive')throw new ApiError(404,'Available property not found');if(!listingApproved(property)||property.createdAs==='tenant'||property.listingType==='manage'||property.isSold||property.rentalStatus==='rented')await propertyMember(user,s(req.propertyId));}
-  const now=new Date();const visit=model('Visit',{...req,id:await visitID(),userId:user.uid,visitDate:goTimeString(req.visitDate),status:'scheduled',isCompleted:false,createdAt:now,updatedAt:now});
-  await collection().doc(s(visit.id)).create({...storeModel('Visit',visit),visitDate:firestoreTime(req.visitDate)});
-  const profile=await bestEffort(()=>getUser(user.uid));if(profile)visitMail(profile,visit);
+  if(date.getTime()<=Date.now())return jsonResponse({success:false,message:'Visit date must be in the future'},400);
+  req.reminderType='email';req.reminderTime=30;validateVisit(req);
+  if(req.propertyId) {const property=await getProperty(s(req.propertyId));if(!property||property.isActive!==true||property.status==='inactive'||!listingApproved(property)||property.createdAs==='tenant'||property.listingType==='manage'||property.isSold||property.isRented||property.rentalStatus==='rented')throw new ApiError(404,'Available property not found');}
+  const now=new Date();const visit:RecordData={...model('Visit',{...req,id:await visitID(),userId:user.uid,visitDate:goTimeString(req.visitDate),status:'scheduled',isCompleted:false,createdAt:now,updatedAt:now}),managementVersion:0};
+  await collection().doc(s(visit.id)).create({...storeModel('Visit',visit),visitDate:firestoreTime(req.visitDate),managementVersion:0});
   await notifyVisit(visit,user.uid);
-  return jsonResponse({success:true,message:'Visit scheduled successfully',visit:wireModel('Visit',visit)},201);
+  return jsonResponse({success:true,message:'Visit scheduled successfully',visit:wireVisit(visit)},201);
 }
 export async function listVisits(request:Request) {
   const params=new URL(request.url).searchParams;const uid=params.get('userId');
   if(!uid)return plainError('User ID required for visits',400);
   const user=await identity(request);requireSelfOrAdmin(user,uid);
-  const status=params.get('status');let query=collection().where('userId','==',uid);
-  if(status!=='active'&&status!=='completed')query=query.orderBy('visitDate','asc');
-  let visits=await getRecords(query,'Visit');const now=Date.now();
+  const status=params.get('status');
+  if(status&&!['active','completed','cancelled'].includes(status))throw new ApiError(400,'Invalid visit status filter');
+  // A requester-scoped equality query needs no composite index. Sorting after the
+  // bounded user query avoids production failures when userId+visitDate is absent.
+  const snapshot=await collection().where('userId','==',uid).get();let visits:RecordData[]=[];
+  for(const doc of snapshot.docs){try{const raw=doc.data(),visit=model('Visit',raw);visit.id=doc.id;visit.managementVersion=Number(raw.managementVersion||0);visits.push(visit);}catch{/* Preserve Go behavior: skip malformed records. */}}
   if(status==='active'||status==='completed') {
     // Passing the scheduled time is not evidence that a visit took place.
     visits=visits.filter(v=>status==='active'?!v.isCompleted&&(!v.status||v.status==='scheduled'):v.status!=='cancelled'&&(!!v.isCompleted||v.status==='completed'));
     visits.sort((a,b)=>(epoch(a.visitDate)-epoch(b.visitDate))*(status==='completed'?-1:1));
-  }
+  } else if(status==='cancelled')visits=visits.filter(v=>v.status==='cancelled');
+  visits.sort((a,b)=>(epoch(a.visitDate)-epoch(b.visitDate))*(status==='completed'?-1:1));
   return response(true,'Visits retrieved successfully',null,visits);
 }
 export async function getVisit(request:Request,id:string) {
-  const user=await identity(request);const visit=await getRecord(COLLECTIONS.visits,id,'Visit');
-  if(!visit)return jsonResponse({success:false,message:'Visit not found'},404);
+  const user=await identity(request);const document=await collection().doc(id).get();
+  if(!document.exists)return jsonResponse({success:false,message:'Visit not found'},404);
+  const raw=document.data()!,visit=model('Visit',raw);visit.id=id;visit.managementVersion=Number(raw.managementVersion||0);
   requireSelfOrAdmin(user,s(visit.userId));return response(true,'Visit retrieved successfully',visit);
 }
 function updateFields(req:RecordData) {
@@ -80,8 +91,10 @@ function updateFields(req:RecordData) {
 export async function updateVisit(request:Request,id:string) {
   const user=await identity(request);let req:RecordData;
   try{req=await readObject(request);model('UpdateVisitRequest',req,true);}catch{return jsonResponse({success:false,message:'Invalid request body'},400);}
-  if(Object.keys(req).some(key=>!['title','description','visitDate','reminderType','reminderTime','status','isCompleted','expectedVersion'].includes(key)))throw new ApiError(400,'Unsupported visit field');
+  if(Object.keys(req).some(key=>!['title','description','visitDate','status','isCompleted','expectedVersion'].includes(key)))throw new ApiError(400,'Unsupported visit field');
+  if(req.visitDate){req.reminderType='email';req.reminderTime=30;}
   validateVisit(req);
+  if(req.visitDate&&parseRFC3339(req.visitDate)!.getTime()<=Date.now())throw new ApiError(400,'Visit date must be in the future');
   if('expectedVersion' in req&&(!Number.isInteger(req.expectedVersion)||Number(req.expectedVersion)<0))throw new ApiError(400,'Invalid visit version');
   if('isCompleted' in req&&req.status&&req.isCompleted!==(req.status==='completed'))throw new ApiError(400,'Visit completion and status disagree');
   const db=getDatabase(),ref=collection().doc(id);
@@ -101,7 +114,7 @@ export async function updateVisit(request:Request,id:string) {
     }
     tx.update(ref,updates);
   });
-  const updated=await getRecord(COLLECTIONS.visits,id,'Visit');if(updated)await notifyVisit(updated,user.uid);return response(true,'Visit updated successfully',updated);
+  const document=await ref.get();let updated:RecordData|null=null;if(document.exists){const raw=document.data()!;updated=model('Visit',raw);updated.id=id;updated.managementVersion=Number(raw.managementVersion||0);}if(updated)await notifyVisit(updated,s(updated.userId));return response(true,'Visit updated successfully',updated);
 }
 export async function deleteVisit(request:Request,id:string) {
   const user=await identity(request);const visit=await getRecord(COLLECTIONS.visits,id,'Visit');if(visit)requireSelfOrAdmin(user,s(visit.userId));

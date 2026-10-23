@@ -68,6 +68,11 @@ export interface Agent {
   phoneNumber: string;
   role: string;
   isActive: boolean;
+  emailVerified?: boolean;
+  accountStatus?: string;
+  providerIds?: string[];
+  createdAt?: string;
+  lastSuccessfulSignInAt?: string;
 }
 
 export interface SiteSettings {

@@ -4,17 +4,18 @@ import { after } from 'next/server';
 import { COLLECTIONS, getDatabase } from '../firestore';
 import { model, storeModel, wireModel, wireValue, parsePrice, isRecord, stringValue as s, type RecordData } from './contracts';
 import { getUser, saveUser } from './users';
-import { brandedEmail, type TransactionalEmailEvent } from './transactional-email';
-import { templates } from './property-email-templates';
+import { brandedEmail, persistUserEvent, type TransactionalEmailEvent } from './transactional-email';
 
 export interface Email { to:string; subject:string; html:string }
 export function escapeHtml(value:string):string {
   const entities:Record<string,string>={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
   return value.replace(/[&<>"']/g,character=>entities[character]);
 }
-export function formatTemplate(template:string,values:string[]) {
+export type TrustedTemplateHtml={readonly __trustedTemplateHtml:string};
+export const trustedTemplateHtml=(html:string):TrustedTemplateHtml=>({__trustedTemplateHtml:html});
+export function formatTemplate(template:string,values:Array<string|TrustedTemplateHtml>) {
   let index=0;
-  return template.replace(/%%|%s|%d/g,token=>token==='%%'?'%':escapeHtml(values[index++] ?? ''));
+  return template.replace(/%%|%s|%d/g,token=>{if(token==='%%')return '%';const value=values[index++]??'';return typeof value==='string'?escapeHtml(value):value.__trustedTemplateHtml;});
 }
 export async function sendEmail(mail:Email,idempotencyKey?:string) {
   if (!mail.to || !process.env.RESEND_API_KEY) return;
@@ -29,7 +30,6 @@ export function queueEmail(mail:Email) {
   if (!mail.to) return;
   after(async()=>{ await bestEffort(()=>sendEmail(mail)); });
 }
-const queue=queueEmail;
 const entries=(value:unknown):RecordData[]=>Array.isArray(value)?value.filter(isRecord):[];
 const fullName=(tenant:RecordData)=>`${s(tenant.firstName)} ${s(tenant.lastName)}`;
 
@@ -65,15 +65,13 @@ async function linkUsers(property:RecordData,tenants:RecordData[]) {
   }
 }
 async function tenantAddedEmails(property:RecordData,previous:RecordData[],tenants:RecordData[]) {
-  const owner=await bestEffort(()=>getUser(s(property.ownerUID)));
   const oldEmails=new Set(previous.map(t=>s(t.email).trim().toLowerCase()).filter(Boolean));
   for (const tenant of tenants) {
     const email=s(tenant.email);
     if ((email.trim() && oldEmails.has(email.trim().toLowerCase())) || (tenant.isActive!==true && tenant.isActive!=='true')) continue;
     if (![tenant.email,tenant.firstName,tenant.lastName,tenant.phone].some(v=>s(v).trim())) continue;
-    const details=[s(property.title),s(property.location),s(property.propertyType),s(tenant.monthlyRent)||s(property.monthlyRent),s(tenant.leaseStartDate)||s(property.agreementStartDate),s(tenant.leaseEndDate)||s(property.agreementEndDate)];
-    queue({to:email,subject:"🏠 Welcome! You've been added as a Tenant - Propbank",html:formatTemplate(templates.TenantAdded,['Welcome to Your New Home!',fullName(tenant).trim()||'Tenant','You have been added as a tenant to the following property.',...details])});
-    queue({to:s(owner?.email)||s(property.ownerEmail),subject:'🏠 Tenant Added to Your Property - Propbank',html:formatTemplate(templates.TenantAdded,['Tenant Added to Your Property',owner?s(owner.name):s(property.ownerName),'A new tenant has been added to your property.',...details])});
+    const tenantUID=s(tenant.userUID);if(!tenantUID)continue;
+    await bestEffort(()=>persistUserEvent({eventType:'tenancy.tenant_assigned',eventId:`${s(property.id)}:${s(tenant.id)||tenantUID}:property-effect-assigned`,recipients:[...(property.ownerUID?[{uid:s(property.ownerUID),role:'owner'}]:[]),{uid:tenantUID,role:'tenant'}],propertyId:s(property.id),recordId:s(tenant.id)||s(property.id),templateId:'tenant-assigned',subject:'Tenant assignment confirmed',title:'Tenant relationship updated',bodyHtml:`<p>A tenant was assigned to <strong>${escapeHtml(s(property.title))}</strong>.</p>`,bodyText:`A tenant was assigned to ${s(property.title)}.`,action:{label:'View rental details',path:`/manage-property/${s(property.id)}`}}));
   }
 }
 export async function propertyCreatedEffects(property:RecordData) {
@@ -88,24 +86,14 @@ export async function propertyCreatedEffects(property:RecordData) {
 export async function propertyUpdatedEffects(before:RecordData,property:RecordData,updates:RecordData) {
   const previous=entries(before.tenants);
   const tenants=entries(property.tenants);
-  if (typeof updates.monthlyRent==='string' && before.monthlyRent && updates.monthlyRent && updates.monthlyRent!==before.monthlyRent && parsePrice(updates.monthlyRent)>parsePrice(before.monthlyRent)) {
-    const tenant=tenants.find(t=>t.isActive===true && t.email);
-    const email=s(property.tenantEmail)||s(tenant?.email);
-    const name=s(property.tenantName)||(tenant?fullName(tenant):'');
-    queue({to:email,subject:'📈 Rent Update Notice - Propbank',html:formatTemplate(templates.RentUpdate,[name,s(property.title),s(before.monthlyRent),updates.monthlyRent,s(property.location)])});
-  }
   if (Array.isArray(updates.tenants)) {
     const raw=entries(updates.tenants);
     await linkUsers(property,raw);
     await bestEffort(()=>tenantAddedEmails(property,previous,raw));
-    for (const tenant of tenants) {
-      if (!tenant.id || !tenant.paymentDueDate) continue;
-      const old=previous.find(t=>t.id===tenant.id);
-      if (!old || old.paymentDueDate===tenant.paymentDueDate) continue;
-      queue({to:s(tenant.email),subject:'📅 Payment Due Date Updated - Propbank',html:formatTemplate(templates.PaymentDueUpdate,[fullName(tenant).trim()||'Tenant',s(property.title),s(tenant.paymentDueDate),`${s(property.address)}, ${s(property.city)}`])});
-    }
   }
   if (typeof updates.wantToSell==='boolean' && updates.wantToSell!==before.wantToSell) await bestEffort(()=>notify(property,updates.wantToSell?'want_to_sell':'want_to_sell_cancelled'));
+  const termsChanged=['monthlyRent','securityDeposit','paymentDueDate','agreementStartDate','agreementEndDate'].some(field=>field in updates&&updates[field]!==before[field])||Array.isArray(updates.tenants)&&tenants.some(tenant=>{const old=previous.find(entry=>entry.id===tenant.id);return old&&['monthlyRent','securityDeposit','paymentDueDate','leaseStartDate','leaseEndDate'].some(field=>tenant[field]!==old[field]);});
+  if(termsChanged)await bestEffort(()=>persistUserEvent({eventType:'tenancy.rental_terms_updated',eventId:`${s(property.id)}:${String(wireValue(property.updatedAt))}:terms`,recipients:[...(property.ownerUID?[{uid:s(property.ownerUID),role:'owner'}]:[]),...tenants.filter(tenant=>tenant.isActive===true&&tenant.userUID).map(tenant=>({uid:s(tenant.userUID),role:'tenant'}))],propertyId:s(property.id),recordId:s(property.id),templateId:'rental-terms-updated',subject:'Rental terms updated',title:'Rental terms updated',bodyHtml:`<p>The rental terms for <strong>${escapeHtml(s(property.title))}</strong> were updated.</p>`,bodyText:`The rental terms for ${s(property.title)} were updated.`,action:{label:'View rental details',path:`/manage-property/${s(property.id)}`}}));
 }
 
 export function propertyNotificationEvents(property:RecordData,submitter:RecordData,status='pending_review'):TransactionalEmailEvent[] {
