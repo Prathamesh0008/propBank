@@ -26,9 +26,9 @@ import { API_BASE_URL } from "../../utils/config";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { FurnishedChecklistModal } from "./FurnishedChecklistModal";
 import { uploadBase64Image } from "../../services/uploadService";
-import { addMonths, format, subDays, parseISO } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import {additionalRentPeriod,additionalRentYearCount,calculateAgreementEndDate,rebuildAdditionalRentSchedule,validateAdditionalRentSchedule} from '@/lib/rent-schedule';
 
 const formSchema = z.object({
   ...clientPropertySchema,
@@ -159,21 +159,6 @@ interface UserInfo {
   photoURL: string;
   phoneNumber: string;
 }
-
-const getOrdinalSuffix = (i: number) => {
-  const j = i % 10,
-    k = i % 100;
-  if (j === 1 && k !== 11) {
-    return "st";
-  }
-  if (j === 2 && k !== 12) {
-    return "nd";
-  }
-  if (j === 3 && k !== 13) {
-    return "rd";
-  }
-  return "th";
-};
 
 const AddPropertyForm = () => {
   const navigate = useNavigate();
@@ -464,7 +449,7 @@ const AddPropertyForm = () => {
       rentToDate1: "",
       rentFromDate2: "",
       rentToDate2: "",
-      rentSchedule: [{ year: "1st Year", months: "11", amount: "", fromDate: "", toDate: "" }], // Start with one row
+      rentSchedule: [],
       paymentDueDate: "",
       escalationPercentage: "",
       escalationAmount: "",
@@ -513,24 +498,10 @@ const AddPropertyForm = () => {
   },[]);
 
   useEffect(() => {
-    if (agreementStartDate && agreementPeriod) {
-      const periodInMonths = parseInt(agreementPeriod, 10);
-      if (!isNaN(periodInMonths) && periodInMonths > 0) {
-        const parts = agreementStartDate.split('-');
-        if (parts.length === 3) {
-          const [year, month, day] = parts.map(Number);
-          const date = new Date(year, month - 1, day);
-          if (!isNaN(date.getTime())) {
-            date.setMonth(date.getMonth() + periodInMonths);
-            date.setDate(date.getDate() - 1); // standard agreement end is minus one day
-            const newYear = date.getFullYear();
-            const newMonth = String(date.getMonth() + 1).padStart(2, '0');
-            const newDay = String(date.getDate()).padStart(2, '0');
-            form.setValue('agreementEndDate', `${newYear}-${newMonth}-${newDay}`);
-          }
-        }
-      }
-    }
+    const agreementEndDate=calculateAgreementEndDate(agreementStartDate||'',agreementPeriod||'');
+    form.setValue('agreementEndDate',agreementEndDate);
+    const schedule=form.getValues('rentSchedule')||[],rebuilt=rebuildAdditionalRentSchedule(schedule,agreementStartDate||'',agreementPeriod||'');
+    if(JSON.stringify(schedule)!==JSON.stringify(rebuilt))form.setValue('rentSchedule',rebuilt);
   }, [agreementStartDate, agreementPeriod, form]);
 
   const onSubmit = async (data: FormData) => {
@@ -672,6 +643,8 @@ const AddPropertyForm = () => {
           });
           return;
         }
+        const scheduleError=validateAdditionalRentSchedule(data.rentSchedule||[],data.agreementStartDate||'',data.agreementPeriod||'',data.agreementEndDate||'');
+        if(scheduleError){toast({title:"Invalid Year-wise Rent",description:scheduleError,variant:"destructive"});return;}
       }
 
       // Get current user
@@ -1537,136 +1510,50 @@ const AddPropertyForm = () => {
                         )}
                       />
 
-                      {/* Dynamic Monthly Rent Schedule */}
+                      {/* Additional periods only; Year 1 comes from the core agreement fields. */}
                       {form.watch("rentalStatus") === "rented" && (
                         <div className="mt-6 space-y-4 pt-4 border-t col-span-1 lg:col-span-2">
-                          <div className="flex items-center justify-between">
-                            <FormLabel className="text-base font-semibold">Monthly Rent Schedule</FormLabel>
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div><FormLabel className="text-base font-semibold">Additional Year-wise Rent (Optional)</FormLabel><FormDescription>Year 1 uses the monthly finalized rent and agreement dates above.</FormDescription></div>
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
-                              onClick={() => appendRentSchedule({ year: `${rentScheduleFields.length + 1}${getOrdinalSuffix(rentScheduleFields.length + 1)} Year`, months: "11", amount: "", fromDate: "", toDate: "" })}
+                              disabled={!agreementStartDate||rentScheduleFields.length>=additionalRentYearCount(agreementPeriod||'')}
+                              onClick={() => {const row=additionalRentPeriod(agreementStartDate||'',agreementPeriod||'',rentScheduleFields.length);if(row)appendRentSchedule(row);}}
                             >
                               <Plus className="h-4 w-4 mr-2" />
-                              Add Year
+                              Add Year {rentScheduleFields.length+2} Rent
                             </Button>
                           </div>
 
                           <div className="space-y-4">
                             {rentScheduleFields.map((field, index) => (
-                              <div key={field.id} className="grid grid-cols-1 md:grid-cols-12 gap-4 p-4 border rounded-lg bg-gray-50/50 items-end relative">
-                                <div className="md:col-span-2">
-                                  <FormLabel className="text-xs">Year</FormLabel>
-                                  <Input
-                                    {...form.register(`rentSchedule.${index}.year`)}
-                                    className="bg-white"
-                                  />
-                                </div>
-                                <div className="md:col-span-2">
-                                  <FormLabel className="text-xs">Months</FormLabel>
+                              <div key={field.id} className="grid grid-cols-1 md:grid-cols-[minmax(180px,1fr)_minmax(240px,1.4fr)_auto] gap-4 p-4 border rounded-lg bg-gray-50/50 items-end">
+                                <div>
+                                  <FormLabel className="text-xs">{form.watch(`rentSchedule.${index}.year`)} Monthly Rent (₹)</FormLabel>
                                   <Input
                                     type="number"
-                                    placeholder="11"
-                                    {...form.register(`rentSchedule.${index}.months`)}
-                                    onChange={(e) => {
-                                      form.setValue(`rentSchedule.${index}.months`, e.target.value);
-                                      const fromDateStr = form.getValues(`rentSchedule.${index}.fromDate`);
-                                      if (fromDateStr && e.target.value) {
-                                        try {
-                                          const startDate = parseISO(fromDateStr);
-                                          const months = parseInt(e.target.value, 10);
-                                          if (!isNaN(months) && months > 0) {
-                                            const endDate = subDays(addMonths(startDate, months), 1);
-                                            form.setValue(`rentSchedule.${index}.toDate`, format(endDate, 'yyyy-MM-dd'));
-                                          }
-                                        } catch (err) { /* Preserve existing best-effort behavior. */ }
-                                      }
-                                    }}
-                                    className="bg-white"
-                                  />
-                                </div>
-                                <div className="md:col-span-2">
-                                  <FormLabel className="text-xs">Amount (₹)</FormLabel>
-                                  <Input
+                                    min="1"
                                     {...form.register(`rentSchedule.${index}.amount`)}
                                     placeholder="Amount"
                                     className="bg-white"
                                   />
                                 </div>
-                                <div className="md:col-span-3">
-                                  <FormField
-                                    control={form.control}
-                                    name={`rentSchedule.${index}.fromDate`}
-                                    render={({ field }) => (
-                                      <FormItem>
-                                        <FormLabel className="text-xs">From</FormLabel>
-                                        <FormControl>
-                                          <DatePicker
-                                            value={field.value}
-                                            onChange={(val) => {
-                                              field.onChange(val);
-                                              const monthsStr = form.getValues(`rentSchedule.${index}.months`);
-                                              if (val && monthsStr) {
-                                                try {
-                                                  const startDate = parseISO(val);
-                                                  const months = parseInt(monthsStr, 10);
-                                                  if (!isNaN(months) && months > 0) {
-                                                    const endDate = subDays(addMonths(startDate, months), 1);
-                                                    form.setValue(`rentSchedule.${index}.toDate`, format(endDate, 'yyyy-MM-dd'));
-                                                  }
-                                                } catch (err) { /* Preserve existing best-effort behavior. */ }
-                                              }
-                                            }}
-                                            className="bg-white"
-                                          />
-                                        </FormControl>
-                                        <FormMessage />
-                                      </FormItem>
-                                    )}
-                                  />
-                                </div>
-                                <div className="md:col-span-2">
-                                  <FormField
-                                    control={form.control}
-                                    name={`rentSchedule.${index}.toDate`}
-                                    render={({ field }) => (
-                                      <FormItem>
-                                        <FormLabel className="text-xs">To</FormLabel>
-                                        <FormControl>
-                                          <DatePicker
-                                            value={field.value}
-                                            onChange={field.onChange}
-                                            className="bg-white"
-                                          />
-                                        </FormControl>
-                                        <FormMessage />
-                                      </FormItem>
-                                    )}
-                                  />
-                                </div>
-
-                                {rentScheduleFields.length > 1 && (
-                                  <div className="md:col-span-1 flex justify-center pb-2">
+                                <div className="grid gap-1"><FormLabel className="text-xs">Applicable Period</FormLabel><strong className="text-sm">{form.watch(`rentSchedule.${index}.fromDate`)} to {form.watch(`rentSchedule.${index}.toDate`)}</strong><span className="text-xs text-muted-foreground">{form.watch(`rentSchedule.${index}.months`)} month{form.watch(`rentSchedule.${index}.months`)==='1'?'':'s'}</span></div>
+                                <div className="flex justify-end pb-1">
                                     <Button
                                       type="button"
                                       variant="ghost"
-                                      size="icon"
-                                      onClick={() => removeRentSchedule(index)}
-                                      className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 w-8"
+                                      size="sm"
+                                      onClick={() => {for(let row=rentScheduleFields.length-1;row>=index;row--)removeRentSchedule(row);}}
+                                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
                                     >
-                                      <Trash2 className="h-4 w-4" />
+                                      <Trash2 className="h-4 w-4 mr-2" />Remove
                                     </Button>
-                                  </div>
-                                )}
+                                </div>
                               </div>
                             ))}
-
-                            {rentScheduleFields.length === 0 && (
-                              <div className="text-center py-8 border-2 border-dashed rounded-lg text-muted-foreground text-sm">
-                                No rent schedule added. Click "Add Year" to define the rent structure.
-                              </div>
-                            )}
                           </div>
                         </div>
                       )}

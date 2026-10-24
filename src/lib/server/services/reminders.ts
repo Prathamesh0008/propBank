@@ -7,6 +7,7 @@ import { isRecord, stringValue, type RecordData } from './contracts';
 import { escapeHtml } from './property-effects';
 import { formatIST } from './group2-mail';
 import { brandedEmail, processTransactionalEmail, type TransactionalEmailEvent } from './transactional-email';
+import {rentAmountForDate} from '@/lib/rent-schedule';
 
 export function requireCron(request:Request) {
   const secret=process.env.CRON_SECRET;
@@ -109,7 +110,7 @@ export function propertyReminderEvents(property:RecordData,now:Date):ReminderCan
   const tenants=(Array.isArray(property.tenants)?property.tenants:[]).filter(isRecord).filter(tenant=>tenant.isActive===true&&stringValue(tenant.userUID));
   const events:ReminderCandidate[]=[];
   for(const tenant of tenants){
-    const tenancyId=stringValue(tenant.id||tenant.userUID),amount=stringValue(tenant.monthlyRent||property.monthlyRent),dueDay=Number(tenant.paymentDueDate||property.paymentDueDate);
+    const tenancyId=stringValue(tenant.id||tenant.userUID),amount=rentAmountForDate({...property,...tenant,rentSchedule:Array.isArray(tenant.rentSchedule)?tenant.rentSchedule:property.rentSchedule},local.date),dueDay=Number(tenant.paymentDueDate||property.paymentDueDate);
     const dueDate=Number.isInteger(dueDay)&&dueDay>=1&&dueDay<=31?isoDate(local.year,local.month,Math.min(dueDay,new Date(Date.UTC(local.year,local.month,0)).getUTCDate())):'';
     const rentOffset=dueDate?calendarDays(local.date,dueDate):-1;
     const expiryDate=dateOnly(tenant.leaseEndDate||property.agreementEndDate),expiryOffset=expiryDate?calendarDays(local.date,expiryDate):-1;

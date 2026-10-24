@@ -953,9 +953,7 @@ export const AdminServiceRequestsTab: React.FC<AdminServiceRequestsTabProps> = (
                                 {/* Status Banner */}
                                 <div className={`p-3 rounded-lg border ${notification.type === "agreement_termination" ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"}`}>
                                   <p className={`text-sm font-semibold ${notification.type === "agreement_termination" ? "text-red-700" : "text-green-700"}`}>
-                                    {notification.type === "agreement_termination"
-                                      ? "🔴 Agreement Terminated - Property is now available for rent"
-                                      : "🟢 Agreement Renewal Request Submitted"}
+                                    {notification.title || (notification.type === "agreement_termination" ? "Agreement termination update" : "Agreement renewal update")}
                                   </p>
                                 </div>
 
@@ -1025,7 +1023,7 @@ export const AdminServiceRequestsTab: React.FC<AdminServiceRequestsTabProps> = (
                                 {(notification.type === "agreement_termination" || notification.type === "agreement_renewal") && (notification.tenantName || notification.userName || notification.userEmail || notification.userPhone) && (
                                   <div>
                                     <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                                      <span>🏠</span> Tenant Details {notification.type === "agreement_termination" ? "(Removed)" : "(Renewal Requested)"}
+                                      <span>🏠</span> Tenant Details {notification.type === "agreement_termination" ? "(Agreement party)" : "(Renewal Requested)"}
                                     </h4>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-3 bg-orange-50 rounded-lg border border-orange-200">
                                       {(notification.tenantName || notification.userName) && (

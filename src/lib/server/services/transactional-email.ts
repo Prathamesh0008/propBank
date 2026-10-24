@@ -8,6 +8,7 @@ import { ApiError, jsonResponse, plainError } from '../http';
 import { identity, readObject } from './domain-contracts';
 import { sendEmail } from './resend';
 import { isRecord, stringValue as s, wireValue, type RecordData } from './contracts';
+import {rentAmountForDate} from '@/lib/rent-schedule';
 
 export type TransactionalEmailEvent={
   eventType:string;eventId:string;recipientUID?:string;recipientRole:string;recipientEmail?:string;
@@ -38,6 +39,11 @@ async function resolveRecipient(event:TransactionalEmailEvent) {
     if(!snapshot.exists||profile?.isActive===false||!emailPattern.test(s(profile?.email)))return '';
     return s(profile?.email).toLowerCase();
   }
+  // Previous-address security notices are constructed exclusively by trusted
+  // server account code. This permits that address to be notified after the
+  // authoritative Firebase email has changed without accepting a browser-
+  // supplied destination.
+  if(event.recipientRole==='previous_email'&&event.eventType.startsWith('user.email_')&&emailPattern.test(s(event.recipientEmail)))return s(event.recipientEmail).toLowerCase();
   const configured=(process.env.ADMIN_EMAIL||'').trim().toLowerCase();
   return event.recipientRole==='admin'&&configured&&event.recipientEmail?.toLowerCase()===configured&&emailPattern.test(configured)?configured:'';
 }
@@ -131,7 +137,8 @@ async function reminderIsCurrent(value:RecordData){
   if(value.eventType==='agreement.expiry_reminder'){const due=reminderDate(tenant.leaseEndDate||property.agreementEndDate);return due===s(value.reminderDueDate)&&expectedSchedule(due)===s(value.scheduledFor)&&s(tenant.agreementVersion||property.agreementVersion||property.tenancyRevision||value.reminderDueDate)===s(value.agreementVersion);}
   const ledger=isRecord(property.rentLedger)?property.rentLedger:{},period=s(value.rentPeriod);if(isRecord(ledger[period])&&ledger[period].status==='paid')return false;
   const due=Number(tenant.paymentDueDate||property.paymentDueDate),match=/^(\d{4})-(\d{2})$/.exec(period);if(!match||!Number.isInteger(due)||due<1||due>31)return false;const year=Number(match[1]),month=Number(match[2]),day=Math.min(due,new Date(Date.UTC(year,month,0)).getUTCDate()),currentDue=`${period}-${String(day).padStart(2,'0')}`;
-  return currentDue===s(value.reminderDueDate)&&expectedSchedule(currentDue)===s(value.scheduledFor)&&s(tenant.monthlyRent||property.monthlyRent)===s(value.reminderAmount);
+  const currentAmount=rentAmountForDate({...property,...tenant,rentSchedule:Array.isArray(tenant.rentSchedule)?tenant.rentSchedule:property.rentSchedule},currentDue);
+  return currentDue===s(value.reminderDueDate)&&expectedSchedule(currentDue)===s(value.scheduledFor)&&currentAmount===s(value.reminderAmount);
 }
 
 export async function retryEmailDelivery(request:Request,id:string) {
