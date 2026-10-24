@@ -1,0 +1,2 @@
+.mount{display:flex;justify-content:flex-end;margin:0 0 10px}.button{appearance:none;border:1px solid #a25c42;border-radius:3px;background:#f8f6f0;color:#242b28;cursor:pointer;font:600 12px/1 var(--font-manrope),Arial,sans-serif;padding:8px 11px;transition:background-color .15s ease,color .15s ease}.button:hover{background:#eee7db}.button:focus-visible{outline:2px solid #a25c42;outline-offset:2px}@media(max-width:560px){.mount{justify-content:flex-start}.button{min-height:40px}}
+

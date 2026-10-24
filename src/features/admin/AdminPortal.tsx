@@ -1,8 +1,6 @@
 "use client";
 import AdminVisits from './AdminVisits';
-import CommissionWorkspace from '@/features/commissions/CommissionWorkspace';
 import EnquiryInbox from '@/features/enquiries/EnquiryInbox';
-import {ProductDashboard} from '@/features/properties/PropertyHub';
 
 
 import NegotiationPanel from '@/features/negotiations/NegotiationPanel';
@@ -80,7 +78,7 @@ const AdminPortal = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      if (activeTab === "service-requests") {
+      if (activeTab === "service-requests" || activeTab === "visits") {
         await fetchNotifications();
       } else if (activeTab === "agents") {
         await refetchUsers();
@@ -119,10 +117,11 @@ const AdminPortal = () => {
   };
   useEffect(() => {
     const params=new URLSearchParams(window.location.search);
-    if(params.get('tab')==='properties') {
-      setActiveTab('properties');
+    const requestedTab=params.get('tab');
+    if(requestedTab&&['properties','agents','archive','settings','offers','enquiries','visits','service-requests'].includes(requestedTab)) {
+      setActiveTab(requestedTab);
       const id=params.get('propertyId');
-      if(id)void handleViewPropertyDetails(id);
+      if(requestedTab==='properties'&&id)void handleViewPropertyDetails(id);
     }
   }, []);
   const fetchNotifications = async () => {
@@ -313,6 +312,7 @@ const AdminPortal = () => {
             prev.map(n =>
               n.id === notificationId ? { ...n, isRead: checked } : n
             ).filter(n => {
+              if (activeTab === "visits") return !n.isRead && n.type === "visit_update";
               if (activeTab === "service-requests") {
                 return !n.isRead && (n.type === "want_to_sell" || n.type === "want_to_sell_cancelled" || n.type === "property_enquiry" || n.type === "service_request" || n.type === "review" || n.type === "legal_service_request" || n.type === "other_service_request" || n.type === "inspection_report" || n.type === "agreement_renewal" || n.type === "agreement_termination" || n.type === "property_added");
               }
@@ -387,15 +387,6 @@ const AdminPortal = () => {
 
   return (
     <main className={styles.workspace}>
-      <header className={styles.heading}>
-        <div>
-          <span className={styles.eyebrow}>Operations / PropBank</span>
-          <h1>Administration</h1>
-          <p>Listings, people and requests — organized in one place.</p>
-        </div>
-        <span className={styles.workspaceLabel}>Management workspace</span>
-      </header>
-      <div className={styles.dashboardSummary}><ProductDashboard admin/></div>
       <Tabs value={activeTab} onValueChange={setActiveTab} className={styles.panel}>
         <div className={styles.panelGrid}>
         <aside className={styles.sidebar} aria-label="Administration sections">
@@ -426,20 +417,18 @@ const AdminPortal = () => {
           <TabsTrigger value="offers" className="flex items-center gap-2"><Handshake className="h-4 w-4"/>Offers</TabsTrigger>
           <TabsTrigger value="enquiries" className="flex items-center gap-2"><MessageSquareText className="h-4 w-4"/>Enquiries</TabsTrigger>
           <TabsTrigger value="visits" className="flex items-center gap-2"><CalendarDays className="h-4 w-4"/>Visits</TabsTrigger>
-          <TabsTrigger value="commissions" className="flex items-center gap-2"><Handshake className="h-4 w-4"/>Commissions</TabsTrigger>
         </TabsList>
         </aside>
         <div className={styles.content}>
 
         <TabsContent value="offers"><NegotiationPanel admin/></TabsContent>
         <TabsContent value="enquiries"><EnquiryInbox admin agents={agents}/></TabsContent>
-        <TabsContent value="visits"><AdminVisits/></TabsContent>
-        <TabsContent value="commissions"><CommissionWorkspace admin/></TabsContent>
+        <TabsContent value="visits"><AdminVisits notifications={notifications.filter(n=>n.type==='visit_update'&&!n.isRead)} onMarkRead={handleMarkComplete}/></TabsContent>
         <TabsContent value="service-requests" className="mt-6">
           <ServiceRequestHistory admin/>
           <AdminServiceRequestsTab
             loading={loading}
-            notifications={notifications.filter(n=>!(n.type==="service_request" && n.relatedId))}
+            notifications={notifications.filter(n=>n.type!=="visit_update"&&!(n.type==="service_request" && n.relatedId))}
             handleMarkComplete={handleMarkComplete}
             handleViewPropertyDetails={handleViewPropertyDetails}
             loadingProperty={loadingProperty}

@@ -21,6 +21,17 @@ test('creation rejects past dates and persists a valid property-linked future vi
 test('general visits remain valid and notify only requester and configured administrator',async()=>{
  const app=setup(),response=await route(app,'visits').POST(request('/visits','other','POST',{title:'General consultation',visitDate:future}));assert.equal(response.status,201);const {visit}=await response.json();assert.equal(visit.propertyId,undefined);assert.equal(visit.reminderTime,30);
  const rows=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='visit.scheduled');assert.equal(rows.length,2);assert.deepEqual(new Set(rows.map(row=>row.recipientRole)),new Set(['requester','admin']));assert.ok(!rows.some(row=>row.recipientRole==='owner'));
+ assert.equal(app.emails.length,2);assert.deepEqual(new Set(app.emails.map(mail=>mail.to[0])),new Set(['other@test.invalid','admin@test.invalid']));assert.ok(app.emailKeys.every(Boolean));assert.ok(rows.every(row=>row.status==='sent'&&row.providerMessageId==='mock-resend-message'&&row.retryCount===1));
+ const alerts=Object.values(app.state.admin_notifications||{}).filter(row=>row.type==='visit_update');assert.equal(alerts.length,1);assert.equal(alerts[0].relatedId,visit.id);assert.equal(alerts[0].userId,'other');assert.equal(alerts[0].userEmail,'other@test.invalid');
+});
+
+test('provider failure leaves durable failed deliveries and does not undo the scheduled visit',async()=>{
+ const app=setup();app.env.TEST_MAIL_FAIL='1';const response=await route(app,'visits').POST(request('/visits','other','POST',{title:'Provider outage visit',visitDate:future}));assert.equal(response.status,201);const {visit}=await response.json();assert.ok(app.state.visits[visit.id]);
+ const rows=Object.values(app.state.email_deliveries).filter(row=>row.recordId===visit.id);assert.equal(rows.length,2);assert.equal(app.emails.length,2);assert.ok(rows.every(row=>row.status==='failed'&&row.retryCount===1&&row.errorSummary==='Email provider delivery failed'));
+});
+
+test('visit scheduling fails before persistence when administrator email is missing or invalid',async()=>{
+ for(const value of ['', 'not-an-email']){const app=setup();app.env.ADMIN_EMAIL=value;const response=await route(app,'visits').POST(request('/visits','other','POST',{title:'General consultation',visitDate:future}));assert.equal(response.status,503);assert.match((await response.json()).message,/ADMIN_EMAIL/);assert.equal(Object.keys(app.state.visits||{}).length,0);assert.equal(Object.keys(app.state.email_deliveries||{}).length,0);}
 });
 
 test('unapproved and malicious property references are rejected without creating a visit or email',async()=>{
@@ -35,11 +46,23 @@ test('overlapping requester, owner and administrator addresses receive one deliv
  const rows=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='visit.scheduled');assert.equal(rows.length,1);assert.equal(rows[0].recipientUID,'owner');
 });
 
-test('requester reschedules, completes and cancels with versioned responses and current tab states',async()=>{
- const app=setup({V:{...defaults,id:'V',userId:'owner',propertyId:'P',title:'Viewing',visitDate:new Date(future),status:'scheduled',isCompleted:false,reminderType:'email',reminderTime:15,managementVersion:0}}),detail=route(app,'visits/[id]');
+test('requester reschedules and completes with versioned responses, reminder invalidation and terminal transitions',async()=>{
+ const app=setup({V:{...defaults,id:'V',userId:'owner',propertyId:'P',title:'Viewing',visitDate:new Date(future),status:'scheduled',isCompleted:false,reminderType:'email',reminderTime:15,managementVersion:0,notifiedAt:new Date(),reminderDelivery:{generation:'old',status:'sent'}}}),detail=route(app,'visits/[id]');
  let response=await detail.PUT(request('/visits/V','owner','PUT',{visitDate:'2099-06-16T10:00:00Z',status:'scheduled',isCompleted:false,expectedVersion:0}),context('V'));assert.equal(response.status,200);let visit=(await response.json()).visit;assert.equal(visit.userId,'owner');assert.equal(visit.managementVersion,1);
+ assert.equal(app.state.visits.V.notifiedAt,null);assert.equal(app.state.visits.V.reminderDelivery,null);
  response=await detail.PUT(request('/visits/V','owner','PUT',{status:'completed',isCompleted:true,expectedVersion:1}),context('V'));assert.equal(response.status,200);visit=(await response.json()).visit;assert.equal(visit.status,'completed');assert.equal(visit.managementVersion,2);
- response=await detail.PUT(request('/visits/V','owner','PUT',{status:'cancelled',isCompleted:false,expectedVersion:2}),context('V'));assert.equal(response.status,200);visit=(await response.json()).visit;assert.equal(visit.status,'cancelled');assert.equal(visit.managementVersion,3);
+ response=await detail.PUT(request('/visits/V','owner','PUT',{status:'cancelled',isCompleted:false,expectedVersion:2}),context('V'));assert.equal(response.status,409);assert.equal(app.state.visits.V.status,'completed');
+});
+
+test('scheduled visit cancellation succeeds and terminal visits cannot be rescheduled',async()=>{
+ const app=setup({V:{...defaults,id:'V',userId:'owner',title:'Viewing',visitDate:new Date(future),status:'scheduled',isCompleted:false,reminderType:'email',reminderTime:30,managementVersion:0}}),detail=route(app,'visits/[id]');
+ let response=await detail.PUT(request('/visits/V','owner','PUT',{status:'cancelled',isCompleted:false,expectedVersion:0}),context('V'));assert.equal(response.status,200);assert.equal((await response.json()).visit.status,'cancelled');
+ response=await detail.PUT(request('/visits/V','owner','PUT',{visitDate:'2099-06-17T10:00:00Z',status:'scheduled',isCompleted:false,expectedVersion:1}),context('V'));assert.equal(response.status,409);
+});
+
+test('notification persistence outage never changes a committed visit response into an operation failure',async()=>{
+ const app=setup(),api=route(app,'visits');app.env.TEST_DB_WRITE_COLLECTION='email_deliveries';let response=await api.POST(request('/visits','other','POST',{title:'Durable operation',visitDate:future}));assert.equal(response.status,201);const created=(await response.json()).visit;assert.ok(app.state.visits[created.id]);
+ const detail=route(app,'visits/[id]');response=await detail.PUT(request(`/visits/${created.id}`,'other','PUT',{status:'completed',isCompleted:true,expectedVersion:0}),context(created.id));assert.equal(response.status,200);assert.equal(app.state.visits[created.id].status,'completed');
 });
 
 test('admin updates retain requester; owners and unrelated users cannot read or modify another request',async()=>{

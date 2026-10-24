@@ -7,6 +7,7 @@ import {Input} from '@/ui/input';
 import {Card,CardHeader,CardTitle,CardContent} from '@/ui/card';
 import {Link} from '@/lib/navigation';
 import styles from './AdminVisits.module.css';
+import type {AdminNotification} from './AdminTypes';
 
 interface VisitRow {
  id:string;title:string;description:string;userId:string;propertyId?:string;visitDate:string;status:string;managementVersion:number;
@@ -24,11 +25,12 @@ function VisitCard({visit,onSave}:{visit:VisitRow;onSave:(status:string)=>Promis
   <details><summary>Administrative visit history</summary>{visit.visitAdminHistory.length?<ul>{visit.visitAdminHistory.map((event,index)=><li key={index} className="text-sm">{event.actorUID} / {new Date(event.at).toLocaleString()} / {event.previousStatus} to {event.status}</li>)}</ul>:<p className="text-sm">No administrative changes recorded.</p>}</details>
  </CardContent></Card>;
 }
-export default function AdminVisits(){
+export default function AdminVisits({notifications,onMarkRead}:{notifications:AdminNotification[];onMarkRead:(id:string,read:boolean)=>Promise<void>}){
  const [filters,setFilters]=useState({status:'',dateFrom:'',dateTo:'',propertyId:''}),[error,setError]=useState('');
  const query=useQuery({queryKey:['adminVisits',filters],queryFn:()=>workflowRequest<{visits:VisitRow[]}>(`admin/visits?status=${filters.status}&dateFrom=${filters.dateFrom}&dateTo=${filters.dateTo}&propertyId=${encodeURIComponent(filters.propertyId)}`),staleTime:0});
  async function save(visit:VisitRow,status:string){setError('');try{await workflowRequest(`visits/${visit.id}`,{status,expectedVersion:visit.managementVersion},'PUT');}catch(e){setError(e instanceof Error?e.message:'Could not update visit');}finally{await query.refetch();}}
  return <section className={styles.visits} aria-label="Admin visits"><header className={styles.heading}><span className={styles.kicker}>SCHEDULE & FOLLOW-UP</span><h2>Visit requests</h2><p>Review appointments, filter records and update visit progress.</p></header>
+ {notifications.length>0&&<details className={styles.notifications} open><summary>{notifications.length} unread visit {notifications.length===1?'notification':'notifications'}</summary><ul>{notifications.map(notification=><li key={notification.id}><div><strong>{notification.title}</strong><p>{notification.message}</p>{notification.userName&&<small>Requester: {notification.userName}{notification.userEmail?` (${notification.userEmail})`:''}</small>}</div><Button variant="outline" onClick={()=>onMarkRead(notification.id,true)}>Mark read</Button></li>)}</ul></details>}
  <form className={styles.filters} onSubmit={event=>{event.preventDefault();const data=new FormData(event.currentTarget);setFilters({status:String(data.get('status')||''),dateFrom:String(data.get('dateFrom')||''),dateTo:String(data.get('dateTo')||''),propertyId:String(data.get('propertyId')||'').trim()});}}>
  <label>Status<select className="border rounded h-10 w-full" aria-label="Filter visit status" name="status"><option value="">All statuses</option>{['scheduled','completed','cancelled'].map(value=><option key={value} value={value}>{value}</option>)}</select></label>
  <label>From date (IST)<Input aria-label="Visit from date" type="date" name="dateFrom"/></label><label>To date (IST)<Input aria-label="Visit to date" type="date" name="dateTo"/></label><label>Property ID<Input aria-label="Filter visit property" name="propertyId"/></label><Button>Filter visits</Button>

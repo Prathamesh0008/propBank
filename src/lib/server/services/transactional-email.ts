@@ -22,6 +22,8 @@ const safeError=()=> 'Email provider delivery failed';
 const keyFor=(event:TransactionalEmailEvent,email:string)=>event.idempotencyKey||`${event.eventType}:${event.eventId}:${event.recipientUID||email.toLowerCase()}`;
 const idFor=(key:string)=>createHash('sha256').update(key).digest('hex');
 const emailPattern=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const definedFields=(value:RecordData)=>Object.fromEntries(Object.entries(value).filter(([,entry])=>entry!==undefined));
+const diagnosticCode=(error:unknown)=>typeof error==='object'&&error!==null&&'code' in error?String(error.code):error instanceof Error?error.name:'UNKNOWN_ERROR';
 
 export function brandedEmail(title:string,bodyHtml:string,bodyText:string,action?:{label:string;path:string}) {
   const base=(process.env.APP_URL||process.env.NEXT_PUBLIC_APP_URL||'').replace(/\/$/,'');
@@ -47,8 +49,8 @@ async function deliver(id:string) {
   try{
     if(value.firstAttemptAt&&now.getTime()-new Date(wireValue(value.firstAttemptAt) as string).getTime()>=23*60*60*1000)throw new Error('Delivery reconciliation required');
     if(!value.firstAttemptAt)await ref.update({firstAttemptAt:now});
-    await sendEmail({to:s(value.recipientEmail)||(value.recipientRole==='admin'?process.env.ADMIN_EMAIL||'':''),subject:s(value.subject),html:s(value.html),text:s(value.text)},s(value.idempotencyKey));
-    await ref.update({status:'sent',sentAt:now,lastAttemptAt:now,updatedAt:now,retryCount:Number(value.retryCount||0)+1,errorSummary:'',deliveryLease:'',deliveryLeaseUntil:now});return 'sent';
+    const provider=await sendEmail({to:s(value.recipientEmail)||(value.recipientRole==='admin'?process.env.ADMIN_EMAIL||'':''),subject:s(value.subject),html:s(value.html),text:s(value.text)},s(value.idempotencyKey));
+    await ref.update({status:'sent',sentAt:now,lastAttemptAt:now,updatedAt:now,retryCount:Number(value.retryCount||0)+1,errorSummary:'',providerMessageId:provider.id||'',deliveryLease:'',deliveryLeaseUntil:now});return 'sent';
   }catch(error){
     console.error('Transactional email delivery failed',{deliveryId:id,eventType:value.eventType});
     await ref.update({status:'failed',lastAttemptAt:now,updatedAt:now,retryCount:Number(value.retryCount||0)+1,errorSummary:error instanceof Error&&error.message==='Delivery reconciliation required'?'Delivery reconciliation required before retry':safeError(),nextRetryAt:new Date(now.getTime()+5*60*1000),deliveryLease:'',deliveryLeaseUntil:now});return 'failed';
@@ -60,7 +62,7 @@ export function writeEmailOutbox(tx:Transaction,events:TransactionalEmailEvent[]
   const now=new Date();
   for(const event of events) {
     const recipientEmail=event.recipientEmail||'',idempotencyKey=keyFor(event,recipientEmail),id=idFor(idempotencyKey);
-    tx.create(deliveries().doc(id),{...event,id,recipientEmail,idempotencyKey,status:'pending',retryCount:0,createdAt:now,updatedAt:now,errorSummary:''});
+    tx.create(deliveries().doc(id),definedFields({...event,id,recipientEmail,idempotencyKey,status:'pending',retryCount:0,createdAt:now,updatedAt:now,errorSummary:''}));
   }
 }
 export function dispatchEmailOutbox(events:TransactionalEmailEvent[]) {
@@ -71,15 +73,26 @@ export async function enqueueTransactionalEmail(event:TransactionalEmailEvent) {
   const recipientEmail=await resolveRecipient(event);if(!recipientEmail)return {queued:false,reason:'recipient_ineligible'};
   const idempotencyKey=keyFor(event,recipientEmail),id=idFor(idempotencyKey),ref=deliveries().doc(id),now=new Date();
   let created=false;
-  await getDatabase().runTransaction(async tx=>{const existing=await tx.get(ref);if(existing.exists)return;created=true;tx.create(ref,{id,...event,recipientEmail,idempotencyKey,status:'pending',retryCount:0,createdAt:now,updatedAt:now,errorSummary:''});});
+  await getDatabase().runTransaction(async tx=>{const existing=await tx.get(ref);if(existing.exists)return;created=true;tx.create(ref,definedFields({id,...event,recipientEmail,idempotencyKey,status:'pending',retryCount:0,createdAt:now,updatedAt:now,errorSummary:''}));});
   return {queued:created,id,duplicate:!created};
 }
 
 export function queueTransactionalEmail(event:TransactionalEmailEvent){after(async()=>{try{const result=await enqueueTransactionalEmail(event);if(result.queued&&result.id)await deliver(result.id);}catch{/* Business operation already committed; delivery remains best effort until a transactional caller supplies the outbox write. */}});}
 export async function processTransactionalEmail(event:TransactionalEmailEvent){
-  const result=await enqueueTransactionalEmail(event);if(!result.id)return result.reason==='recipient_ineligible'?'skipped':'failed';
-  const outcome=await deliver(result.id);if(outcome!=='skipped')return outcome;
-  const current=await deliveries().doc(result.id).get();return current.data()?.status==='sent'?'sent':current.data()?.status==='failed'?'failed':'skipped';
+  const adminVisit=event.recipientRole==='admin'&&event.eventType.startsWith('visit.');
+  try {
+    const result=await enqueueTransactionalEmail(event);
+    if(adminVisit)console.info('visit_email_stage',{stage:'admin_record_created',visitId:event.recordId||'',deliveryId:result.id||'',created:!!result.queued,duplicate:!!result.duplicate,reason:result.reason||''});
+    if(!result.id)return result.reason==='recipient_ineligible'?'skipped':'failed';
+    if(adminVisit)console.info('visit_email_stage',{stage:'admin_resend_attempted',visitId:event.recordId||'',deliveryId:result.id});
+    const outcome=await deliver(result.id);
+    if(outcome!=='skipped'){if(adminVisit)console.info('visit_email_stage',{stage:'admin_result',visitId:event.recordId||'',deliveryId:result.id,status:outcome});return outcome;}
+    const current=await deliveries().doc(result.id).get(),status=current.data()?.status==='sent'?'sent':current.data()?.status==='failed'?'failed':'skipped';
+    if(adminVisit)console.info('visit_email_stage',{stage:'admin_result',visitId:event.recordId||'',deliveryId:result.id,status});return status;
+  } catch(error) {
+    if(adminVisit)console.error('visit_email_stage',{stage:'admin_result',visitId:event.recordId||'',status:'exception',errorCode:diagnosticCode(error)});
+    throw error;
+  }
 }
 export async function persistUserEvent(event:UserEvent) {
   const content=brandedEmail(event.title||event.subject,event.bodyHtml,event.bodyText,event.action);
@@ -88,6 +101,13 @@ export async function persistUserEvent(event:UserEvent) {
   for(const recipient of recipients){const result=await enqueueTransactionalEmail({eventType:event.eventType,eventId:event.eventId,recipientUID:recipient.uid,recipientRole:recipient.role,recipientEmail:recipient.email,propertyId:event.propertyId,recordId:event.recordId,templateId:event.templateId,templateVersion:1,subject:event.subject,...content});if(result.queued&&result.id)ids.push(result.id);}
   if(ids.length)after(async()=>{for(const id of ids)await deliver(id);});
   return {recorded:ids.length};
+}
+export async function processUserEvent(event:UserEvent) {
+  const content=brandedEmail(event.title||event.subject,event.bodyHtml,event.bodyText,event.action);
+  const recipients:Array<{uid?:string;role:string;email?:string}>=event.recipients||event.recipientUIDs?.map(uid=>({uid,role:'user'}))||[];
+  const outcomes:Array<{role:string;status:string}>=[];
+  for(const recipient of recipients)outcomes.push({role:recipient.role,status:await processTransactionalEmail({eventType:event.eventType,eventId:event.eventId,recipientUID:recipient.uid,recipientRole:recipient.role,recipientEmail:recipient.email,propertyId:event.propertyId,recordId:event.recordId,templateId:event.templateId,templateVersion:1,subject:event.subject,...content})});
+  return outcomes;
 }
 export function queueUserEvent(event:UserEvent){after(async()=>{try{await persistUserEvent(event);}catch{console.error('Transactional email event persistence failed',{eventType:event.eventType,eventId:event.eventId});}});}
 

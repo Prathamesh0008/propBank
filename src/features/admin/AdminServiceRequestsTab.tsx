@@ -91,9 +91,9 @@ export const AdminServiceRequestsTab: React.FC<AdminServiceRequestsTabProps> = (
                   ))}
                 </div>
               ) : notifications.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <AlertCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No active service requests</p>
+                <div className={styles.emptyStatus}>
+                  <AlertCircle className="h-4 w-4" aria-hidden="true" />
+                  <p><strong>Service requests</strong><span>No active requests</span></p>
                 </div>
               ) : (
                 <div className="space-y-4">
