@@ -11,7 +11,7 @@ test('original offer requires owner approval and explicit customer acceptance be
  n=(await action(app,n,'owner','accept')).body.negotiation;assert.equal(n.finalAgreedAmount,null);assert.equal(n.status,'owner_approved');assert.equal(n.originalAskingPrice,70000);
  assert.equal((await action(app,n,'admin','complete')).response.status,409);
  n=(await action(app,n,'other','customer_accept')).body.negotiation;assert.equal(n.finalAgreedAmount,60000);assert.equal(n.status,'accepted');
- n=(await action(app,n,'admin','complete')).body.negotiation;assert.equal(n.status,'completed');assert.equal(n.history.length,5);assert.equal(app.state.properties.P.monthlyRent,'70000');
+ n=(await action(app,n,'admin','complete')).body.negotiation;assert.equal(n.status,'completed');assert.equal(n.history.length,5);assert.equal(app.state.properties.P.monthlyRent,'70000');assert.equal(app.state.commissions,undefined);
 });
 test('owner counter requires customer acceptance and preserves all proposed amounts',async()=>{
  const app=setup();let n=await offer(app);

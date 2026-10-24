@@ -6,6 +6,7 @@ import SiteFooter from "@/features/footer/SiteFooter";
 import "@/index.css";
 import "@/styles/brand-tokens.css";
 import {brandUI,brandEditorial} from "@/styles/brand-fonts";
+import DemoFormAutofill from "@/components/DemoFormAutofill";
 
 export const metadata: Metadata = {
   title: "PropBank — Real Estate Platform",
@@ -20,5 +21,6 @@ export const viewport: Viewport = { themeColor: "#242B28" };
 export default function RootLayout({ children }: { children: ReactNode }) {
   return <html lang="en" className={`${brandUI.variable} ${brandEditorial.variable}`}><body><Suspense fallback={<p>Loading...</p>}><Providers>
     <div className="flex flex-col min-h-screen"><SiteHeader /><main className="flex-1">{children}</main><SiteFooter /></div>
+    {process.env.NODE_ENV==='development'&&<DemoFormAutofill />}
   </Providers></Suspense></body></html>;
 }

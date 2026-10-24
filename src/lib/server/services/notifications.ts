@@ -1,6 +1,6 @@
 import {publicListing} from '../../listing-policy';
 import 'server-only';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getDatabase, COLLECTIONS } from '../firestore';
 import { AccessError,type AuthenticatedUser } from '../auth';
@@ -22,6 +22,12 @@ export async function createNotification(input:RecordData,actor?:AuthenticatedUs
   const notification=model('AdminNotification',{...req,id:randomUUID(),timestamp:valid?goTimeString(req.timestamp):now,priority:req.priority||'medium',createdAt:now,updatedAt:now});
   const data={...storeModel('AdminNotification',notification),timestamp:valid?firestoreTime(req.timestamp):now,...(input.relatedId?{relatedId:input.relatedId}:{})};
   if(actor)await saveMediaRecord(COLLECTIONS.adminNotifications,s(notification.id),data,actor,true);else await collection().doc(s(notification.id)).create(data);return notification;
+}
+export async function createNotificationOnce(input:RecordData,idempotencyKey:string) {
+  const req=model('CreateAdminNotificationRequest',input),now=new Date(),id=createHash('sha256').update(idempotencyKey).digest('hex'),ref=collection().doc(id);
+  let notification:RecordData|null=null;
+  await getDatabase().runTransaction(async tx=>{const existing=await tx.get(ref);if(existing.exists){notification=model('AdminNotification',existing.data()!);return;}const valid=parseRFC3339(req.timestamp),value=model('AdminNotification',{...req,id,timestamp:valid?goTimeString(req.timestamp):now,priority:req.priority||'medium',createdAt:now,updatedAt:now,isRead:false}),data={...storeModel('AdminNotification',value),timestamp:valid?firestoreTime(req.timestamp):now,...(input.relatedId?{relatedId:input.relatedId}:{})};tx.create(ref,data);notification=value;});
+  return notification!;
 }
 export async function postNotification(request:Request) {
   let req:RecordData;try{req=await readModel(request,'CreateAdminNotificationRequest',64<<10);}catch{return plainError('Invalid request body',400);}
@@ -84,7 +90,7 @@ export async function listNotifications(request:Request) {
   const snapshot=await query.get();let notifications:RecordData[]=[];
   for(const doc of snapshot.docs)try{const data=doc.data();notifications.push({...model('AdminNotification',data),id:doc.id,...(typeof data.relatedId==='string'?{relatedId:data.relatedId}:{})});}catch{/* Skip malformed legacy records. */}
   if(propertyId&&user.role!=='admin') {const property=await getProperty(propertyId);if(property?.ownerUID!==user.uid)notifications=notifications.filter(n=>n.userId===user.uid||['agreement_termination','agreement_renewal'].includes(s(n.type)));}
-  notifications.sort((a,b)=>epoch(b.timestamp)-epoch(a.timestamp));return jsonResponse(notifications.map(n=>({...wireModel('AdminNotification',n),...(n.relatedId?{relatedId:n.relatedId}:{})})));
+  notifications.sort((a,b)=>epoch(b.timestamp)-epoch(a.timestamp));return jsonResponse(notifications.map(n=>{const visible={...wireModel('AdminNotification',n),...(n.relatedId?{relatedId:n.relatedId}:{})};if(user.role!=='admin'&&n.type==='agreement_termination')Object.assign(visible,{message:'Agreement termination activity was updated.',ownerEmail:'',ownerPhone:'',tenantEmail:'',tenantPhone:'',userEmail:'',userPhone:''});return visible;}));
 }
 export async function readNotification(request:Request,id:string) {
   requireAdmin(await identity(request));let archive=true;

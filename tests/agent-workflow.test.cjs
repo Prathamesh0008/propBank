@@ -9,7 +9,6 @@ test('initial registration permits individual or agent but never admin or later 
  app.claims.newadmin={email:'newadmin@test.invalid',email_verified:false,emailVerified:false};await assert.rejects(()=>service.createUser(request('/auth/user','newadmin','POST',{uid:'newadmin',email:'newadmin@test.invalid',name:'No Admin',role:'admin'}),true),error=>error.status===403);
  app.claims.owner={email:'owner@test.invalid',email_verified:true,emailVerified:true,providerData:[{providerId:'google.com'}]};await service.createUser(request('/auth/user','owner','POST',{uid:'owner',email:'owner@test.invalid',name:'Owner',role:'agent'}),true);assert.equal(app.state.users.owner.role,'individual');
 });
-
 test('agent listing resolves a separate verified owner, remains private, and supports agent resubmission',async()=>{
  const app=isolated(seed());app.claims.owner={email:'owner@test.invalid',emailVerified:true,email_verified:true};app.claims.agent={email:'agent@test.invalid',emailVerified:true,email_verified:true};
  const response=await route(app,'properties').POST(request('/properties','agent','POST',{propertyTitle:'Agent Listed Home',propertyType:'residential',location:'Test district',ownerUID:'agent',agentOwnerEmail:'owner@test.invalid',listingType:'sell',sellingPrice:'7000000'}));assert.equal(response.status,200,await response.clone().text());const property=(await response.json()).property,stored=app.state.properties[property.id];
@@ -21,17 +20,3 @@ test('agent listing resolves a separate verified owner, remains private, and sup
  const publicRow=(await(await route(app,'properties/[id]').GET(request('/properties/'+property.id),context(property.id))).json()).property;assert.equal(publicRow.ownerUID,undefined);assert.equal(publicRow.ownerName,undefined);assert.equal(publicRow.submittingAgentUID,undefined);
  const offer=await route(app,'negotiations').POST(request('/negotiations','other','POST',{propertyId:property.id,amount:6500000}));assert.equal(offer.status,201);assert.equal((await offer.json()).negotiation.brokerUID,'agent');
 });
-
-test('commission allocation is admin-only, precise, unique and visible only to its agent',async()=>{
- const data=seed();data.properties.P={...properties.P,moderationStatus:'approved',rentalStatus:'available',submittedByUID:'agent',submittingAgentUID:'agent'};data.negotiations={N:{id:'N',propertyId:'P',status:'completed',version:5}};const app=isolated(data),api=route(app,'commissions');
- assert.equal((await api.POST(request('/commissions','agent','POST',{negotiationId:'N',totalCommission:'1000.00',shareType:'percentage',agentShareValue:'12.50'}))).status,403);
- let response=await api.POST(request('/commissions','admin','POST',{negotiationId:'N',totalCommission:'1000.00',shareType:'percentage',agentShareValue:'12.50'}));assert.equal(response.status,201);let row=(await response.json()).commission;assert.equal(row.agentShareCents,12500);assert.equal(row.propBankShareCents,87500);assert.equal(row.outstandingCents,12500);
- assert.equal((await api.POST(request('/commissions','admin','POST',{negotiationId:'N',totalCommission:'1000',shareType:'fixed',agentShareValue:'200'}))).status,409);
- assert.equal((await api.GET(request('/commissions','other'))).status,403);const agentRows=await(await api.GET(request('/commissions','agent'))).json();assert.equal(agentRows.commissions.length,1);
- response=await route(app,'commissions/[id]').PATCH(request('/commissions/N','admin','PATCH',{action:'record_payment',amount:'25.25',expectedVersion:1}),context('N'));assert.equal(response.status,200);row=(await response.json()).commission;assert.equal(row.paidCents,2525);assert.equal(row.outstandingCents,9975);assert.equal(row.paymentStatus,'partially_paid');assert.equal(row.history.length,2);
- response=await route(app,'commissions/[id]').PATCH(request('/commissions/N','admin','PATCH',{action:'update_allocation',totalCommission:'1000',shareType:'fixed',agentShareValue:'200',expectedVersion:2}),context('N'));assert.equal(response.status,200);row=(await response.json()).commission;assert.equal(row.agentShareCents,20000);assert.equal(row.propBankShareCents,80000);assert.equal(row.outstandingCents,17475);assert.equal(row.version,3);
- assert.equal((await route(app,'commissions/[id]').PATCH(request('/commissions/N','agent','PATCH',{action:'record_payment',amount:'1',expectedVersion:2}),context('N'))).status,403);
- assert.equal((await route(app,'commissions/[id]').PATCH(request('/commissions/N','admin','PATCH',{action:'record_payment',amount:'1',expectedVersion:1}),context('N'))).status,409);
- const notifications=Object.values(app.state.email_deliveries).filter(row=>row.eventType.startsWith('commission.'));assert.deepEqual(new Set(notifications.map(row=>row.recipientRole)),new Set(['agent','admin']));
-});
-

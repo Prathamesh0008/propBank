@@ -15,6 +15,7 @@ import { uploadPropertyImages } from './property-images';
 import {prepareMediaBindings,restoreFileReferences} from './media';
 import {readObject} from './domain-contracts';
 import { propertyNotificationEvents, bestEffort, propertyCreatedEffects, propertyUpdatedEffects } from './property-effects';
+import {additionalRentPeriod,validateAdditionalRentSchedule,type RentScheduleRow} from '@/lib/rent-schedule';
 
 import { writeEmailOutbox, dispatchEmailOutbox, type TransactionalEmailEvent } from './transactional-email';
 
@@ -190,6 +191,14 @@ export async function createProperty(request:Request) {
     if(!s(req.monthlyRent).trim()||!Number.isFinite(Number(req.monthlyRent))||Number(req.monthlyRent)<=0||!req.paymentDueDate||!req.agreementPeriod)return propertyError('Rent, payment due day and agreement period are required',400);
     const dates=[s(req.agreementStartDate),s(req.agreementEndDate)];
     if(dates.some(value=>!/^\d{4}-\d{2}-\d{2}$/.test(value)||!Number.isFinite(Date.parse(value)))||dates[1]<dates[0])return propertyError('Valid agreement start and end dates are required',400);
+  }
+  if(Array.isArray(req.rentSchedule)&&req.rentSchedule.length){
+    const rows=req.rentSchedule.filter(isRecord).map((row,index)=>({year:s(row.year),months:s(row.months)||additionalRentPeriod(s(req.agreementStartDate),s(req.agreementPeriod),index)?.months||'',amount:s(row.amount),fromDate:s(row.fromDate).slice(0,10),toDate:s(row.toDate).slice(0,10)}));
+    if(rows.length!==req.rentSchedule.length)return propertyError('Invalid year-wise rent schedule',400);
+    const legacyFirstYear=/^(?:1|1st|year 1)/i.test(rows[0].year);
+    if(legacyFirstYear){if(rows.some(row=>!Number.isFinite(Number(row.amount))||Number(row.amount)<=0))return propertyError('Year-wise rent amounts must be positive',400);}
+    else {const error=validateAdditionalRentSchedule(rows as RentScheduleRow[],s(req.agreementStartDate),s(req.agreementPeriod),s(req.agreementEndDate));if(error)return propertyError(error,400);}
+    req.rentSchedule=rows;
   }
   if (!req.propertyTitle||!req.propertyType||!req.location||(!tenantCreated&&!req.ownerUID)) return propertyError('Missing required fields: propertyTitle, propertyType, location, ownerUID',400);
   if(!tenantCreated&&user.role!=='agent')requireSelfOrAdmin(user,s(req.ownerUID));

@@ -54,9 +54,9 @@ export default function AdminArchiveTab({
               ))}
             </div>
           ) : notifications.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Archive className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No archived items</p>
+            <div className={styles.emptyStatus}>
+              <Archive className="h-4 w-4" aria-hidden="true" />
+              <p><strong>Archive</strong><span>No archived items</span></p>
             </div>
           ) : (
             <div className="space-y-4">
