@@ -148,10 +148,9 @@ const VisitPlanner = () => {
         description: editingVisit?"The visit schedule was updated":"Your visit was scheduled with an automatic 30-minute reminder.",
       });
     } catch (error) {
-      
       toast({
-        title: "Error",
-        description: "Failed to schedule visit. Please try again.",
+        title: editingVisit?"Reschedule failed":"Scheduling failed",
+        description: error instanceof Error?error.message:editingVisit?"The visit could not be rescheduled.":"The visit could not be scheduled.",
         variant: "destructive",
       });
     } finally {

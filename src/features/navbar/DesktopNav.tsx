@@ -14,17 +14,14 @@ interface DesktopNavProps {
   handleLogout: () => Promise<void>;
 }
 
-const publicLinks = [
-  ['/buy', 'Buy'], ['/rent', 'Rent'], ['/sell', 'Sell'], ['/contact', 'Contact'],
-] as const;
+const publicLinks = [['/buy', 'Buy'], ['/rent', 'Rent'], ['/sell', 'Sell'], ['/contact', 'Contact Us']] as const;
+const accountLinks = [['/manage-property', 'Manage Property'], ['/visit-planner', 'Visit Planner'], ['/contact', 'Contact Us']] as const;
 
 export const DesktopNav = ({ user, userName, userEmail, userPhone, userRole, handleLogout }: DesktopNavProps) => (
   <div className={styles.root}>
     <nav className={styles.links} aria-label="Main navigation">
-      {publicLinks.map(([to, label]) => <NavLink key={to} to={to} className={styles.link}>{label}</NavLink>)}
-      {user && <NavLink to="/manage-property" className={styles.link}>My Properties</NavLink>}
-      {user && <NavLink to="/visit-planner" className={styles.link}>Visits</NavLink>}
-      {user && userRole === 'admin' && <NavLink to="/admin" className={styles.link}>Admin</NavLink>}
+      {(user ? accountLinks : publicLinks).map(([to, label]) => <NavLink key={to} to={to} className={styles.link}>{label}</NavLink>)}
+      {user && userRole === 'admin' && <NavLink to="/admin" className={styles.link}>Admin Workspace</NavLink>}
     </nav>
     {user ? (
       <UserMenu user={user} userName={userName} userEmail={userEmail} userPhone={userPhone} handleLogout={handleLogout} />

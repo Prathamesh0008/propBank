@@ -8,7 +8,7 @@ import {ApiError,jsonResponse} from '../http';
 import {isRecord,stringValue as s,type RecordData,wireValue} from './contracts';
 
 const collection=()=>getDatabase().collection('auth_activity');
-const permitted=new Set(['registration','session_established','password_reset_requested','account_linked','profile_changed','account_status_changed','role_changed']);
+const permitted=new Set(['registration','session_established','password_reset_requested','password_changed','account_linked','profile_changed','phone_changed','email_change_requested','email_changed','notification_preferences_changed','account_status_changed','role_changed']);
 
 export async function recordAuthActivity(event:{eventType:string;actorUID?:string;targetUID?:string;context?:RecordData}){
   if(!permitted.has(event.eventType))throw new Error('Unsupported authentication activity');

@@ -11,11 +11,17 @@ import { bestEffort, escapeHtml } from './property-effects';
 import { getUser } from './users';
 import { getProperty } from './properties';
 import { createNotification } from './notifications';
-import { persistUserEvent } from './transactional-email';
+import { processUserEvent } from './transactional-email';
 import {formatIST} from './group2-mail';
 const wireVisit=(visit:RecordData)=>({...wireModel('Visit',visit),managementVersion:Number(visit.managementVersion||0)});
 const response=(success:boolean,message:string,visit?:RecordData|null,visits?:RecordData[])=>jsonResponse({success,message,...(visit?{visit:wireVisit(visit)}:{}),...(visits?{visits:visits.map(wireVisit)}:{})});
 const collection=()=>getDatabase().collection(COLLECTIONS.visits);
+const emailPattern=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function requireVisitAdminEmail() {
+  const email=s(process.env.ADMIN_EMAIL).trim().toLowerCase();
+  if(!emailPattern.test(email))throw new ApiError(503,'Visit notifications are unavailable because ADMIN_EMAIL is missing or invalid');
+  return email;
+}
 async function visitID() {
   for(let attempt=0;attempt<10;attempt++) {
     const id=Array.from({length:4},()=>String.fromCharCode(65+randomInt(26))).join('')+Array.from({length:4},()=>String(randomInt(10))).join('');
@@ -30,19 +36,34 @@ function validateVisit(req:RecordData) {
   if(req.reminderTime!==undefined&&(typeof req.reminderTime!=='number'||!Number.isInteger(req.reminderTime)||req.reminderTime<0||req.reminderTime>10080))throw new ApiError(400,'Reminder time must be 0–10080 minutes');
   if(req.visitDate&&!parseRFC3339(req.visitDate))throw new ApiError(400,'Invalid visit date');
 }
-async function notifyVisit(visit:RecordData,uid:string) {
+async function notifyVisit(visit:RecordData,uid:string,adminEmail:string) {
   const property=visit.propertyId?await getProperty(s(visit.propertyId)):null,requester=await getUser(uid),owner=property?.ownerUID?await getUser(s(property.ownerUID)):null;
-  const status=s(visit.status)||'scheduled',version=Number(visit.managementVersion||0),visitTitle=s(visit.title),propertyTitle=s(property?.title)||'General property visit',when=formatIST(new Date(String(visit.visitDate))),details=s(visit.description),eventId=`${s(visit.id)}:${version}:${status}`;
+  const scheduledAt=epoch(visit.visitDate);if(!Number.isFinite(scheduledAt)||scheduledAt<=0)throw new Error('Invalid persisted visit date');
+  const status=s(visit.status)||'scheduled',version=Number(visit.managementVersion||0),visitTitle=s(visit.title),propertyTitle=s(property?.title)||'General property visit',when=formatIST(new Date(scheduledAt)),details=s(visit.description),eventId=`${s(visit.id)}:${version}:${status}`;
   const commonHtml=`<p><strong>${escapeHtml(visitTitle)}</strong><br>${escapeHtml(propertyTitle)}</p><p>Status: ${escapeHtml(status)}<br>Scheduled: ${escapeHtml(when)}</p>${details?`<p>${escapeHtml(details)}</p>`:''}`;
   const commonText=`${visitTitle}. ${propertyTitle}. Status: ${status}. Scheduled: ${when}.${details?` Details: ${details}`:''}`;
-  await bestEffort(()=>persistUserEvent({eventType:`visit.${status}`,eventId:`${eventId}:requester`,recipients:[{uid,role:'requester'}],propertyId:s(property?.id),recordId:s(visit.id),templateId:'visit-activity-requester',subject:'Property visit updated',title:'Property visit updated',bodyHtml:commonHtml,bodyText:commonText,action:{label:'Open Visit Planner',path:'/visit-planner'}}));
+  const requesterResult=await bestEffort(()=>processUserEvent({eventType:`visit.${status}`,eventId:`${eventId}:requester`,recipients:[{uid,role:'requester'}],propertyId:s(property?.id),recordId:s(visit.id),templateId:'visit-activity-requester',subject:'Property visit updated',title:'Property visit updated',bodyHtml:commonHtml,bodyText:commonText,action:{label:'Open Visit Planner',path:'/visit-planner'}}));
+  console.info('visit_email_stage',{stage:'requester_processed',visitId:s(visit.id),status:requesterResult?.[0]?.status||'exception'});
   const adminHtml=`<p>Requester: ${escapeHtml(s(requester?.name)||'Registered user')}<br>Verified email: ${escapeHtml(s(requester?.email))}</p>${commonHtml}<p>Visit reference: ${escapeHtml(s(visit.id))}${property?.location?`<br>Location: ${escapeHtml(s(property.location))}`:''}</p>`;
-  if(s(requester?.email).toLowerCase()!==s(process.env.ADMIN_EMAIL).toLowerCase())await bestEffort(()=>persistUserEvent({eventType:`visit.${status}`,eventId:`${eventId}:admin`,recipients:[{role:'admin',email:process.env.ADMIN_EMAIL}],propertyId:s(property?.id),recordId:s(visit.id),templateId:'visit-activity-admin',subject:'PropBank visit activity',title:'Visit activity requires attention',bodyHtml:adminHtml,bodyText:`Requester: ${s(requester?.name)||'Registered user'} (${s(requester?.email)}). ${commonText} Visit reference: ${s(visit.id)}.`,action:{label:'Open admin visits',path:'/admin?tab=visits'}}));
-  if(property?.ownerUID&&s(property.ownerUID)!==uid&&owner?.isActive!==false&&owner?.emailVerified!==false)await bestEffort(()=>persistUserEvent({eventType:`visit.${status}`,eventId:`${eventId}:owner`,recipients:[{uid:s(property.ownerUID),role:'owner'}],propertyId:s(property.id),recordId:s(visit.id),templateId:'visit-activity-owner',subject:'Property visit updated',title:'Visit scheduled for your property',bodyHtml:`<p><strong>${escapeHtml(propertyTitle)}</strong></p><p>Visitor: ${escapeHtml(s(requester?.name)||'Registered PropBank user')}<br>Status: ${escapeHtml(status)}<br>Scheduled: ${escapeHtml(when)}</p>`,bodyText:`${propertyTitle}. Visitor: ${s(requester?.name)||'Registered PropBank user'}. Status: ${status}. Scheduled: ${when}.`,action:{label:'View property',path:`/manage-property/${s(property.id)}`}}));
-  await bestEffort(()=>createNotification({type:'visit_update',title:'Property Visit Update',message:`Visit ${status} for ${propertyTitle}`,propertyId:s(property?.id),ownerId:s(property?.ownerUID),userId:uid,relatedId:s(visit.id)}));
+  if(emailPattern.test(adminEmail)&&s(requester?.email).toLowerCase()!==adminEmail) {
+    console.info('visit_email_stage',{stage:'admin_resolved',visitId:s(visit.id),recipientType:'configured_admin'});
+    try {
+      const result=await processUserEvent({eventType:`visit.${status}`,eventId:`${eventId}:admin`,recipients:[{role:'admin',email:adminEmail}],propertyId:s(property?.id),recordId:s(visit.id),templateId:'visit-activity-admin',subject:'PropBank visit activity',title:'Visit activity requires attention',bodyHtml:adminHtml,bodyText:`Requester: ${s(requester?.name)||'Registered user'} (${s(requester?.email)}). ${commonText} Visit reference: ${s(visit.id)}.`,action:{label:'Open admin visits',path:'/admin?tab=visits'}});
+      if(result[0]?.status==='skipped')console.info('Visit administrator email already recorded',{visitId:s(visit.id),eventType:`visit.${status}`});
+    } catch {
+      console.error('Visit administrator email could not be queued',{visitId:s(visit.id),eventType:`visit.${status}`});
+    }
+  } else if(!emailPattern.test(adminEmail))console.error('Visit administrator email is not configured',{visitId:s(visit.id),eventType:`visit.${status}`});
+  if(property?.ownerUID&&s(property.ownerUID)!==uid&&owner?.isActive!==false&&owner?.emailVerified!==false)await bestEffort(()=>processUserEvent({eventType:`visit.${status}`,eventId:`${eventId}:owner`,recipients:[{uid:s(property.ownerUID),role:'owner'}],propertyId:s(property.id),recordId:s(visit.id),templateId:'visit-activity-owner',subject:'Property visit updated',title:'Visit scheduled for your property',bodyHtml:`<p><strong>${escapeHtml(propertyTitle)}</strong></p><p>Visitor: ${escapeHtml(s(requester?.name)||'Registered PropBank user')}<br>Status: ${escapeHtml(status)}<br>Scheduled: ${escapeHtml(when)}</p>`,bodyText:`${propertyTitle}. Visitor: ${s(requester?.name)||'Registered PropBank user'}. Status: ${status}. Scheduled: ${when}.`,action:{label:'View property',path:`/manage-property/${s(property.id)}`}}));
+  try {await createNotification({type:'visit_update',title:'Property Visit Update',message:`${s(requester?.name)||'A registered user'} ${status} a visit for ${propertyTitle} on ${when}`,propertyId:s(property?.id),ownerId:s(property?.ownerUID),userId:uid,userName:s(requester?.name),userEmail:s(requester?.email),visitDate:goTimeString(visit.visitDate),visitTime:when,relatedId:s(visit.id)});} catch {console.error('Visit administrator notification could not be created',{visitId:s(visit.id),eventType:`visit.${status}`});}
+}
+async function notifyVisitSafely(visit:RecordData,uid:string,adminEmail:string) {
+  try {await notifyVisit(visit,uid,adminEmail);}
+  catch(error) {console.error('visit_email_stage',{stage:'notification_processing_failed',visitId:s(visit.id),status:'committed',errorCode:error instanceof Error?error.name:'UNKNOWN_ERROR'});}
 }
 export async function createVisit(request:Request) {
   const user=await identity(request);
+  const adminEmail=requireVisitAdminEmail();
   let req:RecordData;try{req=await readModel(request,'CreateVisitRequest');}catch{return jsonResponse({success:false,message:'Invalid request body'},400);}
   if(!req.title||!req.visitDate)return jsonResponse({success:false,message:'Missing required fields: title, visitDate'},400);
   const date=parseRFC3339(req.visitDate);if(!date)return jsonResponse({success:false,message:'Invalid date format. Use ISO 8601 format'},400);
@@ -51,7 +72,8 @@ export async function createVisit(request:Request) {
   if(req.propertyId) {const property=await getProperty(s(req.propertyId));if(!property||property.isActive!==true||property.status==='inactive'||!listingApproved(property)||property.createdAs==='tenant'||property.listingType==='manage'||property.isSold||property.isRented||property.rentalStatus==='rented')throw new ApiError(404,'Available property not found');}
   const now=new Date();const visit:RecordData={...model('Visit',{...req,id:await visitID(),userId:user.uid,visitDate:goTimeString(req.visitDate),status:'scheduled',isCompleted:false,createdAt:now,updatedAt:now}),managementVersion:0};
   await collection().doc(s(visit.id)).create({...storeModel('Visit',visit),visitDate:firestoreTime(req.visitDate),managementVersion:0});
-  await notifyVisit(visit,user.uid);
+  console.info('visit_email_stage',{stage:'visit_saved',visitId:s(visit.id)});
+  await notifyVisitSafely(visit,user.uid,adminEmail);
   return jsonResponse({success:true,message:'Visit scheduled successfully',visit:wireVisit(visit)},201);
 }
 export async function listVisits(request:Request) {
@@ -82,14 +104,14 @@ function updateFields(req:RecordData) {
   const updates:RecordData={updatedAt:new Date()};
   if('isCompleted' in req)updates.isCompleted=req.isCompleted;
   for(const key of ['title','description','reminderType','status'])if(req[key])updates[key]=req[key];
-  const date=firestoreTime(req.visitDate);if(date)updates.visitDate=date;
+  const date=firestoreTime(req.visitDate);if(date)Object.assign(updates,{visitDate:date,notifiedAt:null,reminderDelivery:null});
   if(typeof req.reminderTime==='number')updates.reminderTime=req.reminderTime;
   if(req.status==='completed'||req.isCompleted===true)Object.assign(updates,{status:'completed',isCompleted:true});
   else if(req.status==='scheduled'||req.status==='cancelled')updates.isCompleted=false;
   return updates;
 }
 export async function updateVisit(request:Request,id:string) {
-  const user=await identity(request);let req:RecordData;
+  const user=await identity(request),adminEmail=s(process.env.ADMIN_EMAIL).trim().toLowerCase();let req:RecordData;
   try{req=await readObject(request);model('UpdateVisitRequest',req,true);}catch{return jsonResponse({success:false,message:'Invalid request body'},400);}
   if(Object.keys(req).some(key=>!['title','description','visitDate','status','isCompleted','expectedVersion'].includes(key)))throw new ApiError(400,'Unsupported visit field');
   if(req.visitDate){req.reminderType='email';req.reminderTime=30;}
@@ -104,6 +126,8 @@ export async function updateVisit(request:Request,id:string) {
     if(!actor.exists||actor.data()?.isActive===false)throw new AccessError(403,'Active user required');
     if(actor.data()?.role!=='admin'&&user.uid!==before.userId)throw new AccessError(403,'Access denied');
     if(req.expectedVersion!==undefined&&req.expectedVersion!==Number(before.managementVersion||0))throw new ApiError(409,'Visit changed; refresh and retry');
+    const previousStatus=visitStatus(before),requestedStatus=req.status?visitStatus(req):req.isCompleted===true?'completed':'';
+    if((req.visitDate&&previousStatus!=='scheduled')||(requestedStatus&&requestedStatus!==previousStatus&&previousStatus!=='scheduled'))throw new ApiError(409,'This visit can no longer be rescheduled or changed');
     const updates=updateFields(req);
     if(req.isCompleted===false&&!req.status&&before.status==='completed')updates.status='scheduled';
     updates.managementVersion=Number(before.managementVersion||0)+1;
@@ -114,7 +138,7 @@ export async function updateVisit(request:Request,id:string) {
     }
     tx.update(ref,updates);
   });
-  const document=await ref.get();let updated:RecordData|null=null;if(document.exists){const raw=document.data()!;updated=model('Visit',raw);updated.id=id;updated.managementVersion=Number(raw.managementVersion||0);}if(updated)await notifyVisit(updated,s(updated.userId));return response(true,'Visit updated successfully',updated);
+  const document=await ref.get();let updated:RecordData|null=null;if(document.exists){const raw=document.data()!;updated=model('Visit',raw);updated.id=id;updated.managementVersion=Number(raw.managementVersion||0);}if(updated)await notifyVisitSafely(updated,s(updated.userId),adminEmail);return response(true,'Visit updated successfully',updated);
 }
 export async function deleteVisit(request:Request,id:string) {
   const user=await identity(request);const visit=await getRecord(COLLECTIONS.visits,id,'Visit');if(visit)requireSelfOrAdmin(user,s(visit.userId));

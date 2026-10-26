@@ -32,3 +32,10 @@
 .section { border-top: 1px solid var(--pw-rule); padding: 24px 0 10px; }
 .section h2 { font-size: 1.2rem; }
 .section > div { border-radius: 0; border-color: var(--pw-rule); background: #fffefa; }
+.scheduleHeading { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; border:0!important; background:transparent!important; }
+.scheduleHeading p { margin:4px 0 0; color:var(--pw-muted); font-size:.82rem; }
+.scheduleRow { display:grid; grid-template-columns:minmax(180px,1fr) minmax(230px,1.25fr) auto; align-items:end; gap:18px; padding:14px; }
+.scheduleRow > div { display:grid; gap:5px; }
+.scheduleRow span,.scheduleRow small { color:var(--pw-muted); font-size:.76rem; }
+.scheduleRow strong { font-size:.88rem; font-weight:600; }
+@media(max-width:650px) { .scheduleHeading { align-items:stretch; flex-direction:column; } .scheduleRow { grid-template-columns:1fr; gap:12px; } }
