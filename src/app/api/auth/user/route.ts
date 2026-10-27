@@ -1,11 +1,11 @@
 import { handle, OPTIONS as corsOptions, unsupported } from '@/lib/server/http';
 import { nativeGroup1 } from '@/lib/server/native-group1';
-import { createUser } from '@/lib/server/services/users';
+import { createUser, registrationProfile } from '@/lib/server/services/users';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const OPTIONS = nativeGroup1(corsOptions);
-export const GET = nativeGroup1(unsupported);
+export const GET = nativeGroup1(handle(registrationProfile,'Could not check account profile',true));
 export const POST = nativeGroup1(handle(async (request: Request) => createUser(request, true), 'Failed to save user', true));
 export const PUT = nativeGroup1(unsupported);
 export const PATCH = nativeGroup1(unsupported);

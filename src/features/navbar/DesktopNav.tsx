@@ -14,8 +14,8 @@ interface DesktopNavProps {
   handleLogout: () => Promise<void>;
 }
 
-const publicLinks = [['/buy', 'Buy'], ['/rent', 'Rent'], ['/sell', 'Sell'], ['/contact', 'Contact Us']] as const;
-const accountLinks = [['/manage-property', 'Manage Property'], ['/visit-planner', 'Visit Planner'], ['/contact', 'Contact Us']] as const;
+const publicLinks = [['/manage-property', 'Property management'], ['/buy', 'Buy'], ['/rent', 'Rent'], ['/sell', 'Sell'], ['/contact', 'Contact']] as const;
+const accountLinks = [['/manage-property', 'My properties'], ['/visit-planner', 'Visit Planner'], ['/contact', 'Contact']] as const;
 
 export const DesktopNav = ({ user, userName, userEmail, userPhone, userRole, handleLogout }: DesktopNavProps) => (
   <div className={styles.root}>
@@ -26,7 +26,7 @@ export const DesktopNav = ({ user, userName, userEmail, userPhone, userRole, han
     {user ? (
       <UserMenu user={user} userName={userName} userEmail={userEmail} userPhone={userPhone} handleLogout={handleLogout} />
     ) : (
-      <Link to="/auth" className={styles.login}>Login <ArrowUpRight className={styles.icon} aria-hidden="true" /></Link>
+      <Link to="/auth" className={styles.login}>Sign in <ArrowUpRight className={styles.icon} aria-hidden="true" /></Link>
     )}
   </div>
 );

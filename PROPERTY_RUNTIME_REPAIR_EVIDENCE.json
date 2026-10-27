@@ -1,0 +1,157 @@
+{
+  "project": "demo-propbank-runtime",
+  "origin": "http://127.0.0.1:8081",
+  "transport": "Resend intercepted; synthetic 403, no real mail",
+  "createdProperties": 5,
+  "claims": 3,
+  "outboxEvents": 14,
+  "outboxStates": [
+    {
+      "eventType": "property.submitted",
+      "status": "failed",
+      "providerStatus": 403
+    },
+    {
+      "eventType": "property.submitted",
+      "status": "failed",
+      "providerStatus": 403
+    },
+    {
+      "eventType": "property.submitted",
+      "status": "failed",
+      "providerStatus": 403
+    },
+    {
+      "eventType": "relationship.tenant_linked",
+      "status": "failed",
+      "providerStatus": 403
+    },
+    {
+      "eventType": "property.submitted",
+      "status": "failed",
+      "providerStatus": 403
+    },
+    {
+      "eventType": "property.submitted",
+      "status": "failed",
+      "providerStatus": 403
+    },
+    {
+      "eventType": "property.submitted",
+      "status": "failed",
+      "providerStatus": 403
+    },
+    {
+      "eventType": "property.submitted",
+      "status": "failed",
+      "providerStatus": 403
+    },
+    {
+      "eventType": "property.submitted",
+      "status": "failed",
+      "providerStatus": 403
+    },
+    {
+      "eventType": "relationship.tenant_invitation",
+      "status": "failed",
+      "providerStatus": 403
+    },
+    {
+      "eventType": "relationship.tenant_linked",
+      "status": "failed",
+      "providerStatus": 403
+    },
+    {
+      "eventType": "property.submitted",
+      "status": "failed",
+      "providerStatus": 403
+    },
+    {
+      "eventType": "relationship.owner_invitation",
+      "status": "failed",
+      "providerStatus": 403
+    },
+    {
+      "eventType": "property.submitted",
+      "status": "failed",
+      "providerStatus": 403
+    }
+  ],
+  "http": [
+    {
+      "path": "properties",
+      "status": 200,
+      "message": "Property created successfully"
+    },
+    {
+      "path": "properties",
+      "status": 200,
+      "message": "Property created successfully"
+    },
+    {
+      "path": "properties",
+      "status": 200,
+      "message": "Property created successfully"
+    },
+    {
+      "path": "properties",
+      "status": 200,
+      "message": "Property created successfully"
+    },
+    {
+      "path": "properties",
+      "status": 200,
+      "message": "Property created successfully"
+    },
+    {
+      "path": "properties",
+      "status": 200,
+      "message": "Property already submitted"
+    },
+    {
+      "path": "properties",
+      "status": 400,
+      "message": "Enter a valid tenant email address"
+    },
+    {
+      "path": "properties",
+      "status": 400,
+      "message": "Enter a valid owner email address"
+    },
+    {
+      "path": "properties/tenant",
+      "status": 200
+    },
+    {
+      "path": "relationship-links",
+      "status": 200
+    },
+    {
+      "path": "relationship-links",
+      "status": 200,
+      "message": "Relationship request updated"
+    },
+    {
+      "path": "properties/tenant",
+      "status": 200
+    },
+    {
+      "path": "properties",
+      "status": 200
+    },
+    {
+      "path": "relationship-links",
+      "status": 200
+    },
+    {
+      "path": "relationship-links",
+      "status": 200,
+      "message": "Relationship request updated"
+    },
+    {
+      "path": "admin/email-deliveries/30a0b78c7131a23dc7d815f2e73ffd3ae88d1ed5769df38b76db4e0ccf234981/retry",
+      "status": 200,
+      "message": "Delivery queued for retry"
+    }
+  ]
+}

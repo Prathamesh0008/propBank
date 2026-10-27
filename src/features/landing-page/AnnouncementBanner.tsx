@@ -1,25 +1,12 @@
-"use client";
-
-import React from "react";
+import { Megaphone } from "lucide-react";
+import styles from "./AnnouncementBanner.module.css";
 
 interface AnnouncementBannerProps {
   isAnnouncementActive: boolean;
   announcementText: string;
 }
 
-export const AnnouncementBanner: React.FC<AnnouncementBannerProps> = ({
-  isAnnouncementActive,
-  announcementText,
-}) => {
+export const AnnouncementBanner = ({ isAnnouncementActive, announcementText }: AnnouncementBannerProps) => {
   if (!isAnnouncementActive || !announcementText) return null;
-
-  return (
-    <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 px-4">
-      <div className="container mx-auto">
-        <p className="text-center text-sm md:text-base font-medium capitalize">
-          📢 {announcementText}
-        </p>
-      </div>
-    </div>
-  );
+  return <div className={styles.banner}><Megaphone size={15} aria-hidden="true"/><p>{announcementText}</p></div>;
 };

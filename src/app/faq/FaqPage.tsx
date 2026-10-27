@@ -16,8 +16,8 @@ const faqs = [
 ];
 export default function FaqPage(){
  const [open,setOpen]=useState<number|null>(0);
- return <main className={styles.page}>
-  <header className={styles.intro}><div className={styles.wrap}><p className={styles.label}>Answers & guidance</p><h1>Frequently asked <em>questions.</em></h1><p>Find clear guidance for property discovery, listing review, visits, and managing your property records.</p></div></header>
-  <section className={styles.content}><div className={styles.wrap}><div className={styles.grid}><div className={styles.side}><p className={styles.label}>Helpful information</p><h2>Good questions lead to better decisions.</h2><Link href="/contact">Still need help? Contact us <span aria-hidden="true">↗</span></Link></div><div className={styles.questions}>{faqs.map((f,i)=><article className={styles.question} key={f.question}><h3><button type="button" className={styles.trigger} onClick={()=>setOpen(open===i?null:i)} aria-expanded={open===i} aria-controls={`faq-answer-${i}`}><span className={styles.num}>{String(i+1).padStart(2,"0")}</span><span>{f.question}</span><ChevronDown className={open===i?styles.rotated:styles.chevron} size={20} aria-hidden="true"/></button></h3><div id={`faq-answer-${i}`} className={styles.answer} hidden={open!==i}><p>{f.answer}</p></div></article>)}</div></div></div></section>
- </main>;
+ return <div className={styles.page}>
+  <header className={styles.intro}><div className={styles.wrap}><h1>Frequently asked <em>questions.</em></h1><p>Find clear guidance for property discovery, listing review, visits, and managing your property records.</p></div></header>
+  <section className={styles.content}><div className={styles.wrap}><div className={styles.grid}><div className={styles.side}><h2>Good questions lead to better decisions.</h2><Link href="/contact">Still need help? Contact us <span aria-hidden="true">↗</span></Link></div><div className={styles.questions}>{faqs.map((f,i)=><article className={styles.question} key={f.question}><h3><button type="button" className={styles.trigger} onClick={()=>setOpen(open===i?null:i)} aria-expanded={open===i} aria-controls={`faq-answer-${i}`}><span>{f.question}</span><ChevronDown className={open===i?styles.rotated:styles.chevron} size={20} aria-hidden="true"/></button></h3><div id={`faq-answer-${i}`} className={styles.answer} hidden={open!==i}><p>{f.answer}</p></div></article>)}</div></div></div></section>
+ </div>;
 }

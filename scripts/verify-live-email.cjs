@@ -1,5 +1,5 @@
 // Explicit opt-in: real Resend delivery, isolated in-memory database/auth records.
-const path=require('node:path'),vm=require('node:vm'),crypto=require('node:crypto');
+const path=require('node:path'),crypto=require('node:crypto');
 const {isolated}=require('../tests/fixtures/native-server.cjs');
 require('@next/env').loadEnvConfig(process.cwd(),true,{info:()=>{},error:()=>{}});
 const recipient=process.argv[2];
@@ -9,10 +9,9 @@ if(process.env.CRON_SECRET.length<32)throw new Error('Cron secret is too short')
 const run=crypto.randomUUID(),now=new Date(),local=new Date(now.getTime()+19800000),day=local.getUTCDate();
 const calls=[],sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 let queue=Promise.resolve();
-const app=isolated({users:{tenant:{uid:'tenant',email:recipient,name:'Controlled email test',isActive:true,role:'individual'}},visits:{},properties:{}});
+const app=isolated({users:{tenant:{uid:'tenant',email:recipient,name:'Controlled email test',isActive:true,role:'individual'}},visits:{},properties:{}},{fetch:(url,init)=>transport(url,init)});
 Object.assign(app.env,{RESEND_API_KEY:process.env.RESEND_API_KEY,FROM_EMAIL:process.env.FROM_EMAIL,CRON_SECRET:process.env.CRON_SECRET});
 app.claims.tenant={email:recipient,email_verified:true};
-const effects=app.load(path.resolve('src/lib/server/services/property-effects.ts'));
 const transport=async(url,init)=>{
  if(url!=='https://api.resend.com/emails')throw new Error('Unexpected provider endpoint');
  const payload=JSON.parse(init.body);
@@ -24,9 +23,8 @@ const transport=async(url,init)=>{
   await sleep(700);return response;
  }finally{release();}
 };
-const realSend=vm.runInNewContext('('+effects.sendEmail.toString()+')',{process:{env:{RESEND_API_KEY:process.env.RESEND_API_KEY,FROM_EMAIL:process.env.FROM_EMAIL}},fetch:transport,AbortSignal});
-// Existing reminder service imports this cached export; only email transport is real.
-effects.sendEmail=realSend;
+// Use the same validated sender/adapter as the application. Only transport is real.
+const realSend=app.load(path.resolve('src/lib/server/services/resend.ts')).sendEmail;
 async function cron(authorized=true){
  const endpoint=app.load(path.resolve('src/app/api/cron/reminders/route.ts'));
  const before=calls.length;

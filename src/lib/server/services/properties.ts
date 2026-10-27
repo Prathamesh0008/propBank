@@ -1,4 +1,5 @@
 import 'server-only';
+import { normalizeEmailAddress } from '@/lib/email-address';
 import { createHash, randomInt, randomUUID } from 'node:crypto';
 import type { Query, DocumentSnapshot } from 'firebase-admin/firestore';
 import {publicListing} from '../../listing-policy';
@@ -9,12 +10,13 @@ import { ApiError, jsonResponse } from '../http';
 import { projections } from './go-contracts';
 import { model, storeModel, propertyResponse, publicPropertyResponse, isRecord, stringValue as s, type RecordData } from './contracts';
 import { schemas } from './go-contracts';
-import { resolveTenantIdentity, getUser } from './users';
+import { getUser } from './users';
 import { getFirebaseAdminAuth } from '../firebase-admin';
 import { uploadPropertyImages } from './property-images';
 import {prepareMediaBindings,restoreFileReferences} from './media';
 import {readObject} from './domain-contracts';
 import { propertyNotificationEvents, bestEffort, propertyCreatedEffects, propertyUpdatedEffects } from './property-effects';
+import { prepareLink, stageLinks, validContact } from './relationship-links';
 import {additionalRentPeriod,validateAdditionalRentSchedule,type RentScheduleRow} from '@/lib/rent-schedule';
 
 import { writeEmailOutbox, dispatchEmailOutbox, type TransactionalEmailEvent } from './transactional-email';
@@ -52,7 +54,7 @@ function available(property:RecordData,raw:RecordData) {
 }
 async function tenantProperties(uid:string,email='') {
   const rows=await queryProperties(properties());
-  return rows.filter(({property})=>Array.isArray(property.tenants) && property.tenants.some(t=>isRecord(t)&&t.isActive===true&&(t.userUID ? !!uid&&t.userUID===uid : !!email&&s(t.email).toLowerCase()===email.toLowerCase()))).map(row=>row.property);
+  return rows.filter(({property})=>Array.isArray(property.tenants) && property.tenants.some(t=>isRecord(t)&&t.isActive===true&&(t.userUID ? !!uid&&t.userUID===uid : t.linkConfirmationRequired!==true&&!!email&&s(t.email).toLowerCase()===email.toLowerCase()))).map(row=>row.property);
 }
 async function siteSettings():Promise<RecordData|null> {
   const defaults={quote:'Manage your properties and plan visits with ease',quoteAuthor:'',heroTitle:'Your Smart Hub for Property Management',heroSubtitle:'Manage, list your properties and find your dream house— all in one platform',announcementText:'',isAnnouncementActive:false,bannerImages:[]};
@@ -133,7 +135,7 @@ export async function readProperty(request:Request,id:string) {
   if(request.headers.has('authorization')) {
     const user=await requireUser(request);
     const tenants=Array.isArray(property.tenants)?property.tenants:[];
-    const relationships={ownerUID:s(property.ownerUID),tenants:(tenants.some(t=>isRecord(t)&&t.isActive===true)?tenants:[{email:s(property.tenantEmail),isActive:property.rentalStatus==='rented'}]) as Parameters<typeof isPropertyTenant>[1]['tenants']};
+    const relationships={ownerUID:s(property.ownerUID),tenants:(tenants.length?tenants:[{email:s(property.tenantEmail),isActive:property.rentalStatus==='rented'}]) as Parameters<typeof isPropertyTenant>[1]['tenants']};
     const role=user.role==='admin'?'admin':user.uid===property.ownerUID?'owner':user.role==='agent'&&user.uid===property.submittedByUID?'agent':isPropertyTenant(user,relationships)?'tenant':'';
     if(role)return jsonResponse({success:true,property:propertyResponse(property,'normal',role)});
   }
@@ -157,6 +159,21 @@ async function generateID() {
   return properties().doc().id;
 }
 export async function createProperty(request:Request) {
+  try{return await createPropertyRecord(request);}
+  catch(error){
+    if(error instanceof ApiError||error instanceof AccessError)throw error;
+    const reference=randomUUID(),code=typeof error==='object'&&error!==null&&'code' in error?String(error.code):'unknown';
+    const category=/^(auth\/[a-z-]+|[a-z-]+|\d{1,2})$/.test(code)?code:'unknown';
+    // Stack frames identify the source without logging exception messages,
+    // payloads, recipient addresses or credential details.
+    const frames=error instanceof Error?error.stack?.split('\n').slice(1,5).map(line=>line.replace(/\?.*?(?=[:)])/g,'')):[];
+    console.error(`property_creation_failed ${JSON.stringify({reference,code:category,frames})}`);
+    const reason=['7','permission-denied','auth/insufficient-permission'].includes(code)?'Property persistence or account lookup was denied. Server permissions need attention.':
+      ['14','unavailable','4','deadline-exceeded'].includes(code)?'The property database is unavailable. Please retry.':'Property could not be saved. Please share this reference with support.';
+    return jsonResponse({success:false,message:`${reason} Reference: ${reference}`,code:'PROPERTY_CREATION_FAILED',reference},503);
+  }
+}
+async function createPropertyRecord(request:Request) {
   const user=await requireUser(request);
   let req:RecordData;
   let submissionFingerprint='';
@@ -167,6 +184,9 @@ export async function createProperty(request:Request) {
     const raw=(body||{}) as RecordData;
     if(Object.keys(raw).some(key=>key.startsWith('moderation')))throw new Error('Moderation fields are server controlled');
     validateProperty(raw);
+    for(const [record,key] of [[raw,'tenantEmail'],[isRecord(raw.reportedOwner)?raw.reportedOwner:{},'email']] as const) {
+      if(record[key]!==undefined&&record[key]!=='') {const email=normalizeEmailAddress(record[key]);if(!email){const field=key==='tenantEmail'?'tenantEmail':'reportedOwner.email';const message=key==='tenantEmail'?'Enter a valid tenant email address':'Enter a valid owner email address';return jsonResponse({success:false,message,fieldErrors:{[field]:message}},400);}record[key]=email;}
+    }
     const canonical=(value:unknown):unknown=>Array.isArray(value)?value.map(canonical):isRecord(value)?Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])])):value;
     submissionFingerprint=createHash('sha256').update(JSON.stringify([user.uid,canonical(raw)])).digest('hex');
     if(raw.createdAs!==undefined&&!['owner','tenant'].includes(s(raw.createdAs)))throw new Error('Invalid property relationship');
@@ -178,7 +198,7 @@ export async function createProperty(request:Request) {
       if(Object.keys(details).some(key=>!keys.includes(key))||Object.values(details).some(value=>typeof value!=='string'||value.length>500))throw new Error('Invalid owner details');
       if(!s(details.personName).trim()&&!s(details.companyName).trim()||!s(details.phone).trim())throw new Error('Owner name and contact number are required');
       if(details.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s(details.email)))throw new Error('Invalid owner email');
-      req.createdAs='tenant';req.reportedOwner=details;
+      req.createdAs='tenant';req.reportedOwner={...details,phoneE164:validContact(details.phone)};
     }
   } catch(error) { return propertyError(`Invalid property data: ${error instanceof Error?error.message:'invalid request'}`,400); }
   const tenantCreated=req.createdAs==='tenant';
@@ -192,6 +212,7 @@ export async function createProperty(request:Request) {
     const dates=[s(req.agreementStartDate),s(req.agreementEndDate)];
     if(dates.some(value=>!/^\d{4}-\d{2}-\d{2}$/.test(value)||!Number.isFinite(Date.parse(value)))||dates[1]<dates[0])return propertyError('Valid agreement start and end dates are required',400);
   }
+  if(!tenantCreated&&req.rentalStatus==='rented')validContact(req.mobileNumber);
   if(Array.isArray(req.rentSchedule)&&req.rentSchedule.length){
     const rows=req.rentSchedule.filter(isRecord).map((row,index)=>({year:s(row.year),months:s(row.months)||additionalRentPeriod(s(req.agreementStartDate),s(req.agreementPeriod),index)?.months||'',amount:s(row.amount),fromDate:s(row.fromDate).slice(0,10),toDate:s(row.toDate).slice(0,10)}));
     if(rows.length!==req.rentSchedule.length)return propertyError('Invalid year-wise rent schedule',400);
@@ -233,7 +254,7 @@ export async function createProperty(request:Request) {
     if(!first&&!last&&req.tenantName) { const parts=s(req.tenantName).split(' '); first=parts[0];last=parts.slice(1).join(' '); }
     const tenant=model('TenantInfo',{firstName:first,lastName:last,email:req.tenantEmail,phone:req.mobileNumber,paymentDueDate:req.paymentDueDate,monthlyRent:req.monthlyRent,leaseStartDate:req.agreementStartDate,leaseEndDate:req.agreementEndDate,noticePeriod:req.noticePeriod,emergencyContact:req.tenantEmergencyContact,previousAddress:req.tenantPreviousAddress,employmentStatus:req.tenantEmploymentStatus,employer:req.tenantEmployer,monthlyIncome:req.tenantMonthlyIncome,isMarried:req.tenantIsMarried,spouse:req.tenantSpouse,rentSchedule:req.rentSchedule,isActive:true,createdAt:now.toISOString().slice(0,19)+'Z',updatedAt:now.toISOString().slice(0,19)+'Z'});
     if(tenantCreated){tenant.userUID=user.uid;tenant.email=user.token.email||'';}
-    else if(req.tenantEmail)tenant.userUID=await resolveTenantIdentity(s(req.tenantEmail));
+    else Object.assign(tenant,{userUID:'',phoneE164:validContact(req.mobileNumber),linkConfirmationRequired:true});
     property.tenants=[tenant];
   }
   if(req.isSold) property.buyers=[model('BuyerInfo',{id:`buyer_${BigInt(now.getTime())*1000000n}`,firstName:req.buyerFirstName,lastName:req.buyerLastName,phone:req.buyerPhone,isActive:true,createdAt:now,updatedAt:now})];
@@ -266,6 +287,7 @@ export async function updateProperty(request:Request,id:string) {
     const agentAllowed=new Set([...listingContentFields,'ownerUID','moderationAction','reason','expectedRevision']);
     if(Object.keys(req).some(key=>!agentAllowed.has(key)))return propertyError('Agents may edit listing content only',403);
   }
+  if('tenantEmail' in req&&req.tenantEmail!==existing.tenantEmail&&!(Array.isArray(existing.tenants)&&existing.tenants.length))return propertyError('Use the tenant invitation workflow to change tenancy contacts',400);
   if('moderationAction' in req)return moderateListing(req,id,user);
   if(Object.keys(req).some(key=>key.startsWith('moderation')))return propertyError('Moderation fields are server controlled',400);
   restoreFileReferences('properties',id,req,existing);
@@ -289,8 +311,19 @@ export async function updateProperty(request:Request,id:string) {
     if(['isActive','isRented','isSold'].includes(key)) { updates[key]=value;continue; }
     if(key==='tenants'&&Array.isArray(value)) {
       const valid=value.filter(t=>isRecord(t)&&['email','firstName','lastName','phone'].some(k=>s(t[k]).trim()));
-      for(const tenant of valid as RecordData[])if(tenant.email)tenant.userUID=await resolveTenantIdentity(s(tenant.email),s(tenant.userUID));
-      if((valid as RecordData[]).some(t=>t.userUID&&!t.email))return propertyError('Tenant Firebase email is required when linking a UID',400);
+      const established=Array.isArray(existing.tenants)?existing.tenants.filter(isRecord):[];
+      for(const tenant of valid as RecordData[]) {
+        const protectedNames=['ownerUID','propertyId','userUID','id','createdAt','linkConfirmationRequired','phoneE164','linkedAt','linkedByUID'];
+        if(Object.keys(tenant).some(key=>protectedNames.some(field=>field.toLowerCase()===key.toLowerCase()&&field!==key)))return propertyError('Relationship field aliases cannot be changed',403);
+        const previous=established.find(t=>t.id&&t.id===tenant.id);
+        if(previous?.userUID) {
+          if(tenant.userUID&&tenant.userUID!==previous.userUID)return propertyError('Established tenant identities cannot be reassigned',403);
+          tenant.userUID=previous.userUID;
+          if('linkConfirmationRequired' in previous)tenant.linkConfirmationRequired=previous.linkConfirmationRequired;
+        } else if(previous&&previous.linkConfirmationRequired!==true&&previous.email===tenant.email&&previous.phone===tenant.phone) {
+          tenant.userUID='';delete tenant.linkConfirmationRequired;delete tenant.phoneE164;
+        } else Object.assign(tenant,{userUID:'',phoneE164:validContact(tenant.phone),linkConfirmationRequired:true});
+      }
       updates[key]=valid;continue;
     }
     updates[key]=value;
@@ -314,12 +347,34 @@ export async function updateProperty(request:Request,id:string) {
 async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnType<typeof requireUser>>,create=false,submission?:{ref:FirebaseFirestore.DocumentReference;events:TransactionalEmailEvent[]}) {
   const db=getDatabase(),ref=properties().doc(id);
   if(Array.isArray(updates.tenants))for(const tenant of updates.tenants as RecordData[]) {tenant.id ||= randomUUID();tenant.createdAt ||= new Date();tenant.updatedAt=new Date();}
-  return db.runTransaction(async tx=>{
+  const candidates:RecordData[]=[];
+  if(create&&updates.createdAs==='tenant')candidates.push(await prepareLink('owner',id,s((updates.reportedOwner as RecordData).phone),user.uid,'','',(updates.reportedOwner as RecordData).email));
+  if(Array.isArray(updates.tenants))for(const tenant of updates.tenants as RecordData[])if(tenant.isActive===true&&tenant.linkConfirmationRequired===true&&!tenant.userUID) {
+    const ownerUID=s(updates.ownerUID)||(await ref.get()).data()?.ownerUID||'';
+    candidates.push(await prepareLink('tenant',id,s(tenant.phone),user.uid,ownerUID,s(tenant.id),tenant.email));
+  }
+  const intents=create?candidates.map(claim=>({claimId:s(claim.id),email:claim.relationship==='owner'?(updates.reportedOwner as RecordData)?.email:(updates.tenants as RecordData[]|undefined)?.find(t=>t.id===claim.tenantId)?.email})):[];
+  let invitationEvents:TransactionalEmailEvent[]=[];
+  const result=await db.runTransaction(async tx=>{
+    invitationEvents=[];
     if(submission&&(await tx.get(submission.ref)).exists)return false;
     const before=await tx.get(ref);
     if(create&&before.exists)throw new Error('Property ID conflict');
     if(!create) {if(!before.exists)throw new Error('Property not found');requirePropertyEditor(user,before.data()||{});}
-    if(!create)applyListingEdit(before.data()||{},updates,user.uid);
+    if(!create) {
+      applyListingEdit(before.data()||{},updates,user.uid);
+      if(Array.isArray(updates.tenants)) {
+        const current=Array.isArray(before.data()?.tenants)?before.data()!.tenants.filter(isRecord):[];
+        for(const tenant of updates.tenants as RecordData[]) {
+          const prior=current.find((row:RecordData)=>row.id===tenant.id);
+          if(prior?.userUID&&prior.userUID!==tenant.userUID)throw new ApiError(409,'Tenant identity changed; refresh before editing');
+          if(prior?.linkConfirmationRequired===true&&tenant.linkConfirmationRequired!==true)throw new ApiError(409,'Pending tenancy must be confirmed through its invitation');
+        }
+        const incoming=updates.tenants as RecordData[];
+        updates.tenants=[...incoming,...current.filter((row:RecordData)=>!incoming.some(t=>t.id===row.id)).map((row:RecordData)=>({...row,isActive:false,updatedAt:new Date()}))];
+        if((updates.tenants as RecordData[]).length>50)throw new ApiError(409,'Tenant relationship history limit reached');
+      }
+    }
     const records=Array.isArray(updates.tenants)?await tx.get(db.collection(COLLECTIONS.tenants).where('propertyId','==',id)):null;
     const bindMedia=await prepareMediaBindings(tx,user,'properties',id,id,{...(before.data()||{}),...updates},before.data()||{});
     if(!create&&['agreementStartDate','agreementEndDate','monthlyRent','tenants'].some(key=>key in updates)) {
@@ -327,6 +382,7 @@ async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnTyp
       if(history.length>=500)throw new Error('Agreement history limit reached');
       updates.agreementHistory=[...history,{action:'property_terms_updated',actorUID:user.uid,at:new Date(),previousTerms:Object.fromEntries(['monthlyRent','agreementStartDate','agreementEndDate','securityDeposit'].map(key=>[key,before.data()?.[key]??''])),previousTenants:before.data()?.tenants||[]}];
     }
+    const writeLinks=await stageLinks(tx,candidates,intents);invitationEvents=writeLinks.events;
     if(Array.isArray(updates.tenants)) {
       const tenantRefs=await Promise.all((updates.tenants as RecordData[]).map(t=>tx.get(db.collection(COLLECTIONS.tenants).doc(s(t.id)))));
       for(const tenantRef of tenantRefs)if(tenantRef.exists&&tenantRef.data()?.propertyId!==id)throw new AccessError(403,'Tenant belongs to another property');
@@ -334,11 +390,14 @@ async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnTyp
       for(const tenant of updates.tenants as RecordData[])tx.set(db.collection(COLLECTIONS.tenants).doc(s(tenant.id)),storeModel('Tenant',model('Tenant',{...tenant,propertyId:id,ownerUID:updates.ownerUID||before.data()?.ownerUID})),{merge:true});
       if(!create)updates.rentalStatus=(updates.tenants as RecordData[]).some(t=>t.isActive===true)?'rented':'available';
     }
+    writeLinks();
     bindMedia();
     if(create)tx.create(ref,updates);else tx.update(ref,updates);
     if(submission){tx.create(submission.ref,{propertyId:id,submitterUID:user.uid,createdAt:new Date()});writeEmailOutbox(tx,submission.events);}
     return true;
   });
+  if(result&&invitationEvents.length)dispatchEmailOutbox(invitationEvents);
+  return result;
 }
 
 const moderationFields=['moderationStatus','moderationRevision','moderationSubmittedAt','moderationReviewedAt','moderationReviewerUID','moderationReason','moderationHistory'];

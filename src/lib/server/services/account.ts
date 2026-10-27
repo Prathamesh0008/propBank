@@ -1,4 +1,6 @@
 import 'server-only';
+import {verifiedMobile,validContact,discoverFor} from './relationship-links';
+import {indianMobile} from '@/lib/indian-phone';
 import {AccessError,requireUser} from '../auth';
 import {COLLECTIONS,getDatabase} from '../firestore';
 import {getFirebaseAdminAuth} from '../firebase-admin';
@@ -32,7 +34,7 @@ async function activityFor(uid:string){
 }
 
 export async function readMyAccount(request:Request){
-  const {uid,ref,profile,account}=await self(request);let current={...profile};
+  const {uid,ref,profile,account,identity}=await self(request);let current={...profile};
   const firebaseEmail=(account.email||'').trim().toLowerCase(),storedEmail=s(profile.email).trim().toLowerCase();
   // Firebase is authoritative for a completed verified email change. Sync only
   // after Firebase marks the new address verified; a pending verification never
@@ -45,21 +47,22 @@ export async function readMyAccount(request:Request){
     current={...current,email:firebaseEmail,emailVerified:true,updatedAt:now};
   }
   const metadata=authMetadata(account),activity=await activityFor(uid);
-  return jsonResponse({success:true,account:wireValue({name:s(current.name),email:firebaseEmail||s(current.email),phoneNumber:s(current.phoneNumber),photoURL:s(current.photoURL),role:s(current.role),roleLabel:displayRole(s(current.role)),isActive:current.isActive!==false,agencyName:s(current.agencyName),agencyPhone:s(current.agencyPhone),agencyWebsite:s(current.agencyWebsite),bio:s(current.bio),notificationPreferences:isRecord(current.notificationPreferences)?current.notificationPreferences:{productUpdates:true,activitySummaries:true,security:true},...metadata,activity})});
+  return jsonResponse({success:true,account:wireValue({name:s(current.name),email:firebaseEmail||s(current.email),phoneNumber:s(current.phoneNumber),phoneVerified:!!await verifiedMobile(identity),photoURL:s(current.photoURL),role:s(current.role),roleLabel:displayRole(s(current.role)),isActive:current.isActive!==false,agencyName:s(current.agencyName),agencyPhone:s(current.agencyPhone),agencyWebsite:s(current.agencyWebsite),bio:s(current.bio),notificationPreferences:isRecord(current.notificationPreferences)?current.notificationPreferences:{productUpdates:true,activitySummaries:true,security:true},...metadata,activity})});
 }
 
 export async function updateMyAccount(request:Request){
-  const {uid,ref,profile,account}=await self(request);let body:RecordData;
+  const {uid,ref,profile,account,identity}=await self(request);let body:RecordData;
   try{const raw:unknown=await request.json();if(!isRecord(raw))throw new Error();body=raw;}catch{throw new ApiError(400,'Invalid account update');}
   const allowed=new Set(['name','phoneNumber','photoURL','bio','agencyName','agencyPhone','agencyWebsite','notificationPreferences']);
   if(Object.keys(body).some(key=>!allowed.has(key)))throw new ApiError(400,'Account role, status and email cannot be changed through profile settings');
   const name=clean(body.name,100);if(name.length<2)throw new ApiError(400,'Enter a valid full name');
   const phone=clean(body.phoneNumber,20).replace(/[^0-9+]/g,'');
-  const oldPhone=s(profile.phoneNumber),phoneChanged=phone!==oldPhone;
+  const oldPhone=s(profile.phoneNumber),phoneChanged=phone!==oldPhone&&(!indianMobile(phone)||indianMobile(phone)!==indianMobile(oldPhone));
   if(phoneChanged){
     const authenticatedAt=Number((await requireUser(request)).token.auth_time||0),verifiedPhone=clean((await requireUser(request)).token.phone_number,20).replace(/[^0-9+]/g,'');
     if(!authenticatedAt||Date.now()/1000-authenticatedAt>300)throw new AccessError(403,'Recent authentication is required to change the mobile number');
-    if(!verifiedPhone||verifiedPhone!==phone)throw new ApiError(503,'Phone verification is not configured or the new number has not been verified');
+    validContact(phone);
+    if(!verifiedPhone||indianMobile(verifiedPhone)!==indianMobile(phone)||await verifiedMobile(identity)!==indianMobile(phone))throw new ApiError(503,'Phone verification is not configured or the new number has not been verified');
     if(phone){const duplicate=await users().where('phoneNumber','==',phone).limit(1).get();if(duplicate.docs.some(doc=>doc.id!==uid))throw new ApiError(409,'This phone number is already registered with another account');}
   }
   const preferences=isRecord(body.notificationPreferences)?{productUpdates:body.notificationPreferences.productUpdates!==false,activitySummaries:body.notificationPreferences.activitySummaries!==false,security:true}:isRecord(profile.notificationPreferences)?profile.notificationPreferences:{productUpdates:true,activitySummaries:true,security:true};
@@ -74,6 +77,7 @@ export async function updateMyAccount(request:Request){
   if(phoneChanged)await notify({uid,eventType:'user.mobile_number_changed',eventId:`user:${uid}:phone:${phone}`,subject:'Your PropBank mobile number changed',title:'Mobile number changed',body:'The verified mobile number for your PropBank account was changed.'});
   if(changed.includes('name'))await notify({uid,eventType:'user.full_name_changed',eventId:`user:${uid}:name:${String(updates.updatedAt instanceof Date?updates.updatedAt.getTime():Date.now())}`,subject:'Your PropBank profile name changed',title:'Profile name changed',body:'The full name on your PropBank profile was changed.'});
   if(s(profile.role)==='agent'&&changed.some(key=>['agencyName','agencyPhone','agencyWebsite'].includes(key)))await notify({uid,eventType:'agent.profile_changed',eventId:`agent:${uid}:profile:${String(updates.updatedAt instanceof Date?updates.updatedAt.getTime():Date.now())}`,subject:'Your PropBank agency profile changed',title:'Agency profile changed',body:'Important agency details on your PropBank profile were updated.'});
+  await discoverFor(identity);
   return jsonResponse({success:true,message:'Account profile updated'});
 }
 

@@ -17,8 +17,8 @@ interface MobileNavProps {
   setIsOpen: (open: boolean) => void;
 }
 
-const publicLinks = [['/buy', 'Buy'], ['/rent', 'Rent'], ['/sell', 'Sell'], ['/contact', 'Contact Us']] as const;
-const workspaceLinks = [['/manage-property', 'Manage Property'], ['/visit-planner', 'Visit Planner'], ['/contact', 'Contact Us']] as const;
+const publicLinks = [['/manage-property', 'Property management'], ['/buy', 'Buy'], ['/rent', 'Rent'], ['/sell', 'Sell'], ['/contact', 'Contact']] as const;
+const workspaceLinks = [['/manage-property', 'My properties'], ['/visit-planner', 'Visit Planner'], ['/contact', 'Contact']] as const;
 
 export const MobileNav = ({ user, userName, userEmail, userPhone, userRole, handleLogout, isOpen, setIsOpen }: MobileNavProps) => (
   <div className={styles.root}>
@@ -50,7 +50,7 @@ export const MobileNav = ({ user, userName, userEmail, userPhone, userRole, hand
               <p className={styles.detail}>{user.email || userEmail}</p>
               {userPhone && <p className={styles.detail}>{userPhone}</p>}
               <button type="button" className={styles.action} onClick={handleLogout}><LogOut className={styles.icon} aria-hidden="true" />Log out</button>
-            </> : <Link to="/auth" className={styles.action} onClick={() => setIsOpen(false)}><LogIn className={styles.icon} aria-hidden="true" />Login</Link>}
+            </> : <Link to="/auth" className={styles.action} onClick={() => setIsOpen(false)}><LogIn className={styles.icon} aria-hidden="true" />Sign in</Link>}
           </div>
         </Dialog.Content>
       </Dialog.Portal>

@@ -1,7 +1,9 @@
 "use client";
+import {indianMobile} from '@/lib/indian-phone';
 import styles from "./TenantWorkspace.module.css";
 
 import { apiFetch } from '@/lib/api-client';
+import {useQueryClient} from '@tanstack/react-query';
 
 import { useParams, useNavigate, useLocation } from "@/lib/navigation";
 import { Trash2, Plus, UserPlus, MapPin, FileText, User,  Loader2, ArrowLeft, CheckCircle2, XCircle } from "lucide-react";
@@ -76,6 +78,7 @@ interface TenantData {
 }
 
 const AddTenant = () => {
+  const queryClient = useQueryClient();
   const { propertyId } = useParams<{ propertyId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
@@ -191,88 +194,12 @@ const AddTenant = () => {
     return()=>{active=false;};
   },[adminMode,selectedTenantUID,toast]);
 
+  // Contact validation never looks up another account or fills its private profile.
   const searchUserByPhone = async (tenantId: string, phoneNumber: string) => {
-    if (!phoneNumber || phoneNumber.trim().length < 10) {
-      setTenants(prev => prev.map(tenant =>
-        tenant.id === tenantId
-          ? { ...tenant, userInfo: null, userUID: undefined, searchError: undefined, searchingUser: false }
-          : tenant
-      ));
-      return;
-    }
-
-    setTenants(prev => prev.map(tenant =>
-      tenant.id === tenantId
-        ? { ...tenant, searchingUser: true, searchError: undefined }
-        : tenant
-    ));
-
-    try {
-      const response = await apiFetch(`${API_BASE_URL}/users/search?phone=${encodeURIComponent(phoneNumber)}`);
-      const data = await response.json();
-
-      if (data.success && data.user) {
-        const user = data.user;
-        const nameParts = user.name.split(' ');
-        const firstName = nameParts[0] || '';
-        const lastName = nameParts.slice(1).join(' ') || '';
-
-        setTenants(prev => prev.map(tenant =>
-          tenant.id === tenantId
-            ? {
-              ...tenant,
-              firstName: firstName,
-              lastName: lastName,
-              email: user.email || tenant.email,
-              phone: phoneNumber,
-              userUID: user.uid,
-              userInfo: {
-                uid: user.uid,
-                name: user.name,
-                email: user.email,
-                photoURL: user.photoURL || '',
-                phoneNumber: user.phoneNumber
-              },
-              searchingUser: false,
-              searchError: undefined
-            }
-            : tenant
-        ));
-
-        toast({
-          title: "User Found",
-          description: `Found user: ${user.name} `,
-        });
-      } else {
-        setTenants(prev => prev.map(tenant =>
-          tenant.id === tenantId
-            ? {
-              ...tenant,
-              userInfo: null,
-              userUID: undefined,
-              searchingUser: false,
-              searchError: data.message || "User is not found. Please ask to sign up with our platform to continue."
-            }
-            : tenant
-        ));
-
-        toast({
-          title: "User Not Found",
-          description: data.message || "User is not found. Please ask to sign up with our platform to continue.",
-          variant: "destructive"
-        });
-      }
-    } catch (error) {
-      setTenants(prev => prev.map(tenant =>
-        tenant.id === tenantId
-          ? {
-            ...tenant,
-            searchingUser: false,
-            searchError: "Failed to search user. Please try again."
-          }
-          : tenant
-      ));
-    }
+    setTenants(prev => prev.map(tenant => tenant.id === tenantId ? {
+      ...tenant, userInfo: null, userUID: undefined, searchingUser: false,
+      searchError: phoneNumber && !indianMobile(phoneNumber) ? 'Enter a valid Indian mobile number.' : undefined,
+    } : tenant));
   };
 
   const handleInputChange = (tenantId: string, field: keyof TenantData, value: string) => {
@@ -465,7 +392,7 @@ const AddTenant = () => {
   };
 
   const validateTenant = (tenant: TenantData) => {
-    return tenant.firstName && tenant.lastName && tenant.email && tenant.phone;
+    return tenant.firstName && tenant.lastName && tenant.email && !!indianMobile(tenant.phone);
   };
 
   const handleSubmit = async () => {
@@ -565,11 +492,12 @@ const AddTenant = () => {
       const data = await response.json();
 
       if (data.success) {
+        await Promise.all(['relationshipLinks','userProperties','productHub','property','allProperties'].map(key=>queryClient.invalidateQueries({queryKey:[key]})));
         setIsSubmitting(false);
         setIsSuccess(true);
         toast({
           title: "Success",
-          description: `${tenants.length} tenant(s) added successfully`
+          description: adminMode ? 'Tenancy saved. The property owner must authorize the invitation in Pending Connections.' : 'Tenancy saved. The tenant must accept the connection before the property appears in their account.'
         });
 
         setTimeout(() => {
@@ -663,7 +591,7 @@ const AddTenant = () => {
                       </CardTitle>
                       <div className="flex items-center gap-2">
                         <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded-full">
-                          Active Tenant
+                          {tenant.userUID ? 'Active Tenant - Account connected' : 'Active tenancy - Connection pending'}
                         </span>
                         {adminMode&&<Button type="button" variant="outline" size="sm" disabled={isSubmitting} onClick={()=>void removeExistingTenant(tenant.id)}>Remove tenant</Button>}
                       </div>
@@ -902,6 +830,7 @@ const AddTenant = () => {
                       </div>
                       <div>
                         <Label htmlFor={`phone - ${tenant.id} `}>Phone *</Label>
+                        <p className="text-xs text-muted-foreground">A pending invitation is created when saved. Mobile verification and tenant confirmation are required before account access.</p>
                         <div className="relative">
                           <Input
                             id={`phone - ${tenant.id} `}

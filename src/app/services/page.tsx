@@ -5,7 +5,7 @@ export default function Page() {
     <FooterInfoPage
       eyebrow="Services"
       title="Property Services"
-      description="Explore Propbank services for managing, renting, selling, and maintaining property records."
+      description="Support for every stage of ownership, from everyday management to your next sale or tenancy."
       sections={[
         {
           title: "Property Management",
@@ -21,7 +21,7 @@ export default function Page() {
         },
         {
           title: "Tenant Assistance",
-          body: "Submit tenant property details, request services, plan visits, and connect with the Propbank team.",
+          body: "Submit tenant property details, request services, plan visits, and connect with our team.",
         },
       ]}
     />

@@ -1,25 +1,24 @@
+import Image from "next/image";
 import Link from "next/link";
+import { ArrowUpRight, Building2, FolderOpen, KeyRound, MessagesSquare } from "lucide-react";
 import styles from "./About.module.css";
 
 const capabilities = [
-  { number: "01", title: "Discover property", body: "Explore sale and rental listings with property information, photography, and search filters to help narrow your options." },
-  { number: "02", title: "List with review", body: "Owners can submit property information, manage edits, and follow the listing approval process before a property becomes public." },
-  { number: "03", title: "Stay organized", body: "Connected property records bring together tenancy, visit planning, documents, service requests, and agreement workflows." },
-  { number: "04", title: "Follow up clearly", body: "Enquiries, broker assignment, offers, and owner decisions follow recorded workflows with clear next steps." },
+  { icon: Building2, title: "Manage your portfolio", body: "Keep property details, tenants, rent terms and maintenance requests connected as your portfolio grows." },
+  { icon: FolderOpen, title: "Keep a clear record", body: "Access agreements, notices, documents and visit records alongside the property they belong to." },
+  { icon: KeyRound, title: "Find your next space", body: "Explore sale and rental listings with photography, property information and focused search filters." },
+  { icon: MessagesSquare, title: "Move things forward", body: "Submit a listing for review, arrange a visit or follow up with the team on an enquiry." },
 ];
 
 export default function Page() {
-  return <main className={styles.page}>
-    <header className={styles.intro}>
-      <div className={styles.wrap}>
-        <p className={styles.label}>About PropBank</p>
-        <h1>Property decisions, <em>made clearer.</em></h1>
-        <p className={styles.lead}>PropBank brings property discovery and everyday property management into one place—so buyers, tenants, owners, and agents can take the next step with more clarity.</p>
-        <div className={styles.actions}><Link href="/properties" className={styles.primary}>Explore properties <span aria-hidden="true">↗</span></Link><Link href="/contact" className={styles.secondary}>Get in touch <span aria-hidden="true">↗</span></Link></div>
-      </div>
-    </header>
-    <section className={styles.statement} aria-labelledby="about-approach"><div className={styles.wrap}><p className={styles.label}>Our approach</p><h2 id="about-approach">More than a listing. <span>A clearer way to manage what happens next.</span></h2></div></section>
-    <section className={styles.capabilities} aria-label="What you can do with PropBank"><div className={styles.wrap}>{capabilities.map((item)=><article className={styles.item} key={item.number}><span>{item.number}</span><h3>{item.title}</h3><p>{item.body}</p></article>)}</div></section>
-    <section className={styles.closing}><div className={styles.wrap}><p className={styles.label}>Where to begin</p><h2>Find a property or manage yours.</h2><div className={styles.actions}><Link href="/search" className={styles.primary}>Search listings ↗</Link><Link href="/manage-property" className={styles.secondary}>Manage property ↗</Link></div></div></section>
-  </main>;
+  return <div className={styles.page}>
+    <header className={styles.intro}><div className={styles.wrap}>
+      <h1>Property deserves<br/><em>a considered approach.</em></h1>
+      <p className={styles.lead}>We bring the everyday details of ownership into focus, helping landlords and investors manage their properties and plan their next move.</p>
+      <div className={styles.actions}><Link href="/manage-property" className={styles.primary}>Manage my properties <ArrowUpRight size={17} aria-hidden="true"/></Link><Link href="/contact" className={styles.secondary}>Get in touch <ArrowUpRight size={17} aria-hidden="true"/></Link></div>
+    </div></header>
+    <section className={styles.statement} aria-labelledby="about-approach"><div className={`${styles.wrap} ${styles.statementLayout}`}><Image src="/images/portfolio/portfolio.jpg" alt="Contemporary interior with natural materials and open living spaces" width={1500} height={1000} sizes="(max-width: 720px) 100vw, 50vw"/><h2 id="about-approach">Built around ownership.<br/><em>Ready for what’s next.</em></h2></div></section>
+    <section className={styles.capabilities} aria-label="Our services"><div className={styles.wrap}>{capabilities.map(({ icon: Icon, title, body }) => <article className={styles.item} key={title}><Icon size={23} strokeWidth={1.4} aria-hidden="true"/><h3>{title}</h3><p>{body}</p></article>)}</div></section>
+    <section className={styles.closing}><div className={styles.wrap}><h2>Your portfolio.<br/>Your next possibility.</h2><div className={styles.actions}><Link href="/manage-property" className={styles.primary}>Manage properties <ArrowUpRight size={17} aria-hidden="true"/></Link><Link href="/search" className={styles.secondary}>Explore listings <ArrowUpRight size={17} aria-hidden="true"/></Link></div></div></section>
+  </div>;
 }

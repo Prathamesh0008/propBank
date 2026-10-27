@@ -97,7 +97,7 @@ export async function propertyMember(user:AuthenticatedUser,id:string) {
   // Reuse existing permissions, including Go's historical root tenant fields.
   const tenants=Array.isArray(property.tenants)?property.tenants:[];
   const legacy={email:stringValue(property.tenantEmail),isActive:property.rentalStatus==='rented'};
-  requirePropertyMember(user,{ownerUID:stringValue(property.ownerUID),tenants:(tenants.some(t=>isRecord(t)&&t.isActive===true)?tenants:[legacy]) as Parameters<typeof requirePropertyMember>[1]['tenants']});
+  requirePropertyMember(user,{ownerUID:stringValue(property.ownerUID),tenants:(tenants.length?tenants:[legacy]) as Parameters<typeof requirePropertyMember>[1]['tenants']});
   return property;
 }
 export const collections=COLLECTIONS;

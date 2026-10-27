@@ -36,7 +36,8 @@ export const useUserProperties = (currentUser: User | null) => {
       return { owned, tenant };
     },
     enabled: !!currentUser, // Only run the query if we have a user
-    staleTime: 5 * 60 * 1000, // 5 minutes cache
+    staleTime: 0,
+    refetchOnWindowFocus: 'always',
   });
 };
 

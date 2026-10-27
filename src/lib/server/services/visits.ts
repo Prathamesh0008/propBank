@@ -118,7 +118,6 @@ export async function updateVisit(request:Request,id:string) {
   validateVisit(req);
   if(req.visitDate&&parseRFC3339(req.visitDate)!.getTime()<=Date.now())throw new ApiError(400,'Visit date must be in the future');
   if('expectedVersion' in req&&(!Number.isInteger(req.expectedVersion)||Number(req.expectedVersion)<0))throw new ApiError(400,'Invalid visit version');
-  if('isCompleted' in req&&req.status&&req.isCompleted!==(req.status==='completed'))throw new ApiError(400,'Visit completion and status disagree');
   const db=getDatabase(),ref=collection().doc(id);
   await db.runTransaction(async tx=>{
     const doc=await tx.get(ref);if(!doc.exists)throw new ApiError(404,'Visit not found');const before=doc.data()!;
@@ -126,10 +125,11 @@ export async function updateVisit(request:Request,id:string) {
     if(!actor.exists||actor.data()?.isActive===false)throw new AccessError(403,'Active user required');
     if(actor.data()?.role!=='admin'&&user.uid!==before.userId)throw new AccessError(403,'Access denied');
     if(req.expectedVersion!==undefined&&req.expectedVersion!==Number(before.managementVersion||0))throw new ApiError(409,'Visit changed; refresh and retry');
-    const previousStatus=visitStatus(before),requestedStatus=req.status?visitStatus(req):req.isCompleted===true?'completed':'';
-    if((req.visitDate&&previousStatus!=='scheduled')||(requestedStatus&&requestedStatus!==previousStatus&&previousStatus!=='scheduled'))throw new ApiError(409,'This visit can no longer be rescheduled or changed');
+    const previousStatus=visitStatus(before);
+    // Check the transaction snapshot, including legacy completion flags, before any write.
+    if(previousStatus==='completed'||previousStatus==='cancelled')throw new ApiError(409,`This ${previousStatus} visit can no longer be modified`);
+    if('isCompleted' in req&&req.status&&req.isCompleted!==(req.status==='completed'))throw new ApiError(400,'Visit completion and status disagree');
     const updates=updateFields(req);
-    if(req.isCompleted===false&&!req.status&&before.status==='completed')updates.status='scheduled';
     updates.managementVersion=Number(before.managementVersion||0)+1;
     if(actor.data()?.role==='admin') {
       const history=Array.isArray(before.visitAdminHistory)?before.visitAdminHistory:[];

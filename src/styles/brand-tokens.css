@@ -1,5 +1,8 @@
-/* Batch 1 foundation: additive names only. Legacy hero tokens stay untouched. */
+/* Shared brand foundation. Component styles remain scoped. */
 :root {
+  --pb-forest: #183c32;
+  --pb-bronze: #876d4a;
+  --pb-content-width: 1240px;
   --pb-ink: #242b28;
   --pb-limestone: #e6e1d6;
   --pb-chalk: #f8f6f0;

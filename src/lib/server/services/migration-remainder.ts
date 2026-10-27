@@ -13,6 +13,7 @@ import { bestEffort, escapeHtml } from './property-effects';
 import { persistUserEvent } from './transactional-email';
 import {prepareFile,saveMediaRecord,prepareMediaBindings,restoreFileReferences} from './media';
 import {fileFields} from '../file-projection';
+import {discoverFor} from './relationship-links';
 import {syncAuthenticationProfile} from './auth-activity';
 
 const fail = (message:string,status:number) => jsonResponse({success:false,message},status);
@@ -30,6 +31,7 @@ export async function login(request:Request) {
   const profile=await getUser(s(req.uid));if(!profile)return fail('User not found',401);
   if(profile.isActive===false)throw new AccessError(403,'Active user profile required');
   await syncAuthenticationProfile(s(req.uid),tokenIdentity,'session_established');
+  await discoverFor({uid:tokenIdentity.uid,token:tokenIdentity,role:profile.role as 'admin'|'agent'|'individual',email:s(profile.email),phoneNumber:''});
   // Native APIs accept Firebase ID tokens, never legacy application JWTs.
   return jsonResponse({success:true,token:request.headers.get('authorization')!.replace(/^Bearer\s+/i,''),user:wireModel('User',profile),message:'Login successful'});
 }

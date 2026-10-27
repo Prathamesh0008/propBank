@@ -30,9 +30,10 @@ test('ledger dates clamp month end and statuses reflect records rather than rece
  const app=seed(),helpers=app.load(require('node:path').join(process.cwd(),'src/lib/property-product.ts'));assert.equal(helpers.dueDate('2026-02',31),'2026-02-28');assert.equal(helpers.ledgerStatus({dueDate:'2026-10-05',status:'due'},'2026-10-10'),'Overdue');assert.equal(helpers.ledgerStatus({dueDate:'2026-10-05',status:'paid'},'2026-10-10'),'Paid');assert.equal(helpers.tenantLifecycle({isActive:false},{agreementStatus:'notice_served'}),'Former Tenant');
 });
 
-test('private-property visits require membership and tenant intake without linked owner supports legitimate visits',async()=>{
+test('private and tenant-intake properties remain unavailable to public visit scheduling',async()=>{
  const app=seed(),api=route(app,'visits'),body={propertyId:'P',title:'Private visit',visitDate:'2030-01-01T10:00:00Z',reminderType:'none'};
- assert.equal((await api.POST(request('/visits','other','POST',body))).status,403);
+ assert.equal((await api.POST(request('/visits','other','POST',body))).status,404);
  app.state.properties.P.ownerUID='';app.state.properties.P.createdAs='tenant';
- assert.equal((await api.POST(request('/visits','tenant','POST',body))).status,201);
+ assert.equal((await api.POST(request('/visits','tenant','POST',body))).status,404);
+ assert.equal(Object.keys(app.state.visits||{}).length,0);
 });

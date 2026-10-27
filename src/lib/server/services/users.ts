@@ -2,10 +2,12 @@ import 'server-only';
 import { AccessError, requireUser, verifyFirebaseIdentity } from '../auth';
 import { COLLECTIONS, getDatabase } from '../firestore';
 import { getFirebaseAdminAuth } from '../firebase-admin';
-import { jsonResponse } from '../http';
+import { ApiError, jsonResponse } from '../http';
+import {indianMobile} from '@/lib/indian-phone';
 import { persistUserEvent } from './transactional-email';
 import { authMetadata, recordAuthActivity } from './auth-activity';
 import { model, storeModel, stringValue, wireModel, wireValue, type RecordData, isRecord } from './contracts';
+import { discoverFor, verifiedMobile, validContact, throttleRelationshipAction } from './relationship-links';
 
 export const normalizePhone = (phone: string) => phone.replace(/[^0-9+]/g,'');
 const duplicateMessage = 'This phone number is already registered with another account';
@@ -117,6 +119,8 @@ export async function readUser(request:Request,uid:string) {
 }
 export async function searchUser(request:Request) {
   const caller=await requireUser(request);
+  await throttleRelationshipAction(caller.uid,'lookup',30);
+  if(caller.role!=='admin')return jsonResponse({success:true,verificationRequired:true,message:'Add the contact to create a pending invitation. Account details are not disclosed by phone lookup.'});
   const phone = new URL(request.url).searchParams.get('phone') || '';
   if (!phone) return fail('Phone number is required',400);
   const user=await findUser('phoneNumber',normalizePhone(phone));
@@ -129,6 +133,11 @@ export async function searchUser(request:Request) {
   return user ? success('User found successfully',user) : fail('User is not found. Please ask to sign up with our platform to continue.',404);
 }
 
+/** Only the signed-in UID's onboarding state; accepts no lookup identifiers. */
+export async function registrationProfile(request:Request){
+  const {existing}=await userIdentity(request,undefined,true);
+  return jsonResponse({success:true,profileExists:!!existing});
+}
 export async function createUser(request:Request,authRegistration=false) {
   const identity=await userIdentity(request,undefined,authRegistration);
   const req=await parseUser(request);
@@ -139,12 +148,14 @@ export async function createUser(request:Request,authRegistration=false) {
   req.role ||= 'individual';
   if (!['admin','agent','individual'].includes(stringValue(req.role))) return fail("Invalid role. Must be 'admin', 'agent', or 'individual'",400);
   const existing=await getUser(uid);
+  if(!existing&&stringValue(req.name).trim().length<2)return fail('Enter your full name',400);
   if(authRegistration&&existing?.role)req.role=existing.role;
   checkRole(identity.admin,req.role,existing,authRegistration);
   if(identity.admin&&uid===identity.token.uid&&(req.role&&req.role!==existing?.role||'isActive' in req&&req.isActive!==existing?.isActive))throw new AccessError(403,'Use another administrator to change your own role or account status');
   if(uid===identity.token.uid && stringValue(req.email).toLowerCase()!==identity.token.email?.toLowerCase())return fail('Email must match Firebase identity',400);
-  const phone=normalizePhone(stringValue(req.phoneNumber));
-  if (phone && await checkPhone(uid,phone)) return fail(duplicateMessage,409);
+  const phone=existing?stringValue(existing.phoneNumber):indianMobile(req.phoneNumber);
+  if(!existing&&!phone&&(req.role!=='admin'||req.phoneNumber))return jsonResponse({success:false,message:'Enter a valid 10-digit Indian mobile number starting with 6, 7, 8 or 9',fieldErrors:{phoneNumber:'Mobile number is required and must contain 10 digits starting with 6, 7, 8 or 9'}},400);
+  if (!existing && phone && await checkPhone(uid,phone)) return fail(duplicateMessage,409);
   const now=new Date();
   let metadata:RecordData={};try{metadata=authMetadata(await getFirebaseAdminAuth().getUser(uid));}catch{/* Identity token validation remains authoritative. */}
   const user={...existing,...metadata,...model('User',{...req,phoneNumber:phone,isActive:existing?.isActive!==false,createdAt:existing?.createdAt||now,updatedAt:now})};
@@ -154,7 +165,12 @@ export async function createUser(request:Request,authRegistration=false) {
     if (existing.phoneNumber && existing.role) { user.phoneNumber=existing.phoneNumber; user.role=existing.role; }
     else if (existing.role && req.role==='individual') user.role=existing.role;
   }
-  await saveUser(user);
+  if(!existing)await getDatabase().runTransaction(async tx=>{
+    const ref=userCollection().doc(uid);
+    if((await tx.get(ref)).exists)throw new ApiError(409,'Account profile already exists. Please sign in again.');
+    tx.create(ref,{...user,...storeModel('User',user)});
+  });else await saveUser(user);
+  if(uid===identity.token.uid && identity.token.email_verified===true)await discoverFor({uid,token:identity.token,role:user.role as 'admin'|'agent'|'individual',email:stringValue(user.email),phoneNumber:''});
   if(authRegistration&&!existing)await recordAuthActivity({eventType:'registration',actorUID:uid,targetUID:uid,context:{providerIds:metadata.providerIds||[],emailVerified:metadata.emailVerified===true,source:'firebase'}}).catch(()=>null);
   if(authRegistration&&!existing)await persistUserEvent({eventType:'user.registration_welcome',eventId:`user:${uid}:registered`,recipients:[{uid,role:'user'}],recordId:uid,templateId:'registration-welcome',subject:'Welcome to PropBank',title:'Welcome to PropBank',bodyHtml:'<p>Your PropBank account is ready. You can now manage property and rental activity from your secure account.</p>',bodyText:'Your PropBank account is ready. You can now manage property and rental activity from your secure account.',action:{label:'Open your account',path:'/manage-property'}}).catch(()=>null);
   if(authRegistration&&!existing&&user.role==='agent')await persistUserEvent({eventType:'agent.registration',eventId:`agent:${uid}:registered`,recipients:[{uid,role:'agent'},{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:uid,templateId:'agent-registration',subject:'Real estate agent account registered',title:'Agent account registered',bodyHtml:'<p>A Real Estate Agent account was registered with PropBank. Email verification is required before protected access.</p>',bodyText:'A Real Estate Agent account was registered with PropBank. Email verification is required before protected access.',action:{label:'Open PropBank',path:'/manage-property'}}).catch(()=>null);
@@ -171,8 +187,10 @@ export async function updateUser(request:Request,uid:string) {
   if (!existing) {
     if (!req.name) return fail('Creating new user requires a name',400);
     if (!req.email) return fail('Creating new user requires an email',400);
+    const phone=indianMobile(req.phoneNumber);
+    if(!phone&&(req.role!=='admin'||req.phoneNumber))return fail('A valid 10-digit Indian mobile number is required for a new profile',400);
     const now=new Date();
-    const user=model('User',{...req,uid,role:req.role||'individual',phoneNumber:normalizePhone(stringValue(req.phoneNumber)),isActive:true,createdAt:now,updatedAt:now});
+    const user=model('User',{...req,uid,role:req.role||'individual',phoneNumber:phone,isActive:true,createdAt:now,updatedAt:now});
     await saveUser(user);
     return success('User created successfully',user,201);
   }
@@ -185,7 +203,8 @@ export async function updateUser(request:Request,uid:string) {
       if(uid!==identity.token.uid)return fail('Only the account owner can change the registered mobile number',403);
       const authenticatedAt=Number(identity.token.auth_time||0),verifiedPhone=normalizePhone(stringValue(identity.token.phone_number));
       if(!authenticatedAt||Date.now()/1000-authenticatedAt>300)return fail('Recent authentication is required to change the mobile number',403);
-      if(!verifiedPhone||verifiedPhone!==phone)return fail('Verified phone ownership is not configured or the new number has not been verified',503);
+      validContact(phone);
+      if(!verifiedPhone||verifiedPhone!==phone||await verifiedMobile({uid,token:identity.token,role:existing.role as 'admin'|'agent'|'individual',email:stringValue(existing.email),phoneNumber:''})!==phone)return fail('Verified phone ownership is not configured or the new number has not been verified',503);
       phoneChanged=true;
     }
     existing.phoneNumber=phone;
@@ -197,6 +216,7 @@ export async function updateUser(request:Request,uid:string) {
   if(previousRole!==existing.role)await recordAuthActivity({eventType:'role_changed',actorUID:identity.token.uid,targetUID:uid,context:{previousRole,role:existing.role,source:'admin'}}).catch(()=>null);
   if(previousStatus!==(existing.isActive!==false))await recordAuthActivity({eventType:'account_status_changed',actorUID:identity.token.uid,targetUID:uid,context:{previousStatus:previousStatus?'active':'inactive',status:existing.isActive===false?'inactive':'active',source:'admin'}}).catch(()=>null);
   if(['name','photoURL','email'].some(key=>req[key]))await recordAuthActivity({eventType:'profile_changed',actorUID:identity.token.uid,targetUID:uid,context:{source:identity.admin?'admin':'self'}}).catch(()=>null);
+  if(uid===identity.token.uid)await discoverFor({uid,token:identity.token,role:existing.role as 'admin'|'agent'|'individual',email:stringValue(existing.email),phoneNumber:''});
   if(phoneChanged){
     const phone=normalizePhone(stringValue(req.phoneNumber)),eventId=`user:${uid}:phone:${phone}`;
     const audit=getDatabase().collection(COLLECTIONS.adminNotifications).doc(eventId.replaceAll(':','-'));

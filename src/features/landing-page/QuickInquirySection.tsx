@@ -1,24 +1,20 @@
 "use client";
 
-import { ArrowUpRight } from "lucide-react";
+import Image from "next/image";
+import { CalendarDays, MessageSquare } from "lucide-react";
 import GeneralInquiryForm from "@/features/landing-page/GeneralInquiryForm";
 import styles from "./QuickInquirySection.module.css";
 
-export const QuickInquirySection: React.FC = () => (
+export const QuickInquirySection = () => (
   <section id="quick-inquiry" className={styles.section} aria-labelledby="quick-inquiry-title">
     <div className={styles.shell}>
       <div className={styles.story}>
-        <span className={styles.eyebrow}>A conversation starts here</span>
-        <h2 id="quick-inquiry-title">The right property begins with the <em>right questions.</em></h2>
-        <p>Looking to buy, rent or sell? Tell us what matters to you. Your enquiry reaches the PropBank team so the conversation can begin.</p>
-        <div className={styles.notes}>
-          <div><span>01</span><p>Tell us what you are looking for.</p></div>
-          <div><span>02</span><p>Share your preferred contact details.</p></div>
-          <div><span>03</span><p>Request a visit if you already have a date in mind.</p></div>
-        </div>
-        <span className={styles.arrow} aria-hidden="true"><ArrowUpRight size={30}/></span>
+        <MessageSquare size={24} strokeWidth={1.4} aria-hidden="true" className={styles.icon}/>
+        <h2 id="quick-inquiry-title">Let’s talk<br/><em>property.</em></h2>
+        <p>Share what you’re looking for or request a visit. Our team will review your enquiry.</p>
+        <figure className={styles.photo}><Image src="/images/portfolio/planning.jpg" alt="People reviewing plans and documents together at a table" width={1400} height={934} sizes="(max-width: 850px) 100vw, 40vw"/><figcaption><CalendarDays size={15} aria-hidden="true"/> A conversation is a good place to start.</figcaption></figure>
       </div>
-      <div className={styles.form}><GeneralInquiryForm hideHeader={true}/></div>
+      <div className={styles.form}><GeneralInquiryForm hideHeader/></div>
     </div>
   </section>
 );
