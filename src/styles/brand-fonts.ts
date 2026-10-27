@@ -1,4 +1,15 @@
-import {Manrope,Instrument_Serif} from 'next/font/google';
-// Variables do not apply a font to the body or to the locked legacy hero.
-export const brandUI=Manrope({subsets:['latin'],weight:['400','500','600'],display:'swap',variable:'--font-brand-ui'});
-export const brandEditorial=Instrument_Serif({subsets:['latin'],weight:'400',display:'swap',variable:'--font-brand-editorial'});
+import { Cormorant_Garamond, DM_Sans } from "next/font/google";
+
+export const brandUI = DM_Sans({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-brand-ui",
+});
+
+export const brandEditorial = Cormorant_Garamond({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  style: ["normal", "italic"],
+  display: "swap",
+  variable: "--font-brand-editorial",
+});

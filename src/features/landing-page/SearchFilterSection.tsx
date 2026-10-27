@@ -5,6 +5,7 @@ import { Search, Filter } from "lucide-react";
 import styles from "./SearchFilterSection.module.css";
 
 interface SearchFilterSectionProps {
+  hideIntro?: boolean;
   searchType: string;
   setSearchType: (val: string) => void;
   searchQuery: string;
@@ -21,6 +22,7 @@ interface SearchFilterSectionProps {
 }
 
 export const SearchFilterSection: React.FC<SearchFilterSectionProps> = ({
+  hideIntro = false,
   searchType, setSearchType, searchQuery, setSearchQuery, selectedCategories,
   handleCategoryToggle, setSelectedCategories, selectedProjectCondition,
   setSelectedProjectCondition, budgetRange, setBudgetRange, clearFilters, handleSearch,
@@ -38,10 +40,10 @@ export const SearchFilterSection: React.FC<SearchFilterSectionProps> = ({
   return (
     <section id="find-property" className={styles.section} aria-labelledby="property-search-heading">
       <div className={styles.shell}>
-        <div className={styles.intro}>
+        {hideIntro ? <h2 id="property-search-heading" className={styles.srOnly}>Search available properties</h2> : <div className={styles.intro}>
           <div><p className={styles.kicker}>Find your place</p><h2 id="property-search-heading">A home that <em>feels right.</em></h2></div>
           <p>Explore available spaces, compare what matters and enquire when you find a fit.</p>
-        </div>
+        </div>}
         <div className={styles.searchPanel}>
           <div className={styles.primarySearch}>
             <div className={styles.modeTabs} role="group" aria-label="Listing type">

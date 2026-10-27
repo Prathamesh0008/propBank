@@ -5,12 +5,12 @@ import { HeroSection } from "@/features/landing-page/HeroSection";
 import { QuickInquirySection } from "@/features/landing-page/QuickInquirySection";
 import { SearchFilterSection } from "@/features/landing-page/SearchFilterSection";
 import { PropertiesSection } from "@/features/landing-page/PropertiesSection";
+import { PropertyManagementSections, RealEstateIntroduction, PortfolioCallToAction } from "./PortfolioSections";
 
 import { useLandingProperties } from "@/features/landing-page/useLandingProperties";
 
 const LandingPage = () => {
   const {
-    navigate,
     properties,
     loading,
     loadingMore,
@@ -41,15 +41,6 @@ const LandingPage = () => {
 
   return (
     <>
-      <>
-        <title>Propbank — Buy, Sell & Rent Properties</title>
-        <meta
-          name="description"
-          content="Buy, sell, or rent properties with Propbank. Modern PWA for real estate with buyer/tenant and seller/landlord profiles."
-        />
-        <link rel="canonical" href="/" />
-      </>
-
       <AnnouncementBanner
         isAnnouncementActive={siteSettings.isAnnouncementActive}
         announcementText={siteSettings.announcementText}
@@ -62,12 +53,14 @@ const LandingPage = () => {
         bannerImages={siteSettings.bannerImages}
         currentBannerIndex={currentBannerIndex}
         setCurrentBannerIndex={setCurrentBannerIndex}
-        onNavigate={navigate}
       />
 
-      <QuickInquirySection />
+      <PropertyManagementSections />
+
+      <RealEstateIntroduction />
 
       <SearchFilterSection
+        hideIntro
         searchType={searchType}
         setSearchType={setSearchType}
         searchQuery={searchQuery}
@@ -100,6 +93,10 @@ const LandingPage = () => {
         handleEnquireProperty={handleEnquireProperty}
         observerTargetRef={observerTarget}
       />
+
+      <QuickInquirySection />
+
+      <PortfolioCallToAction />
     </>
   );
 };

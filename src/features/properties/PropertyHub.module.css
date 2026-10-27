@@ -1,5 +1,5 @@
 /* Property 360: quietly editorial, sectioned by rules rather than cards. */
-.hub, .dashboard { --hub-line: #d8d5cd; color: #242b28; font-family: var(--font-manrope), Manrope, sans-serif; }
+.hub, .dashboard { --hub-line: #d8d5cd; color: #242b28; font-family: var(--pb-ui); }
 .hub > header { padding: 18px 0 24px; border-bottom: 1px solid var(--hub-line); }
 .hub > header h1 { letter-spacing: -.055em; font-size: clamp(1.9rem,3vw,2.8rem); font-weight: 600; }
 .sectionNav { position: sticky; top: 80px; z-index: 5; display: flex; flex-wrap: wrap; gap: 6px 24px; padding: 14px 2px; border-bottom: 1px solid var(--hub-line); background: #f8f6f0; }
@@ -38,3 +38,46 @@
 .errorBar { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: #8b352d; }
 .overviewLine { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 8px; }
 @media(max-width:700px) { .sectionNav { position: static; gap: 2px 14px; } .hubSection { scroll-margin-top: 24px; } .metric { padding: 9px 7px; } .hubList li, .overviewLine { align-items: flex-start; flex-direction: column; gap: 4px; } .hubList li > span { text-align: left; } .compactDisclosure > summary, .statusBar { min-height: 44px; } }
+.connections { color: var(--pb-ink); font-family: var(--pb-ui); padding: 24px 0; margin-block: 20px; border-top: 2px solid var(--pb-forest); scroll-margin-top: 150px; }
+.connectionsHeading { display: flex; align-items: start; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
+.connectionsHeading h2 { display: flex; align-items: center; gap: 12px; font-size: clamp(20px, 2vw, 25px); font-weight: 500; line-height: 1.3; letter-spacing: -.025em; }
+.connectionsHeading h2 > span { display: inline-grid; place-items: center; min-width: 26px; height: 26px; padding-inline: 7px; color: var(--pb-forest); background: #e7ece2; font-size: 12px; letter-spacing: 0; }
+.connections p { font-size: 13px; line-height: 1.7; color: var(--pb-slate); overflow-wrap: anywhere; }
+.connectionsHeading p { margin-top: 7px; }
+.connections h3 { font-size: 15px; font-weight: 500; line-height: 1.5; }
+.connections button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 8px 12px; font-family: inherit; font-size: 12px; border: 1px solid var(--pb-line); transition: background .18s, color .18s; }
+.connections button:hover:enabled { background: #e8e9df; }
+.connections button:disabled { opacity: .55; cursor: not-allowed; }
+.connections button:focus-visible, .connections a:focus-visible, .connections summary:focus-visible { outline: 2px solid var(--pb-focus); outline-offset: 4px; }
+.connections a { text-decoration: underline; text-underline-offset: 3px; font-size: 12px; }
+.connections .connectionRefresh { border: 0; padding-inline: 0; white-space: nowrap; }
+.phoneRequired { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 14px; padding: 16px 18px; margin-block: 16px; background: #eeeee5; }
+.phoneRequired > svg { margin-top: 2px; color: var(--pb-bronze); }
+.phoneRequired button { margin-top: 12px; margin-right: 18px; }
+.phoneRequired p { max-width: 600px; margin-top: 4px; }
+.connectionList { display: grid; }
+.connectionRow { display: grid; grid-template-columns: 25px minmax(0, 1fr); gap: 17px; padding-block: 20px; border-top: 1px solid var(--pb-line); }
+.connectionIcon { color: var(--pb-bronze); margin-top: 3px; }
+.connectionBody { min-width: 0; }
+.connectionTitle { display: flex; align-items: start; justify-content: space-between; gap: 14px; }
+.connectionTitle h3 { overflow-wrap: anywhere; }
+.connectionStatus { flex-shrink: 0; padding: 4px 8px; background: #ecebe0; color: #685432; font-size: 10px; font-weight: 500; line-height: 1.6; }
+.connectionStatus[data-state='pending_admin_verification'] { background: #e6ebe2; color: var(--pb-forest); }
+.connections .connectionReference { font-size: 11px; margin-top: 5px; }
+.connectionActions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+.connections .connectionPrimary { background: var(--pb-forest); border-color: var(--pb-forest); color: var(--pb-chalk); }
+.connections .connectionPrimary:hover:enabled { background: #2d5245; }
+.connections .connectionReject { border-color: transparent; color: var(--pb-slate); }
+.connectionReview { margin-top: 17px; padding-left: 15px; border-left: 2px solid var(--pb-bronze); }
+.connectionReview p { max-width: 680px; margin-top: 7px; }
+.connectionHistory { border-top: 1px solid var(--pb-line); padding-block: 13px; font-size: 12px; }
+.connectionHistory summary { cursor: pointer; color: var(--pb-slate); min-height: 30px; }
+.connectionHistory summary > span { margin-left: 7px; }
+.connectionHistory > div { display: flex; gap: 15px; justify-content: space-between; padding-block: 10px; color: var(--pb-slate); }
+.connections .connectionEmpty, .connections .connectionFeedback { display: flex; align-items: center; gap: 10px; padding-block: 15px; }
+.connections .connectionEmpty > svg { color: var(--pb-forest); }
+.connections .connectionError { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--pb-danger); font-size: 13px; padding-block: 12px; }
+.connectionError p { color: inherit; }
+.connectionHint { margin-bottom: 12px; }
+@media(max-width: 650px) { .connectionsHeading { gap: 15px; } .connectionsHeading p { max-width: 260px; } .connectionTitle { flex-direction: column; gap: 7px; } .connectionStatus { flex-shrink: 1; } .connectionRow { gap: 11px; } .connections { scroll-margin-top: 90px; } .connections button { min-height: 42px; } .connectionHistory > div { flex-wrap: wrap; gap: 6px 15px; } }
+@media(prefers-reduced-motion: reduce) { .connections button { transition: none; } }

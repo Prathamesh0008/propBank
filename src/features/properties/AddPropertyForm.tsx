@@ -1,6 +1,7 @@
 "use client";
-import { readPropertyResponse } from "./property-response";
+import { readPropertyResponse, PropertySubmissionError } from "./property-response";
 
+import {indianMobile} from '@/lib/indian-phone';
 import styles from "./PropertyForm.module.css";
 
 import ClientPropertyFields, {clientPropertySchema} from './ClientPropertyFields';
@@ -184,59 +185,11 @@ const AddPropertyForm = () => {
   const [searchError, setSearchError] = useState<string | undefined>(undefined);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // A reported contact is not an account lookup or a tenancy authorization.
   const searchUserByPhone = async (phoneNumber: string) => {
-    if (!phoneNumber || phoneNumber.trim().length < 10) {
-      setUserInfo(null);
-      setSearchError(undefined);
-      setSearchingUser(false);
-      return;
-    }
-
-    setSearchingUser(true);
-    setSearchError(undefined);
-
-    try {
-      const response = await apiFetch(`${API_BASE_URL}/users/search?phone=${encodeURIComponent(phoneNumber)}`);
-      const data = await response.json();
-
-      if (data.success && data.user) {
-        const user = data.user;
-        setUserInfo({
-          uid: user.uid,
-          name: user.name,
-          email: user.email,
-          photoURL: user.photoURL || '',
-          phoneNumber: user.phoneNumber
-        });
-
-        // Auto-fill form
-        const nameParts = user.name.split(' ');
-        const firstName = nameParts[0] || '';
-        const lastName = nameParts.slice(1).join(' ') || '';
-
-        form.setValue('tenantFirstName', firstName);
-        form.setValue('tenantLastName', lastName);
-        if (user.email) form.setValue('tenantEmail', user.email);
-
-        toast({
-          title: "User Found",
-          description: `Found user: ${user.name}`,
-        });
-      } else {
-        setUserInfo(null);
-        setSearchError(data.message || "User is not found. Please ask to sign up with our platform to continue.");
-        toast({
-          title: "User Not Found",
-          description: data.message || "User is not found. Please ask to sign up with our platform to continue.",
-          variant: "destructive"
-        });
-      }
-    } catch (error) {
-      setUserInfo(null);
-      setSearchError("Failed to search user. Please try again.");
-    } finally {
-      setSearchingUser(false);
-    }
+    setUserInfo(null);
+    setSearchingUser(false);
+    setSearchError(phoneNumber && !indianMobile(phoneNumber) ? 'Enter a valid Indian mobile number.' : undefined);
   };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>, field: any) => {
@@ -702,6 +655,8 @@ const AddPropertyForm = () => {
         // Invalidate property queries so they refetch the newly added property
         queryClient.invalidateQueries({ queryKey: ['userProperties'] });
         queryClient.invalidateQueries({ queryKey: ['allProperties'] });
+        queryClient.invalidateQueries({ queryKey: ['productHub'] });
+        queryClient.invalidateQueries({ queryKey: ['relationshipLinks'] });
 
         toast({
           title: `${data.propertyTitle} added successfully!`,
@@ -716,6 +671,7 @@ const AddPropertyForm = () => {
         });
       }
     } catch (error) {
+      if(error instanceof PropertySubmissionError&&error.fieldErrors.tenantEmail)form.setError('tenantEmail',{type:'server',message:error.fieldErrors.tenantEmail});
       toast({
         title: "Error",
         description: error instanceof Error?error.message:"Failed to connect to server. Please try again.",
@@ -1957,9 +1913,9 @@ const AddPropertyForm = () => {
                   <Button
                     type="submit"
                     className="px-8 bg-primary hover:bg-primary/90"
-                    disabled={isUploading || isInternalUploading}
+                    disabled={form.formState.isSubmitting || isUploading || isInternalUploading}
                   >
-                    {isUploading || isInternalUploading ? 'UPLOADING...' : 'SUBMIT'}
+                    {form.formState.isSubmitting ? 'SAVING...' : isUploading || isInternalUploading ? 'UPLOADING...' : 'SUBMIT'}
                   </Button>
                 </div>
               </form>

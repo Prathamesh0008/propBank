@@ -16,7 +16,7 @@ export async function propertyHub(request:Request){
  const user=await requireUser(request),id=new URL(request.url).searchParams.get('propertyId');
  let properties:RecordData[]=[];
  if(id){const p=await propertyMember(user,id);if(!p)throw new ApiError(404,'Property not found');properties=[{...p,id}];}
- else {const all=await records(COLLECTIONS.properties);properties=all.filter(p=>user.role==='admin'||p.ownerUID===user.uid||isPropertyTenant(user,{ownerUID:p.ownerUID,tenants:(p.tenants||[]).some((t:RecordData)=>t.isActive===true)?p.tenants:[{email:p.tenantEmail,isActive:p.rentalStatus==='rented'}]}));}
+ else {const all=await records(COLLECTIONS.properties);properties=all.filter(p=>user.role==='admin'||p.ownerUID===user.uid||isPropertyTenant(user,{ownerUID:p.ownerUID,tenants:(p.tenants||[]).length?p.tenants:[{email:p.tenantEmail,isActive:p.rentalStatus==='rented'}]}));}
  const truncated=properties.length>250;properties=properties.slice(0,250);
  const hubs:RecordData[]=[],actions:RecordData[]=[];const today=todayIST();
  for(const p of properties){

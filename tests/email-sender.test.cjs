@@ -1,0 +1,24 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const {isolated,users,request,route}=require('./fixtures/native-server.cjs');
+const sender='PropBank <connect@propbank.care>';
+const mail={to:'recipient@example.invalid',subject:'Fixture notification',html:'<p>Notification</p>',text:'Notification'};
+const fresh=()=>{const app=isolated({users:structuredClone(users),properties:{},tenants:{}});delete app.env.FROM_EMAIL;return app;};
+test('both application adapters share the care fallback, display name and immutable idempotency key',async()=>{
+ const app=fresh();await app.load('@/lib/server/services/resend').sendEmail(mail,'central-key');await app.load('@/lib/server/services/property-effects').sendEmail(mail,'legacy-key');assert.deepEqual(app.emails.map(row=>row.from),[sender,sender]);assert.deepEqual(app.emailKeys,['central-key','legacy-key']);assert.equal(app.emails[0].text,'Notification');assert.equal(app.emails[1].text,'Notification');
+});
+test('configured sender is normalized consistently and the retired domain or header injection cannot reach transport',async()=>{
+ const app=fresh(),service=app.load('@/lib/server/services/resend');app.env.FROM_EMAIL=' Connect@PropBank.Care ';await service.sendEmail(mail);assert.equal(app.emails[0].from,sender);for(const value of ['connect@propbank.shop','CONNECT@PROPBANK.SHOP','invalid','connect@propbank.care\r\nBcc: other@example.invalid','connect@propbank.care\n']){app.env.FROM_EMAIL=value;await assert.rejects(()=>service.sendEmail(mail),error=>error instanceof service.EmailConfigurationError);await assert.rejects(()=>app.load('@/lib/server/services/property-effects').sendEmail(mail));}assert.equal(app.emails.length,1);
+});
+test('ordinary property, agreement, visit, account and administrator events use the same sender without changing recipients',async()=>{
+ const app=fresh(),service=app.load('@/lib/server/services/transactional-email');for(const eventType of ['property.submitted','agreement.renewal_approved','visit.scheduled','user.registration_welcome','owner_verification.approve'])await service.persistUserEvent({eventType,eventId:eventType,recipients:[{uid:'owner',role:'owner'},{role:'admin',email:app.env.ADMIN_EMAIL}],templateId:'fixture',subject:eventType,bodyHtml:'<p>Fixture</p>',bodyText:'Fixture'});await app.flush();assert.equal(app.emails.length,10);assert.ok(app.emails.every(row=>row.from===sender));assert.deepEqual(new Set(app.emails.map(row=>row.to[0])),new Set(['owner@test.invalid','admin@test.invalid']));
+});
+test('both invitation directions and property notifications send from care while preserving the configured website origin',async()=>{
+ const app=fresh();app.env.APP_URL='https://original-website.example';const base={propertyTitle:'Owner fixture',propertyType:'residential',location:'Fixture address',ownerUID:'owner',listingType:'rent',rentalStatus:'rented',monthlyRent:'25000',mobileNumber:'9123456789',tenantFirstName:'Tenant',tenantLastName:'Name',tenantEmail:'tenant@test.invalid',paymentDueDate:'5',agreementPeriod:'12',agreementStartDate:'2026-01-01',agreementEndDate:'2026-12-31'};assert.equal((await route(app,'properties').POST(request('/properties','owner','POST',base))).status,200);assert.equal((await route(app,'properties').POST(request('/properties','tenant','POST',{...base,propertyTitle:'Tenant fixture',createdAs:'tenant',reportedOwner:{personName:'Owner',phone:'9876543210',email:'owner@test.invalid'}}))).status,200);await app.flush();assert.ok(app.emails.every(row=>row.from===sender));const invitations=app.emails.filter(row=>row.subject.includes('Ownership Verification Request')||row.subject.includes('Invited to Confirm'));assert.equal(invitations.length,2);assert.ok(invitations.every(row=>row.html.includes('https://original-website.example/manage-property#pending-connections')));assert.ok(invitations.every(row=>!row.html.includes('connect@propbank.shop')));assert.equal(app.env.APP_URL,'https://original-website.example');
+});
+test('missing provider credentials fail on both adapters without sending mail',async()=>{
+ const app=fresh();delete app.env.RESEND_API_KEY;for(const name of ['resend','property-effects'])await assert.rejects(()=>app.load('@/lib/server/services/'+name).sendEmail(mail),/RESEND_API_KEY is not configured/);assert.equal(app.emails.length,0);
+});
+test('custom transport fixtures inspect the real shared sender implementation without contacting a provider',async()=>{
+ let count=0;const app=isolated({}, {fetch:async(url,init)=>{count++;assert.equal(url,'https://api.resend.com/emails');assert.equal(JSON.parse(init.body).from,sender);return new Response('{"id":"isolated"}',{status:200});}});app.env.FROM_EMAIL='connect@propbank.care';const result=await app.load('@/lib/server/services/resend').sendEmail(mail);assert.equal(result.id,'isolated');assert.equal(count,1);
+});

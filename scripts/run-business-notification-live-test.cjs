@@ -6,7 +6,7 @@ require('@next/env').loadEnvConfig(process.cwd(),true,{info:()=>{},error:()=>{}}
 const PREFIX='[PROPBANK TEST — NO ACTION REQUIRED]';
 const USER='rushikeshandhale1010@gmail.com';
 const ADMIN='upasanapatilofficial@gmail.com';
-const FROM='connect@propbank.shop';
+const FROM='connect@propbank.care';
 const JOURNAL=path.resolve('.notification-live-test-business-20261023.json');
 const PROPERTY_ID='PB-TEST-BUSINESS-20261023';
 const PROPERTY='Aster Court Test Residence';
@@ -21,9 +21,9 @@ async function verifySender(){
  if(!response.ok)fail(`Sender verification lookup failed with HTTP ${response.status}`);
  const data=await response.json();
  const domains=Array.isArray(data.data)?data.data:Array.isArray(data)?data:[];
- const domain=domains.find(value=>value?.name==='propbank.shop');
+ const domain=domains.find(value=>value?.name==='propbank.care');
  if(!domain||String(domain.status).toLowerCase()!=='verified')fail('Sender domain is not verified');
- return {domain:'propbank.shop',status:'verified'};
+ return {domain:'propbank.care',status:'verified'};
 }
 
 function buildPlan(){

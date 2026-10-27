@@ -116,7 +116,7 @@ async function member(user:AuthenticatedUser,id:string) {
   return p;
 }
 export function filePropertyRelationships(p:RecordData) {
-  return {ownerUID:p.ownerUID,tenants:(p.tenants||[]).some((t:RecordData)=>t.isActive===true)?p.tenants:[{email:p.tenantEmail,isActive:p.rentalStatus==='rented'}]};
+  return {ownerUID:p.ownerUID,tenants:(p.tenants||[]).length?p.tenants:[{email:p.tenantEmail,isActive:p.rentalStatus==='rented'}]};
 }
 async function canReadBinding(user:AuthenticatedUser,binding:Binding,data:RecordData) {
   if(binding.collection==='siteSettings'){requireAdmin(user);return;}

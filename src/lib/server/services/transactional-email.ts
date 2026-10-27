@@ -1,4 +1,5 @@
 import 'server-only';
+import { getFirebaseAdminAuth } from '../firebase-admin';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Transaction } from 'firebase-admin/firestore';
 import { after } from 'next/server';
@@ -6,15 +7,17 @@ import { AccessError } from '../auth';
 import { COLLECTIONS, getDatabase } from '../firestore';
 import { ApiError, jsonResponse, plainError } from '../http';
 import { identity, readObject } from './domain-contracts';
-import { sendEmail } from './resend';
+import { sendEmail, EmailConfigurationError, EmailProviderError } from './resend';
 import { isRecord, stringValue as s, wireValue, type RecordData } from './contracts';
 import {rentAmountForDate} from '@/lib/rent-schedule';
+import {normalizeEmailAddress} from '@/lib/email-address';
+import {currentConnectionState} from '@/lib/relationship-link-state';
 
 export type TransactionalEmailEvent={
   eventType:string;eventId:string;recipientUID?:string;recipientRole:string;recipientEmail?:string;
   propertyId?:string;recordId?:string;templateId:string;templateVersion:number;
   subject:string;html:string;text:string;idempotencyKey?:string;
-  tenancyId?:string;rentPeriod?:string;agreementVersion?:string;scheduledFor?:string;reminderOffset?:number;reminderDueDate?:string;reminderAmount?:string;
+  invitationClaimId?:string;tenancyId?:string;rentPeriod?:string;agreementVersion?:string;scheduledFor?:string;reminderOffset?:number;reminderDueDate?:string;reminderAmount?:string;
 };
 type UserEvent={eventType:string;eventId:string;recipients?:Array<{uid?:string;role:string;email?:string}>;recipientUIDs?:string[];propertyId?:string;recordId?:string;templateId:string;subject:string;title?:string;bodyHtml:string;bodyText:string;action?:{label:string;path:string}};
 
@@ -22,6 +25,7 @@ const deliveries=()=>getDatabase().collection(COLLECTIONS.emailDeliveries || 'em
 const safeError=()=> 'Email provider delivery failed';
 const keyFor=(event:TransactionalEmailEvent,email:string)=>event.idempotencyKey||`${event.eventType}:${event.eventId}:${event.recipientUID||email.toLowerCase()}`;
 const idFor=(key:string)=>createHash('sha256').update(key).digest('hex');
+export const emailDeliveryId=(event:TransactionalEmailEvent)=>idFor(keyFor(event,event.recipientEmail||''));
 const emailPattern=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const definedFields=(value:RecordData)=>Object.fromEntries(Object.entries(value).filter(([,entry])=>entry!==undefined));
 const diagnosticCode=(error:unknown)=>typeof error==='object'&&error!==null&&'code' in error?String(error.code):error instanceof Error?error.name:'UNKNOWN_ERROR';
@@ -36,7 +40,17 @@ export function brandedEmail(title:string,bodyHtml:string,bodyText:string,action
 async function resolveRecipient(event:TransactionalEmailEvent) {
   if(event.recipientUID) {
     const snapshot=await getDatabase().collection(COLLECTIONS.users).doc(event.recipientUID).get(),profile=snapshot.data();
-    if(!snapshot.exists||profile?.isActive===false||!emailPattern.test(s(profile?.email)))return '';
+    if(!snapshot.exists||profile?.isActive===false)return '';
+    if(/^(relationship\.|owner_verification\.|tenancy\.)/.test(event.eventType)) {
+      try {
+        const account=await getFirebaseAdminAuth().getUser(event.recipientUID);
+        return !account.disabled&&account.emailVerified&&emailPattern.test(account.email||'')?(account.email||'').toLowerCase():'';
+      } catch(error) {
+        if((error as {code?:string}).code==='auth/user-not-found')return '';
+        throw error;
+      }
+    }
+    if(!emailPattern.test(s(profile?.email)))return '';
     return s(profile?.email).toLowerCase();
   }
   // Previous-address security notices are constructed exclusively by trusted
@@ -53,13 +67,14 @@ async function deliver(id:string) {
   await getDatabase().runTransaction(async tx=>{value=null;const snapshot=await tx.get(ref);if(!snapshot.exists)return;const current=snapshot.data()!,status=s(current.status);if(!(['pending','failed'].includes(status)||status==='sending'&&Number(current.deliveryLeaseUntil?.toMillis?.()||new Date(current.deliveryLeaseUntil||0).getTime())<=now.getTime())||Number(current.retryCount||0)>=5||status==='failed'&&Number(current.nextRetryAt?.toMillis?.()||new Date(current.nextRetryAt||0).getTime())>now.getTime())return;value=current;tx.update(ref,{status:'sending',deliveryLease:lease,deliveryLeaseUntil:new Date(now.getTime()+120000),lastAttemptAt:now,updatedAt:now});});
   if(!value)return 'skipped';
   try{
+    if(!await invitationIsCurrent(value)){await ref.update({status:'cancelled',errorSummary:'Invitation is no longer eligible',updatedAt:now,deliveryLease:'',deliveryLeaseUntil:now});return 'skipped';}
     if(value.firstAttemptAt&&now.getTime()-new Date(wireValue(value.firstAttemptAt) as string).getTime()>=23*60*60*1000)throw new Error('Delivery reconciliation required');
     if(!value.firstAttemptAt)await ref.update({firstAttemptAt:now});
     const provider=await sendEmail({to:s(value.recipientEmail)||(value.recipientRole==='admin'?process.env.ADMIN_EMAIL||'':''),subject:s(value.subject),html:s(value.html),text:s(value.text)},s(value.idempotencyKey));
-    await ref.update({status:'sent',sentAt:now,lastAttemptAt:now,updatedAt:now,retryCount:Number(value.retryCount||0)+1,errorSummary:'',providerMessageId:provider.id||'',deliveryLease:'',deliveryLeaseUntil:now});return 'sent';
+    await ref.update({status:'sent',sentAt:now,lastAttemptAt:now,updatedAt:now,retryCount:Number(value.retryCount||0)+1,errorSummary:'',failureCategory:'',providerMessageId:provider.id||'',deliveryLease:'',deliveryLeaseUntil:now});return 'sent';
   }catch(error){
-    console.error('Transactional email delivery failed',{deliveryId:id,eventType:value.eventType});
-    await ref.update({status:'failed',lastAttemptAt:now,updatedAt:now,retryCount:Number(value.retryCount||0)+1,errorSummary:error instanceof Error&&error.message==='Delivery reconciliation required'?'Delivery reconciliation required before retry':safeError(),nextRetryAt:new Date(now.getTime()+5*60*1000),deliveryLease:'',deliveryLeaseUntil:now});return 'failed';
+    console.error(`Transactional email delivery failed ${JSON.stringify({deliveryId:id,eventType:value.eventType,...(error instanceof EmailProviderError?{providerStatus:error.status,providerErrorCode:error.providerCode}:{}),configurationFailure:error instanceof EmailConfigurationError})}`);
+    await ref.update({status:'failed',lastAttemptAt:now,updatedAt:now,retryCount:Number(value.retryCount||0)+1,errorSummary:error instanceof EmailConfigurationError?error.message:error instanceof EmailProviderError&&error.providerCode==='sender_domain_not_verified'?'Sender domain is not verified in Resend; correct its DNS records':error instanceof Error&&error.message==='Delivery reconciliation required'?'Delivery reconciliation required before retry':safeError(),failureCategory:error instanceof EmailConfigurationError?'configuration':'provider_or_transport',...(error instanceof EmailProviderError?{providerStatus:error.status,providerErrorCode:error.providerCode}:{}),nextRetryAt:new Date(now.getTime()+5*60*1000),deliveryLease:'',deliveryLeaseUntil:now});return 'failed';
   }
 }
 
@@ -72,7 +87,10 @@ export function writeEmailOutbox(tx:Transaction,events:TransactionalEmailEvent[]
   }
 }
 export function dispatchEmailOutbox(events:TransactionalEmailEvent[]) {
-  after(async()=>{for(const event of events)try{await deliver(idFor(keyFor(event,event.recipientEmail||'')));}catch{console.error('Property email outbox dispatch failed',{eventType:event.eventType,eventId:event.eventId});}});
+  // The business transaction has committed. Registration failure must leave a
+  // recoverable pending delivery, never turn a saved property into an HTTP 500.
+  try{after(async()=>{for(const event of events)try{await deliver(idFor(keyFor(event,event.recipientEmail||'')));}catch{console.error('Property email outbox dispatch failed',{eventType:event.eventType});}});}
+  catch{console.error('Email post-response dispatch unavailable; persisted outbox requires authorized retry');}
 }
 
 export async function enqueueTransactionalEmail(event:TransactionalEmailEvent) {
@@ -127,6 +145,21 @@ export async function listEmailDeliveries(request:Request) {
 }
 
 function reminderDate(value:unknown){const match=/^(\d{4})-(\d{2})-(\d{2})/.exec(s(value));return match?`${match[1]}-${match[2]}-${match[3]}`:'';}
+async function invitationIsCurrent(value:RecordData){
+  if(!['relationship.owner_invitation','relationship.tenant_invitation'].includes(s(value.eventType)))return true;
+  if(!value.invitationClaimId||!value.propertyId)return false;
+  const claim=(await getDatabase().collection('relationship_links').doc(s(value.invitationClaimId)).get()).data();
+  if(!claim||claim.propertyId!==value.propertyId||['linked','rejected','expired'].includes(currentConnectionState(claim)))return false;
+  const sender=(await getDatabase().collection(COLLECTIONS.users).doc(s(claim.invitationAuthorizedByUID||claim.createdByUID)).get()).data();
+  if(!sender||sender.isActive===false)return false;
+  const property=(await getDatabase().collection(COLLECTIONS.properties).doc(s(value.propertyId)).get()).data();
+  if(!property||property.isActive===false)return false;
+  const email=normalizeEmailAddress(value.recipientEmail);
+  if(value.eventType==='relationship.owner_invitation')return claim.relationship==='owner'&&property.createdAs==='tenant'&&!property.ownerUID&&email!==null&&email===normalizeEmailAddress(property.reportedOwner?.email);
+  if(claim.relationship!=='tenant'||!claim.ownerUID||claim.ownerUID!==property.ownerUID||claim.authorizedByUID!==claim.ownerUID||(claim.invitationAuthorizedByUID||claim.createdByUID)!==claim.ownerUID)return false;
+  const tenant=(await getDatabase().collection(COLLECTIONS.tenants).doc(s(claim.tenantId)).get()).data();
+  return !!tenant&&tenant.propertyId===value.propertyId&&tenant.ownerUID===property.ownerUID&&tenant.isActive===true&&!tenant.userUID&&tenant.linkConfirmationRequired===true&&email!==null&&email===normalizeEmailAddress(tenant.email);
+}
 async function reminderIsCurrent(value:RecordData){
   if(!['rent.reminder','agreement.expiry_reminder'].includes(s(value.eventType)))return true;
   const snapshot=await getDatabase().collection(COLLECTIONS.properties).doc(s(value.propertyId)).get();if(!snapshot.exists)return false;
@@ -146,7 +179,7 @@ export async function retryEmailDelivery(request:Request,id:string) {
   let req:RecordData;try{req=await readObject(request);}catch{return plainError('Invalid JSON',400);}
   if(Object.keys(req).length)throw new ApiError(400,'Retry does not accept message or recipient changes');
   const ref=deliveries().doc(id);
-  const snapshot=await ref.get();if(!snapshot.exists)throw new ApiError(404,'Delivery not found');if(!await reminderIsCurrent(snapshot.data()!))throw new ApiError(409,'Reminder is obsolete and cannot be retried');
+  const snapshot=await ref.get();if(!snapshot.exists)throw new ApiError(404,'Delivery not found');if(!await reminderIsCurrent(snapshot.data()!))throw new ApiError(409,'Reminder is obsolete and cannot be retried');if(!await invitationIsCurrent(snapshot.data()!))throw new ApiError(409,'Invitation is obsolete and cannot be retried');
   await getDatabase().runTransaction(async tx=>{const doc=await tx.get(ref);if(!doc.exists)throw new ApiError(404,'Delivery not found');const value=doc.data()!;if(!(['failed','pending'].includes(s(value.status))||value.status==='sending'&&Number(value.deliveryLeaseUntil?.toMillis?.()||new Date(value.deliveryLeaseUntil||0).getTime())<=Date.now())||Number(value.retryCount||0)>=5)throw new ApiError(409,'Delivery is not eligible for retry');tx.update(ref,{status:'pending',updatedAt:new Date(),errorSummary:'',nextRetryAt:null});});
   after(()=>deliver(id));return jsonResponse({success:true,message:'Delivery queued for retry'});
 }

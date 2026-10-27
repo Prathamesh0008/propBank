@@ -4,7 +4,7 @@ import { AccessError, type AuthenticatedUser } from './auth';
 
 export interface PropertyRelationships {
   ownerUID?: string;
-  tenants?: Array<{ userUID?: string; email?: string; phone?: string; isActive?: boolean }>;
+  tenants?: Array<{ userUID?: string; email?: string; phone?: string; isActive?: boolean; linkConfirmationRequired?: boolean }>;
 }
 
 export function requireAdmin(user: AuthenticatedUser) {
@@ -24,7 +24,7 @@ export function requireOwnerOrAdmin(user: AuthenticatedUser, property: PropertyR
 export function isPropertyTenant(user: AuthenticatedUser, property: PropertyRelationships) {
   return (property.tenants || []).some(tenant => tenant.isActive === true && (
     tenant.userUID ? tenant.userUID === user.uid
-      : user.token?.email_verified === true && !!user.token.email && tenant.email?.toLowerCase() === user.token.email.toLowerCase()
+      : tenant.linkConfirmationRequired !== true && user.token?.email_verified === true && !!user.token.email && tenant.email?.toLowerCase() === user.token.email.toLowerCase()
   ));
 }
 

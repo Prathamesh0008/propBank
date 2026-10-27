@@ -5,6 +5,7 @@ import { COLLECTIONS, getDatabase } from '../firestore';
 import { model, storeModel, wireModel, wireValue, parsePrice, isRecord, stringValue as s, type RecordData } from './contracts';
 import { getUser, saveUser } from './users';
 import { brandedEmail, persistUserEvent, type TransactionalEmailEvent } from './transactional-email';
+import {sendEmail as sendTransactionalEmail} from './resend';
 
 export interface Email { to:string; subject:string; html:string }
 export function escapeHtml(value:string):string {
@@ -18,10 +19,7 @@ export function formatTemplate(template:string,values:Array<string|TrustedTempla
   return template.replace(/%%|%s|%d/g,token=>{if(token==='%%')return '%';const value=values[index++]??'';return typeof value==='string'?escapeHtml(value):value.__trustedTemplateHtml;});
 }
 export async function sendEmail(mail:Email,idempotencyKey?:string) {
-  if (!mail.to || !process.env.RESEND_API_KEY) return;
-  const from=process.env.FROM_EMAIL || 'connect@propbank.shop';
-  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json',...(idempotencyKey!==undefined?{'Idempotency-Key':idempotencyKey}:{})},body:JSON.stringify({from:`Propbank <${from}>`,to:[mail.to],subject:mail.subject,html:mail.html.replaceAll('connectpropbank@gmail.com',from)}),signal:AbortSignal.timeout(30000)});
-  if (!response.ok) throw new Error('Property email delivery failed');
+  return sendTransactionalEmail(mail,idempotencyKey);
 }
 export async function bestEffort<T>(action:()=>Promise<T>):Promise<T|null> {
   try { return await action(); } catch { return null; }

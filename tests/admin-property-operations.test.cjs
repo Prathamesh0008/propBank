@@ -5,7 +5,7 @@ const {isolated,users,defaults,request,route,context}=require('./fixtures/native
 const available={...defaults,id:'A',title:'Available Home',address:'Address',location:'Address',ownerUID:'owner',ownerName:'Owner',ownerEmail:'owner@test.invalid',listingType:'rent',rentalStatus:'available',status:'active',tenants:[]};
 const setup=()=>{const app=isolated({users,properties:{A:available},tenants:{}});app.env.ADMIN_EMAIL='admin@test.invalid';return app;};
 const tenancy=(app,uid,body)=>route(app,'admin/properties/[id]/tenancy').POST(request('/admin/properties/A/tenancy',uid,'POST',body),context('A'));
-const tenant=(uid,email,overrides={})=>({userUID:uid,firstName:uid==='tenant'?'Tenant':'Other',lastName:'User',email,phone:uid==='tenant'?'456':'789',monthlyRent:'25000',securityDeposit:'50000',paymentDueDate:'5',leaseStartDate:'2026-01-01',leaseEndDate:'2026-12-31',...overrides});
+const tenant=(uid,email,overrides={})=>({userUID:uid,firstName:uid==='tenant'?'Tenant':'Other',lastName:'User',email,phone:uid==='tenant'?'9123456789':'9234567890',monthlyRent:'25000',securityDeposit:'50000',paymentDueDate:'5',leaseStartDate:'2026-01-01',leaseEndDate:'2026-12-31',...overrides});
 
 test('persisted admins can search registered users by name, email, or phone while others are denied',async()=>{
  const app=setup(),api=route(app,'admin/users/search');
@@ -35,10 +35,27 @@ test('non-admin cannot create a property for another account and inactive owners
  assert.equal((await api.POST(request('/properties','admin','POST',body))).status,400);
 });
 
-test('admin assignment persists one relationship and appears in owner and tenant accounts',async()=>{
- const app=setup();const response=await tenancy(app,'admin',{action:'assign',expectedRevision:0,tenant:tenant('tenant','tenant@test.invalid')});
- assert.equal(response.status,200,await response.clone().text());assert.equal(app.state.properties.A.tenancyRevision,1);assert.equal(app.state.properties.A.tenants.filter(value=>value.isActive).length,1);assert.equal(app.state.properties.A.relationshipHistory.at(-1).actorUID,'admin');
- const deliveries=Object.values(app.state.email_deliveries);assert.equal(deliveries.length,2);assert.deepEqual(new Set(deliveries.map(row=>row.recipientUID)),new Set(['owner','tenant']));assert.ok(deliveries.every(row=>row.eventType==='tenancy.tenant_assign'&&row.html.includes('Available Home')));
+const prove=(app,uid,phone)=>{app.claims[uid]={phoneNumber:phone,phone_number:phone,emailVerified:true,auth_time:Math.floor(Date.now()/1000)};};
+async function confirm(app,uid){
+ prove(app,uid,uid==='tenant'?'+919123456789':'+919234567890');
+ prove(app,'owner','+919876543210');
+ const claim=Object.values(app.state.relationship_links).find(row=>row.candidateUID===uid&&row.status!=='linked');
+ const api=route(app,'relationship-links');
+ assert.equal((await api.POST(request('/relationship-links',uid,'POST',{action:'confirm_tenancy',claimId:claim.id}))).status,200);
+ assert.equal((await api.POST(request('/relationship-links','owner','POST',{action:'approve_tenancy',claimId:claim.id}))).status,200);
+}
+
+test('admin assignment creates a pending invitation and requires tenant confirmation plus owner approval',async()=>{
+ const app=setup();prove(app,'tenant','+919123456789');
+ const response=await tenancy(app,'admin',{action:'assign',expectedRevision:0,tenant:tenant('tenant','tenant@test.invalid')});
+ assert.equal(response.status,200,await response.clone().text());assert.equal(app.state.properties.A.tenancyRevision,1);
+ assert.equal(app.state.properties.A.tenants.filter(value=>value.isActive).length,1);
+ assert.equal(app.state.properties.A.relationshipHistory.at(-1).actorUID,'admin');
+ assert.ok(!app.state.properties.A.tenants[0].userUID);
+ const before=await(await route(app,'properties/tenant').GET(request('/properties/tenant?tenantUID=tenant','tenant'))).json();assert.equal(before.count,0);
+ const deliveries=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='tenancy.tenant_assign');
+ assert.equal(deliveries.length,1);assert.equal(deliveries[0].recipientUID,'owner');
+ await confirm(app,'tenant');
  const ownerView=await(await route(app,'properties').GET(request('/properties?ownerUID=owner','owner'))).json();assert.equal(ownerView.properties.find(value=>value.id==='A').tenants[0].userUID,'tenant');
  const tenantView=await(await route(app,'properties/tenant').GET(request('/properties/tenant?tenantUID=tenant','tenant'))).json();assert.equal(tenantView.properties[0].id,'A');
 });
@@ -52,15 +69,16 @@ test('assignment rejects duplicates, unauthorized callers, and stale revisions',
  assert.equal(app.state.properties.A.tenants.filter(value=>value.isActive).length,1);
 });
 
-test('admin replacement and removal preserve history and tenant isolation',async()=>{
- const app=setup();await tenancy(app,'admin',{action:'assign',expectedRevision:0,tenant:tenant('tenant','tenant@test.invalid')});
- const replacement=await tenancy(app,'admin',{action:'replace',expectedRevision:1,tenant:tenant('other','other@test.invalid')});assert.equal(replacement.status,200,await replacement.clone().text());
- const active=app.state.properties.A.tenants.filter(value=>value.isActive);assert.equal(active.length,1);assert.equal(active[0].userUID,'other');assert.equal(app.state.properties.A.relationshipHistory.length,2);
- let rows=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='tenancy.tenant_replace');assert.equal(rows.length,3);assert.deepEqual(new Set(rows.map(row=>row.recipientUID)),new Set(['owner','tenant','other']));
- assert.equal(app.state.users.tenant.rentedPropertyId,'');assert.equal(app.state.users.other.rentedPropertyId,'A');
+test('admin replacement and removal preserve historical records and never expose the new tenancy before confirmation',async()=>{
+ const app=setup();prove(app,'tenant','+919123456789');
+ await tenancy(app,'admin',{action:'assign',expectedRevision:0,tenant:tenant('tenant','tenant@test.invalid')});await confirm(app,'tenant');
+ const oldTenantID=app.state.properties.A.tenants[0].id;prove(app,'other','+919234567890');
+ const replacement=await tenancy(app,'admin',{action:'replace',expectedRevision:2,tenant:tenant('other','other@test.invalid')});assert.equal(replacement.status,200,await replacement.clone().text());
+ const active=app.state.properties.A.tenants.filter(value=>value.isActive);assert.equal(active.length,1);assert.ok(!active[0].userUID);assert.equal(app.state.tenants[oldTenantID].isActive,false);
+ assert.equal(app.state.properties.A.relationshipHistory.length,2);
  const oldView=await(await route(app,'properties/tenant').GET(request('/properties/tenant?tenantUID=tenant','tenant'))).json();assert.equal(oldView.count,0);
- const currentView=await(await route(app,'properties/tenant').GET(request('/properties/tenant?tenantUID=other','other'))).json();assert.equal(currentView.properties[0].id,'A');
- const removal=await tenancy(app,'admin',{action:'remove',expectedRevision:2,tenantId:active[0].id});assert.equal(removal.status,200);assert.equal(app.state.properties.A.rentalStatus,'available');assert.equal(app.state.properties.A.tenants.some(value=>value.isActive),false);assert.equal(app.state.properties.A.relationshipHistory.at(-1).action,'tenant_remove');
- rows=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='tenancy.tenant_remove');assert.equal(rows.length,2);assert.deepEqual(new Set(rows.map(row=>row.recipientUID)),new Set(['owner','other']));
- assert.equal(app.state.users.other.rentedPropertyId,'');
+ let currentView=await(await route(app,'properties/tenant').GET(request('/properties/tenant?tenantUID=other','other'))).json();assert.equal(currentView.count,0);
+ await confirm(app,'other');currentView=await(await route(app,'properties/tenant').GET(request('/properties/tenant?tenantUID=other','other'))).json();assert.equal(currentView.properties[0].id,'A');
+ const removal=await tenancy(app,'admin',{action:'remove',expectedRevision:4,tenantId:active[0].id});assert.equal(removal.status,200);assert.equal(app.state.properties.A.rentalStatus,'available');assert.equal(app.state.properties.A.tenants.some(value=>value.isActive),false);assert.equal(app.state.properties.A.relationshipHistory.at(-1).action,'tenant_remove');
+ assert.equal(app.state.tenants[oldTenantID].isActive,false);assert.equal(app.state.tenants[active[0].id].isActive,false);
 });

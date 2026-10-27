@@ -5,8 +5,8 @@ export default function Page() {
     <FooterInfoPage
       compact
       eyebrow="Blog"
-      title="Propbank Blog"
-      description="Property management notes, rental workflow tips, and real estate updates from the Propbank team."
+      title="Property journal"
+      description="Practical notes on rental records, property visits and everyday ownership."
       sections={[
         {
           title: "Managing Rental Records",

@@ -6,13 +6,13 @@ require('@next/env').loadEnvConfig(process.cwd(),true,{info:()=>{},error:()=>{}}
 const PREFIX='[PROPBANK TEST — NO ACTION REQUIRED]';
 const USER='rushikeshandhale1010@gmail.com';
 const ADMIN='upasanapatilofficial@gmail.com';
-const FROM='connect@propbank.shop';
+const FROM='connect@propbank.care';
 const JOURNAL=path.resolve('.notification-live-test-visits-20261023.json');
 const PROPERTY='Aster Court Test Residence';
 const LOCATION='Fictional Test District';
 function fail(message){throw new Error(message);}
 function save(value){const temporary=JOURNAL+'.tmp';fs.writeFileSync(temporary,JSON.stringify(value,null,2));fs.renameSync(temporary,JOURNAL);}
-async function verifySender(){const response=await fetch('https://api.resend.com/domains',{headers:{Authorization:'Bearer '+process.env.RESEND_API_KEY},signal:AbortSignal.timeout(15000)});if(!response.ok)fail('Sender verification HTTP '+response.status);const data=await response.json(),rows=Array.isArray(data.data)?data.data:Array.isArray(data)?data:[],domain=rows.find(row=>row?.name==='propbank.shop');if(String(domain?.status).toLowerCase()!=='verified')fail('Sender domain is not verified');return {domain:'propbank.shop',status:'verified'};}
+async function verifySender(){const response=await fetch('https://api.resend.com/domains',{headers:{Authorization:'Bearer '+process.env.RESEND_API_KEY},signal:AbortSignal.timeout(15000)});if(!response.ok)fail('Sender verification HTTP '+response.status);const data=await response.json(),rows=Array.isArray(data.data)?data.data:Array.isArray(data)?data:[],domain=rows.find(row=>row?.name==='propbank.care');if(String(domain?.status).toLowerCase()!=='verified')fail('Sender domain is not verified');return {domain:'propbank.care',status:'verified'};}
 function plan(){
  const app=isolated(),{brandedEmail}=app.load(path.resolve('src/lib/server/services/transactional-email.ts'));
  Object.assign(app.env,{APP_URL:process.env.APP_URL||'https://propbank.shop'});

@@ -1,5 +1,5 @@
-/* Detail view only. Does not affect the locked homepage hero. */
-.page{min-height:85vh;background:#f8f6f0;color:#242b28;font-family:var(--pb-sans,Manrope,Arial,sans-serif);padding-bottom:100px}
+/* Public property detail view. */
+.page{min-height:85vh;background:#f8f6f0;color:#242b28;font-family:var(--pb-ui);padding-bottom:100px}
 .hero{position:relative;min-height:460px;background:#303832;isolation:isolate;overflow:hidden}
 .heroImage{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .heroFallback{position:absolute;inset:0;background:linear-gradient(120deg,#252b28,#60675f)}

@@ -131,7 +131,7 @@ test('property creation writes the original schema, preserves URLs, links tenant
  const saved=app.state.properties[id];assert.equal(saved.ownerPhone,'+91123');assert.equal(saved.images[0],input.images[0]);assert.equal(saved.rentSchedule.length,1);assert.equal(saved.tenants[0].userUID,'tenant');assert.equal(saved.tenants[0].firstName,'First');assert.equal(saved.buyers[0].firstName,'Buyer');assert.ok(saved.createdAt instanceof Date);
  assert.equal(data.property.ownerPhone,'+91123');assert.equal(data.property.price,0);assert.equal(data.property.isPreLeased,false);
  assert.equal(app.state.users.tenant.rentedPropertyId,id);assert.equal(Object.values(app.state.admin_notifications)[0].type,'property_added');
- await app.flush();assert.equal(app.emails.length,2);assert.ok(app.emails.every(mail=>mail.from==='Propbank <connect@propbank.shop>'));
+ await app.flush();assert.equal(app.emails.length,2);assert.ok(app.emails.every(mail=>mail.from==='PropBank <connect@test.invalid>'));
  assert.ok(!app.writes.some(w=>w.kind==='storage'));
 });
 test('property update validates ownership, clears explicit empty galleries and triggers transitions once',async()=>{

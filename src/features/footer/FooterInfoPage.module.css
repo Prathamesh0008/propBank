@@ -1,42 +1,26 @@
-.page{font-family:var(--font-manrope),Manrope,Arial,sans-serif;background:#f8f6f0;color:#242b28}.container{max-width:1160px;margin-inline:auto;padding-inline:clamp(22px,5vw,72px)}.intro{padding:clamp(72px,10vw,144px) 0 clamp(58px,7vw,104px);border-bottom:1px solid #d7d2c8}.eyebrow{font-size:11px;font-weight:700;letter-spacing:.19em;text-transform:uppercase;color:#a25c42}.intro h1{font-family:var(--font-instrument-serif),Georgia,serif;font-size:clamp(54px,8vw,112px);font-weight:400;line-height:1.01;max-width:1050px;letter-spacing:-.035em;margin:18px 0 23px}.description{font-size:clamp(16px,1.7vw,21px);line-height:1.65;color:#565c56;max-width:690px}.sections{padding:36px 0 100px}.entry{display:grid;grid-template-columns:60px minmax(190px,.8fr) minmax(260px,1.25fr);gap:clamp(16px,3vw,54px);border-bottom:1px solid #d7d2c8;padding:38px 0;align-items:start}.index{font-size:12px;font-weight:600;color:#a25c42;padding-top:6px}.entry h2{font-family:var(--font-instrument-serif),Georgia,serif;font-size:clamp(25px,3vw,39px);font-weight:400;line-height:1.12}.entry p{color:#565c56;line-height:1.8;font-size:15px;max-width:560px}.next{background:#242b28;color:#f8f6f0;padding:64px 0}.next .container{display:flex;align-items:end;justify-content:space-between;gap:36px}.next h2{font-family:var(--font-instrument-serif),Georgia,serif;font-size:clamp(36px,4.5vw,62px);font-weight:400;line-height:1.08;margin-top:13px}.links{display:flex;flex-direction:column;min-width:min(280px,100%)}.links a{display:flex;justify-content:space-between;gap:22px;border-bottom:1px solid #636c65;padding:15px 0;font-size:14px}.links a:hover,.links a:focus-visible{color:#e3bba5}.links a:focus-visible{outline:2px solid #e3bba5;outline-offset:4px}@media(max-width:720px){.entry{grid-template-columns:34px 1fr;gap:14px}.entry p{grid-column:2}.next .container{display:block}.links{margin-top:32px}.sections{padding-bottom:62px}}@media(prefers-reduced-motion:reduce){.page *{scroll-behavior:auto}}
-.compact .intro {
-  padding-block: clamp(56px, 7vw, 88px) clamp(44px, 5vw, 64px);
+.page{font-family:var(--pb-ui);background:#f8f6f0;color:#242b28}
+.container{max-width:calc(var(--pb-content-width) + 48px);margin-inline:auto;padding-inline:24px}
+.intro{padding:clamp(48px,6vw,80px) 0 48px;border-bottom:1px solid #d7d2c8}
+.intro h1{font-family:var(--pb-editorial);font-size:clamp(42px,6.5vw,86px);font-weight:500;line-height:1.01;max-width:1050px;letter-spacing:-.035em;margin:18px 0 23px}
+.description{font-size:clamp(16px,1.7vw,21px);line-height:1.65;color:#565c56;max-width:690px}
+.sections{padding:20px 0 60px}
+.entry{display:grid;grid-template-columns:minmax(190px,.8fr) minmax(260px,1.25fr);gap:clamp(16px,3vw,54px);border-bottom:1px solid #d7d2c8;padding:38px 0;align-items:start}
+.entry h2{font-family:var(--pb-editorial);font-size:clamp(25px,3vw,39px);font-weight:500;line-height:1.12}
+.entry p{color:#565c56;line-height:1.8;font-size:15px;max-width:560px}
+.next{background:var(--pb-forest);color:#f8f6f0;padding:42px 0}
+.next .container{display:flex;align-items:end;justify-content:space-between;gap:36px}
+.next h2{font-family:var(--pb-editorial);font-size:clamp(36px,4.5vw,62px);font-weight:500;line-height:1.08;margin-top:13px}
+.links{display:flex;flex-direction:column;min-width:min(280px,100%)}
+.links a{display:flex;justify-content:space-between;gap:22px;border-bottom:1px solid #636c65;padding:15px 0;font-size:14px}
+.links a:hover,.links a:focus-visible{color:#e3bba5}
+.links a:focus-visible{outline:2px solid #e3bba5;outline-offset:4px}
+@media(max-width:720px){.entry{grid-template-columns:1fr;gap:14px}
+.entry p{grid-column:1}
+.next .container{display:block}
+.links{margin-top:32px}
+.sections{padding-bottom:62px}
+}
+@media(prefers-reduced-motion:reduce){.page *{scroll-behavior:auto}
 }
 
-.compact .intro h1 {
-  font-family: inherit;
-  font-size: clamp(30px, 3.5vw, 44px);
-  font-weight: 600;
-  line-height: 1.15;
-  letter-spacing: -.035em;
-  margin: 16px 0 18px;
-}
-
-.compact .description {
-  max-width: 650px;
-  font-size: 15px;
-  line-height: 1.75;
-}
-
-.compact .entry h2 {
-  margin: 0;
-  font-family: inherit;
-  font-size: clamp(20px, 1.8vw, 24px);
-  font-weight: 500;
-  line-height: 1.35;
-  letter-spacing: -.02em;
-}
-
-.compact .entry p {
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.8;
-}
-
-.compact .next h2 {
-  font-family: inherit;
-  font-size: clamp(24px, 2.5vw, 32px);
-  font-weight: 500;
-  line-height: 1.25;
-  letter-spacing: -.025em;
-}
+@media(max-width:500px){.wrap,.container{padding-inline:18px}}

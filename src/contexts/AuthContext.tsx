@@ -45,6 +45,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       try{await sync(firebaseUser);}catch{if(current===generation)toast({title:'Private files unavailable',description:'File access could not be initialized. Reload when connected to try again.',variant:'destructive'});}
       if(current!==generation)return;
       setUser(firebaseUser);
+      if(firebaseUser.emailVerified)void apiFetch('/api/relationship-links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'discover'})}).catch(()=>{});
       setLoading(false);
     });
     const interval=window.setInterval(()=>{if(auth.currentUser)void sync(auth.currentUser).catch(()=>{});},10*60*1000);

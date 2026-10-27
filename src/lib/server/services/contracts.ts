@@ -6,6 +6,13 @@ export type RecordData = Record<string, unknown>;
 export const isRecord = (v: unknown): v is RecordData => !!v && typeof v === 'object' && !Array.isArray(v);
 export const stringValue = (v: unknown) => typeof v === 'string' ? v : '';
 const zeroDate = '0001-01-01T00:00:00Z';
+// Additive native fields live outside the generated legacy Go schemas.
+const tenantLinkFields = {linkConfirmationRequired: 'bool', phoneE164: 'string'};
+function tenantLinkValues(name: string, input: RecordData): RecordData {
+  if (!['Tenant', 'TenantInfo'].includes(name)) return {};
+  return Object.fromEntries(Object.entries(tenantLinkFields).filter(([key]) => key in input)
+    .map(([key, type]) => [key, typedValue(type, input[key], true, key)]));
+}
 
 function defaultValue(type: string): unknown {
   if (['string', 'UserRole', 'ServiceCategory', 'ServiceStatus'].includes(type)) return '';
@@ -43,7 +50,7 @@ export function model(name: string, input: RecordData, validate = false): Record
     const key = Object.keys(input).filter(k => k.toLowerCase() === field.name.toLowerCase()).at(-1);
     result[field.name] = typedValue(field.type, key === undefined ? undefined : input[key], validate, `${name}.${field.name}`);
   }
-  return result;
+  return {...result, ...tenantLinkValues(name, input)};
 }
 
 function empty(value: unknown) {
@@ -59,7 +66,7 @@ export function storeModel(name: string, input: RecordData): RecordData {
     if (field.storeOmit && (empty(value) || (field.type === 'time.Time' && wireValue(value) === zeroDate))) continue;
     result[field.store] = nestedModel(field.type, value, true);
   }
-  return result;
+  return {...result, ...tenantLinkValues(name, input)};
 }
 
 function nestedModel(type: string, value: unknown, store: boolean): unknown {
@@ -90,7 +97,7 @@ export function wireModel(name: string, input: RecordData): RecordData {
     if (field.omit && empty(input[field.name])) continue;
     result[field.name] = nestedModel(field.type,input[field.name],false);
   }
-  return result;
+  return {...result, ...tenantLinkValues(name, input)};
 }
 
 export function parsePrice(value: unknown) { return Number.parseFloat(stringValue(value).replace(/[₹,]/g,'').trim()); }

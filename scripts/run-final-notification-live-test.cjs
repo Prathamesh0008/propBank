@@ -2,11 +2,11 @@
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {isolated}=require('../tests/fixtures/native-server.cjs');
 require('@next/env').loadEnvConfig(process.cwd(),true,{info:()=>{},error:()=>{}});
-const PREFIX='[PROPBANK TEST — NO ACTION REQUIRED]',N='rushikeshandhale1010@gmail.com',A='upasanapatilofficial@gmail.com',FROM='connect@propbank.shop';
+const PREFIX='[PROPBANK TEST — NO ACTION REQUIRED]',N='rushikeshandhale1010@gmail.com',A='upasanapatilofficial@gmail.com',FROM='connect@propbank.care';
 const JOURNAL=path.resolve('.notification-live-test-final-20261023.json'),PROPERTY='Aster Court Test Residence',ID='PB-TEST-FINAL-20261023';
 const fail=m=>{throw new Error(m)};
 function save(value){const temp=JOURNAL+'.tmp';fs.writeFileSync(temp,JSON.stringify(value,null,2));fs.renameSync(temp,JOURNAL);}
-async function senderCheck(){const r=await fetch('https://api.resend.com/domains',{headers:{Authorization:'Bearer '+process.env.RESEND_API_KEY},signal:AbortSignal.timeout(15000)});if(!r.ok)fail(`Sender lookup HTTP ${r.status}`);const d=await r.json(),rows=Array.isArray(d.data)?d.data:Array.isArray(d)?d:[],domain=rows.find(x=>x?.name==='propbank.shop');if(String(domain?.status).toLowerCase()!=='verified')fail('Sender domain is not verified');return {domain:'propbank.shop',status:'verified'};}
+async function senderCheck(){const r=await fetch('https://api.resend.com/domains',{headers:{Authorization:'Bearer '+process.env.RESEND_API_KEY},signal:AbortSignal.timeout(15000)});if(!r.ok)fail(`Sender lookup HTTP ${r.status}`);const d=await r.json(),rows=Array.isArray(d.data)?d.data:Array.isArray(d)?d:[],domain=rows.find(x=>x?.name==='propbank.care');if(String(domain?.status).toLowerCase()!=='verified')fail('Sender domain is not verified');return {domain:'propbank.care',status:'verified'};}
 function build(){
  const app=isolated();Object.assign(app.env,{APP_URL:process.env.APP_URL||'https://propbank.shop'});
  const {brandedEmail}=app.load(path.resolve('src/lib/server/services/transactional-email.ts'));

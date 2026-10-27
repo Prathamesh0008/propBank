@@ -15,7 +15,12 @@ export default function RouteGuard({ children, admin = false }: { children: Reac
   const [verifiedUid, setVerifiedUid] = useState<string | null>(null);
   useEffect(() => {
     if (loading) return;
-    if (!user) { setVerifiedUid(null); router.replace("/auth"); return; }
+    if (!user) {
+      setVerifiedUid(null);
+      const pendingEntry = window.location.pathname === '/manage-property' && window.location.hash === '#pending-connections';
+      router.replace(pendingEntry ? '/auth?next=%2Fmanage-property%23pending-connections' : '/auth');
+      return;
+    }
     if (!admin) return;
     const controller = new AbortController();
     setVerifiedUid(null);

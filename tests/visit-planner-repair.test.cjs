@@ -3,6 +3,35 @@ const {isolated,users,properties,defaults,request,route,context}=require('./fixt
 const future='2099-06-15T10:00:00Z';
 function setup(seed={}){const app=isolated({users,properties:{P:{...properties.P,moderationStatus:'approved',rentalStatus:'available',tenants:[]}},visits:{...seed}});app.env.FROM_EMAIL='mail@test.invalid';return app;}
 
+test('terminal visit updates return 409 without mutations, version changes or notifications',async()=>{
+ const terminalStates=[{status:'completed',isCompleted:true},{status:'completed',isCompleted:false},{status:'cancelled',isCompleted:false},{status:'cancelled',isCompleted:true},{isCompleted:true},{status:'scheduled',isCompleted:true}];
+ const payloads=[{status:'scheduled'},{isCompleted:false},{status:'scheduled',isCompleted:false},{status:'completed',isCompleted:true},{status:'cancelled',isCompleted:false},{status:'completed',isCompleted:false},{status:'cancelled',isCompleted:true},{title:'Changed title'},{visitDate:'2099-06-17T10:00:00Z'},{}];
+ for(const terminal of terminalStates)for(const actor of ['owner','admin']){
+  const app=setup({V:{...defaults,id:'V',userId:'owner',propertyId:'P',title:'Terminal visit',visitDate:new Date(future),managementVersion:7,visitAdminHistory:[],...terminal}}),detail=route(app,'visits/[id]'),before=structuredClone(app.state);
+  for(const payload of payloads){
+   const response=await detail.PUT(request('/visits/V',actor,'PUT',{...payload,expectedVersion:7}),context('V'));
+   assert.equal(response.status,409,JSON.stringify({terminal,actor,payload}));assert.match((await response.json()).message,/completed|cancelled/);
+   assert.deepEqual(app.state,before);assert.equal(app.writes.length,0);assert.equal(app.emails.length,0);assert.equal(app.emailKeys.length,0);
+  }
+ }
+});
+
+test('scheduled visits reject conflicting completion fields without side effects',async()=>{
+ const app=setup({V:{...defaults,id:'V',userId:'owner',title:'Viewing',visitDate:new Date(future),status:'scheduled',isCompleted:false,managementVersion:0}}),detail=route(app,'visits/[id]'),before=structuredClone(app.state);
+ for(const payload of [{status:'scheduled',isCompleted:true},{status:'completed',isCompleted:false},{status:'cancelled',isCompleted:true}]){
+  const response=await detail.PUT(request('/visits/V','owner','PUT',{...payload,expectedVersion:0}),context('V'));
+  assert.equal(response.status,400);assert.match((await response.json()).message,/disagree/);assert.deepEqual(app.state,before);assert.equal(app.writes.length,0);assert.equal(app.emails.length,0);
+ }
+});
+
+test('scheduled transitions keep status and completion consistent with partial payloads',async()=>{
+ for(const [payload,status,isCompleted] of [[{visitDate:'2099-06-17T10:00:00Z'},'scheduled',false],[{status:'completed'},'completed',true],[{isCompleted:true},'completed',true],[{status:'cancelled'},'cancelled',false]]){
+  const app=setup({V:{...defaults,id:'V',userId:'owner',title:'Viewing',visitDate:new Date(future),status:'scheduled',isCompleted:false,managementVersion:0}});
+  const response=await route(app,'visits/[id]').PUT(request('/visits/V','owner','PUT',{...payload,expectedVersion:0}),context('V'));
+  assert.equal(response.status,200);const {visit}=await response.json();assert.equal(visit.status,status);assert.equal(visit.isCompleted,isCompleted);assert.equal(visit.managementVersion,1);assert.equal(app.state.visits.V.status,status);assert.equal(app.state.visits.V.isCompleted,isCompleted);
+ }
+});
+
 test('visits route returns the exact empty-list contract without a composite order query',async()=>{
  const app=setup(),response=await route(app,'visits').GET(request('/visits?userId=owner','owner'));assert.equal(response.status,200);assert.deepEqual(await response.json(),{success:true,message:'Visits retrieved successfully',visits:[]});assert.equal(app.reads.at(-1).order,null);assert.deepEqual(app.reads.at(-1).filters,[['userId','owner','==']]);
 });

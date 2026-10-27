@@ -4,7 +4,7 @@ const seed=()=>({users:{...structuredClone(users),agent:{...defaults,uid:'agent'
 
 test('initial registration permits individual or agent but never admin or later role replacement',async()=>{
  const app=isolated(seed()),service=app.load('@/lib/server/services/users');app.claims.newagent={email:'newagent@test.invalid',email_verified:false,emailVerified:false,providerData:[{providerId:'password'}]};
- const response=await service.createUser(request('/auth/user','newagent','POST',{uid:'newagent',email:'newagent@test.invalid',name:'New Agent',role:'agent'}),true);assert.equal(response.status,200);assert.equal(app.state.users.newagent.role,'agent');
+ const response=await service.createUser(request('/auth/user','newagent','POST',{uid:'newagent',email:'newagent@test.invalid',name:'New Agent',phoneNumber:'9876543210',role:'agent'}),true);assert.equal(response.status,200);assert.equal(app.state.users.newagent.role,'agent');
  assert.equal(Object.values(app.state.email_deliveries).filter(row=>row.eventType==='agent.registration').length,2);
  app.claims.newadmin={email:'newadmin@test.invalid',email_verified:false,emailVerified:false};await assert.rejects(()=>service.createUser(request('/auth/user','newadmin','POST',{uid:'newadmin',email:'newadmin@test.invalid',name:'No Admin',role:'admin'}),true),error=>error.status===403);
  app.claims.owner={email:'owner@test.invalid',email_verified:true,emailVerified:true,providerData:[{providerId:'google.com'}]};await service.createUser(request('/auth/user','owner','POST',{uid:'owner',email:'owner@test.invalid',name:'Owner',role:'agent'}),true);assert.equal(app.state.users.owner.role,'individual');
