@@ -3,6 +3,7 @@ import FooterInfoPage from "@/features/footer/FooterInfoPage";
 export default function Page() {
   return (
     <FooterInfoPage
+      compact
       eyebrow="Blog"
       title="Propbank Blog"
       description="Property management notes, rental workflow tips, and real estate updates from the Propbank team."

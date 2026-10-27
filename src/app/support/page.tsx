@@ -3,6 +3,7 @@ import FooterInfoPage from "@/features/footer/FooterInfoPage";
 export default function Page() {
   return (
     <FooterInfoPage
+      compact
       eyebrow="Support"
       title="How Can We Help?"
       description="Get help with your Propbank account, property listings, tenant records, service requests, and visit planning."

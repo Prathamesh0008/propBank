@@ -3,6 +3,7 @@ import FooterInfoPage from "@/features/footer/FooterInfoPage";
 export default function Page() {
   return (
     <FooterInfoPage
+      compact
       eyebrow="Terms"
       title="Terms & Conditions"
       description="These terms outline the basic usage expectations for Propbank users and property-related submissions."

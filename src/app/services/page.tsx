@@ -3,6 +3,7 @@ import FooterInfoPage from "@/features/footer/FooterInfoPage";
 export default function Page() {
   return (
     <FooterInfoPage
+      compact
       eyebrow="Services"
       title="Property Services"
       description="Explore Propbank services for managing, renting, selling, and maintaining property records."

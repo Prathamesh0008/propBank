@@ -6,11 +6,12 @@ type FooterInfoPageProps = {
   title: string;
   description: string;
   sections: { title: string; body: string }[];
+  compact?: boolean;
 };
 
-export default function FooterInfoPage({ eyebrow, title, description, sections }: FooterInfoPageProps) {
+export default function FooterInfoPage({ eyebrow, title, description, sections, compact = false }: FooterInfoPageProps) {
   return (
-    <main className={styles.page}>
+    <main className={compact ? `${styles.page} ${styles.compact}` : styles.page}>
       <header className={styles.intro}>
         <div className={styles.container}>
           <p className={styles.eyebrow}>{eyebrow}</p>
