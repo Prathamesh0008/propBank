@@ -195,7 +195,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
 
                 <ScrollArea className="flex-1 p-6 md:p-10 overflow-y-auto">
                     <ListingModeration key={`${property.id}:${property.moderationRevision||0}`} property={property} admin/>
-                    {property.createdAs==='tenant'&&<OwnerVerification key={property.id} propertyId={property.id} status={property.ownershipVerification} version={property.ownershipVerificationVersion} reason={property.ownershipVerificationReason} history={property.ownershipVerificationHistory} onDecision={onVerificationChange}/>}
+                    {property.createdAs==='tenant'&&<OwnerVerification key={property.id} propertyId={property.id} status={property.ownershipVerification} version={property.ownershipVerificationVersion} reason={property.ownershipVerificationReason} history={property.ownershipVerificationHistory} evidenceDocuments={documents} onDecision={onVerificationChange}/>}
                     <div className="max-w-6xl mx-auto w-full flex flex-col gap-8 pb-16">
 
                         {/* Basic Info */}
@@ -476,6 +476,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                                             {doc.description && (
                                                 <p className="text-sm text-slate-600 mb-4 line-clamp-2">{doc.description}</p>
                                             )}
+                                            <p className="mb-2 text-xs text-slate-500">Evidence reference: {doc.id}</p>
                                             <div className="mt-auto flex justify-between items-center pt-3 border-t border-blue-100">
                                                 <span className="text-xs font-medium text-slate-500">{formatDate(doc.createdAt)}</span>
                                                 <a 

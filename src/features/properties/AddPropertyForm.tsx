@@ -1,13 +1,18 @@
 "use client";
 import { readPropertyResponse, PropertySubmissionError } from "./property-response";
+import {PROPERTY_CONFIGURATIONS,structureUsesPlotArea,type PropertyCategory} from '@/lib/property-category';
 
 import {indianMobile} from '@/lib/indian-phone';
 import styles from "./PropertyForm.module.css";
 
 import ClientPropertyFields, {clientPropertySchema} from './ClientPropertyFields';
 import { apiFetch } from '@/lib/api-client';
+import SessionMediaImage from '@/components/SessionMediaImage';
+import AmountInWords from '@/components/AmountInWords';
+import NextAgreementFields from '@/components/NextAgreementFields';
+import {emptyNextAgreementDraft,validateNextAgreementDraft} from '@/lib/next-agreement-draft';
 
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/ui/button";
@@ -17,8 +22,7 @@ import { Input } from "@/ui/input";
 import { DatePicker } from "@/ui/date-picker";
 import { Textarea } from "@/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
-import { Checkbox } from "@/ui/checkbox";
-import { ArrowLeft, Building2, Upload, X, Image as ImageIcon, CheckSquare, User, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Building2, Upload, X, Image as ImageIcon, CheckSquare } from "lucide-react";
 import { useNavigate, useSearchParams } from "@/lib/navigation";
 import { auth } from "../../firebase";
 import { User as FirebaseUser } from "firebase/auth";
@@ -29,14 +33,14 @@ import { FurnishedChecklistModal } from "./FurnishedChecklistModal";
 import { uploadBase64Image } from "../../services/uploadService";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import {additionalRentPeriod,additionalRentYearCount,calculateAgreementEndDate,rebuildAdditionalRentSchedule,validateAdditionalRentSchedule} from '@/lib/rent-schedule';
+import {calculateAgreementEndDate} from '@/lib/rent-schedule';
 
 const formSchema = z.object({
   ...clientPropertySchema,
   // Property Basic Details
   propertyTitle: z.string().min(1, "Property title is required"),
   propertyType: z.string().min(1, "Property type is required"),
-  configuration: z.string().min(1, "Configuration is required"),
+  configuration: z.string().optional(),
   listingType: z.string().min(1, "Listing type is required"),
   agentOwnerEmail: z.string().email("Enter the registered legal owner's email").optional().or(z.literal("")),
 
@@ -55,62 +59,16 @@ const formSchema = z.object({
   tenantLastName: z.string().optional(),
   tenantEmail: z.string().email("Invalid email address").optional().or(z.literal("")),
   mobileNumber: z.string().optional(),
-  primaryNo: z.string().optional(),
-  ultNo: z.string().optional(),
-  tenantEmergencyContact: z.string().optional(),
-
-  // Tenant Employment Details
-  tenantEmploymentStatus: z.string().optional(),
-  tenantEmployer: z.string().optional(),
-  tenantMonthlyIncome: z.string().optional(),
-
-  // Tenant Spouse Information
-  tenantIsMarried: z.boolean().optional(),
-  tenantSpouse: z.object({
-    firstName: z.string().optional(),
-    lastName: z.string().optional(),
-    email: z.string().optional(),
-    phone: z.string().optional(),
-    employmentStatus: z.string().optional(),
-    employer: z.string().optional(),
-    notes: z.string().optional(),
-  }).optional(),
 
   // Pricing Details (conditional based on listing type)
   monthlyRent: z.string().optional(), // For rent
   sellingPrice: z.string().optional(), // For sell
 
-  // Monthly Rent Details (for rent only) - Dynamic Schedule
-  rentSchedule: z.array(z.object({
-    year: z.string().optional(),
-    months: z.string().optional(),
-    amount: z.string().optional(),
-    fromDate: z.string().optional(),
-    toDate: z.string().optional(),
-  })).optional(),
-
-  // Legacy fields - kept for compatibility but will be populated from schedule if needed
-  monthlyRent1stYear: z.string().optional(),
-  monthlyRent2ndYear: z.string().optional(),
-  monthlyRent3rdYear: z.string().optional(),
-  monthlyRent4thYear: z.string().optional(),
-  rentFromDate1: z.string().optional(),
-  rentToDate1: z.string().optional(),
-  rentFromDate2: z.string().optional(),
-  rentToDate2: z.string().optional(),
-
   // Payment Details
   paymentDueDate: z.string().optional(),
-  escalationPercentage: z.string().optional(),
-  escalationAmount: z.string().optional(),
-
-  // Security & Agreement
-  securityDeposit: z.string().optional(),
   agreementPeriod: z.string().optional(),
   agreementStartDate: z.string().optional(),
   agreementEndDate: z.string().optional(),
-
-  // Notice & Lock-in
   noticePeriod: z.string().optional(),
   lockInPeriod: z.string().optional(),
 
@@ -139,16 +97,6 @@ const formSchema = z.object({
   internalImages: z.array(z.string()).optional(),
   specificComments: z.string().optional(),
 
-  // Pre-leased Details
-  isPreLeased: z.boolean().default(false),
-  preLeasedType: z.string().optional(),
-  agreementTerm: z.string().optional(),
-  lockInPeriodPreLeased: z.string().optional(),
-  rentalIncome: z.string().optional(),
-  escalation: z.string().optional(),
-  tenantDetails: z.string().optional(),
-  purpose: z.string().optional(),
-  specificRequirement: z.string().optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -161,10 +109,10 @@ interface UserInfo {
   phoneNumber: string;
 }
 
-const AddPropertyForm = () => {
+const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const selectedPropertyType = searchParams.get('type') || '';
+  const selectedPropertyType = category;
   const selectedRole = searchParams.get('as') || searchParams.get('role') || 'owner';
   const adminOwnerUID = searchParams.get('adminOwnerUID') || '';
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
@@ -180,6 +128,7 @@ const AddPropertyForm = () => {
   const queryClient = useQueryClient();
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [accountRole,setAccountRole]=useState('individual');
+  const [addNextAgreementManually,setAddNextAgreementManually]=useState(false),[nextAgreementDraft,setNextAgreementDraft]=useState(emptyNextAgreementDraft);
   const [userInfo, setUserInfo] = useState<any | null>(null);
   const [searchingUser, setSearchingUser] = useState(false);
   const [searchError, setSearchError] = useState<string | undefined>(undefined);
@@ -365,48 +314,21 @@ const AddPropertyForm = () => {
       carpetArea: "",
       plotArea: "",
       constructedArea: "",
+      areaUnit: "sq ft",
+      carpetAreaUnit: "sq ft",
+      constructedAreaUnit: "sq ft",
+      plotAreaUnit: "sq ft",
       // Tenant Information
       // Tenant Information
       tenantFirstName: "",
       tenantLastName: "",
       tenantEmail: "",
       mobileNumber: "",
-      primaryNo: "",
-      ultNo: "",
-      tenantEmergencyContact: "",
-
-      // Employment
-      tenantEmploymentStatus: "",
-      tenantEmployer: "",
-      tenantMonthlyIncome: "",
-
-      // Spouse
-      tenantIsMarried: false,
-      tenantSpouse: {
-        firstName: "",
-        lastName: "",
-        email: "",
-        phone: "",
-        employmentStatus: "",
-        employer: "",
-        notes: "",
-      },
       // Pricing
       monthlyRent: "",
+      expectedRent: "",
       sellingPrice: "",
-      monthlyRent1stYear: "",
-      monthlyRent2ndYear: "",
-      monthlyRent3rdYear: "",
-      monthlyRent4thYear: "",
-      rentFromDate1: "",
-      rentToDate1: "",
-      rentFromDate2: "",
-      rentToDate2: "",
-      rentSchedule: [],
       paymentDueDate: "",
-      escalationPercentage: "",
-      escalationAmount: "",
-      securityDeposit: "",
       agreementPeriod: "",
       agreementStartDate: "",
       agreementEndDate: "",
@@ -425,25 +347,13 @@ const AddPropertyForm = () => {
       images: [],
       internalImages: [],
       specificComments: "",
-      isPreLeased: false,
-      preLeasedType: "",
-      agreementTerm: "",
-      lockInPeriodPreLeased: "",
-      rentalIncome: "",
-      escalation: "",
-      tenantDetails: "",
-      purpose: "",
-      specificRequirement: "",
     },
-  });
-
-  const { fields: rentScheduleFields, append: appendRentSchedule, remove: removeRentSchedule } = useFieldArray({
-    control: form.control,
-    name: "rentSchedule",
   });
 
   const agreementStartDate = form.watch('agreementStartDate');
   const agreementPeriod = form.watch('agreementPeriod');
+  const selectedStructure = form.watch('structure');
+  const listingType = form.watch('listingType');
 
   useEffect(() => {
     const user=auth.currentUser;setCurrentUser(user);
@@ -453,17 +363,30 @@ const AddPropertyForm = () => {
   useEffect(() => {
     const agreementEndDate=calculateAgreementEndDate(agreementStartDate||'',agreementPeriod||'');
     form.setValue('agreementEndDate',agreementEndDate);
-    const schedule=form.getValues('rentSchedule')||[],rebuilt=rebuildAdditionalRentSchedule(schedule,agreementStartDate||'',agreementPeriod||'');
-    if(JSON.stringify(schedule)!==JSON.stringify(rebuilt))form.setValue('rentSchedule',rebuilt);
   }, [agreementStartDate, agreementPeriod, form]);
 
   const onSubmit = async (data: FormData) => {
     try {
+      if(!data.structure?.trim()){
+        form.setError('structure',{type:'manual',message:'Select the property type.'});
+        toast({title:'Missing property type',description:'Select the physical property type before continuing.',variant:'destructive'});
+        return;
+      }
+      if(selectedPropertyType==='residential'&&!structureUsesPlotArea(data.structure)&&!data.configuration?.trim()){
+        form.setError('configuration',{type:'manual',message:'Select the residential layout.'});
+        toast({title:'Missing residential layout',description:'Select Studio or the applicable BHK layout.',variant:'destructive'});
+        return;
+      }
+      if(addNextAgreementManually){const draftError=validateNextAgreementDraft(nextAgreementDraft,data.agreementEndDate||'');if(draftError){toast({title:'Check next agreement details',description:draftError,variant:'destructive'});return;}}
       // Validate pricing based on listing type
-      if (data.listingType === "rent" && (!data.monthlyRent || data.monthlyRent.trim() === "")) {
+      const occupiedRental=data.listingType === "rent" && data.rentalStatus === "rented";
+      const rentValue=occupiedRental?data.monthlyRent:data.expectedRent;
+      if (data.listingType === "rent" && (!rentValue || rentValue.trim() === "")) {
+        const field=occupiedRental?'monthlyRent':'expectedRent';
+        form.setError(field,{type:'manual',message:occupiedRental?'Enter the finalized monthly rent.':'Enter the asking monthly rent.'});
         toast({
-          title: "Missing Monthly Rent",
-          description: "Please enter the monthly rent amount for rental properties.",
+          title: occupiedRental?"Missing Finalized Rent":"Missing Asking Rent",
+          description: occupiedRental?"Enter the finalized rent for the current tenancy.":"Enter the asking rent for this available property.",
           variant: "destructive",
         });
         return;
@@ -476,29 +399,6 @@ const AddPropertyForm = () => {
           variant: "destructive",
         });
         return;
-      }
-
-      // Sync and validate pre-leased properties
-      if (data.listingType === "sell" && data.isPreLeased) {
-        data.projectCondition = "Preleased";
-
-        if (!data.preLeasedType) {
-          toast({
-            title: "Missing Pre-leased Type",
-            description: "Please select the property type (Residential/Commercial/Industrial).",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        if (!data.rentalIncome) {
-          toast({
-            title: "Missing Rental Income",
-            description: "Please enter the rental income for the pre-leased property.",
-            variant: "destructive",
-          });
-          return;
-        }
       }
 
       // Validate buyer details for sold properties
@@ -559,6 +459,10 @@ const AddPropertyForm = () => {
           });
           return;
         }
+        if (!data.tenantEmail || !/^\S+@\S+\.\S+$/.test(data.tenantEmail)) {
+          form.setError('tenantEmail',{type:'manual',message:'Enter the tenant email used for the invitation.'});
+          return;
+        }
 
         // Validate agreement details for rented properties
         if (!data.agreementPeriod || data.agreementPeriod.trim() === "") {
@@ -596,8 +500,6 @@ const AddPropertyForm = () => {
           });
           return;
         }
-        const scheduleError=validateAdditionalRentSchedule(data.rentSchedule||[],data.agreementStartDate||'',data.agreementPeriod||'',data.agreementEndDate||'');
-        if(scheduleError){toast({title:"Invalid Year-wise Rent",description:scheduleError,variant:"destructive"});return;}
       }
 
       // Get current user
@@ -619,6 +521,15 @@ const AddPropertyForm = () => {
       // Prepare property data for backend API
       const propertyData = {
         ...data,
+        nextAgreementDraft:addNextAgreementManually?nextAgreementDraft:undefined,
+        monthlyRent: data.rentalStatus==='rented'?data.monthlyRent:'',
+        expectedRent: data.listingType==='rent'&&data.rentalStatus!=='rented'?data.expectedRent:'',
+        configuration: selectedPropertyType==='residential'&&!structureUsesPlotArea(data.structure)?data.configuration:'',
+        // The measurement controls below are authoritative. Keep the legacy
+        // aggregate unit aligned for older property readers.
+        areaUnit: data.carpetAreaUnit || data.areaUnit || "sq ft",
+        propertyType: selectedPropertyType,
+        propertyCategory: selectedPropertyType,
         // Explicitly map tenant names to ensure they are sent
         tenantFirstName: data.tenantFirstName,
         tenantLastName: data.tenantLastName,
@@ -681,40 +592,17 @@ const AddPropertyForm = () => {
   };
 
   const getConfigurationOptions = () => {
-    switch (selectedPropertyType) {
-      case "residential":
-        return [
-          { value: "bunglow", label: "Bunglow" },
-          { value: "2 BHK Flat", label: "2 BHK" },
-          { value: "3 BHK Flat", label: "3 BHK" },
-          { value: "4 BHK Flat", label: "4 BHK" },
-          { value: "5+ BHK Flat", label: "5+ BHK" },
-        ];
-      case "commercial":
-        return [
-          { value: "office", label: "Office" },
-          { value: "shop", label: "Shop" },
-        ];
-      case "industrial":
-        return [
-          { value: "unit", label: "Unit" },
-          { value: "shed", label: "Shed" },
-          { value: "Plot/land", label: "Plot/land" },
-          { value: "RCC", label: "RCC" },
-        ];
-      default:
-        return [];
-    }
+    return PROPERTY_CONFIGURATIONS.map(value=>({value,label:value}));
   };
 
   const getUnitLabel = () => {
     switch (selectedPropertyType) {
       case "residential":
-        return "Flat No.";
+        return structureUsesPlotArea(selectedStructure) ? "Plot number" : "Flat / House number";
       case "commercial":
-        return "Office / Shop No.";
+        return structureUsesPlotArea(selectedStructure) ? "Plot number" : "Office / Shop / Showroom number";
       case "industrial":
-        return "Unit/ Plot No.";
+        return structureUsesPlotArea(selectedStructure) ? "Plot number" : "Warehouse / Factory / Shed number";
       default:
         return "Unit No.";
     }
@@ -777,7 +665,7 @@ const AddPropertyForm = () => {
                 // React Hook Form focuses the first registered invalid control when possible.
                 // Keep the message useful even for conditional fields without a focusable input.
               })} className={`${styles.formBody} space-y-8`}>
-                <ClientPropertyFields form={form}/>
+                <ClientPropertyFields form={form} fixedCategory={selectedPropertyType} creation/>
 
                 {/* Basic Property Information */}
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 p-4 border rounded-lg">
@@ -790,9 +678,9 @@ const AddPropertyForm = () => {
                     name="propertyTitle"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Property Name</FormLabel>
+                        <FormLabel>Property title</FormLabel>
                         <FormControl>
-                          <Input placeholder="Enter property name here" {...field} />
+                          <Input placeholder="e.g., Lakeview 2 BHK" autoComplete="off" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -801,16 +689,16 @@ const AddPropertyForm = () => {
 
                   {accountRole==='agent'&&<FormField control={form.control} name="agentOwnerEmail" render={({field})=><FormItem><FormLabel>Registered legal owner email</FormLabel><FormControl><Input type="email" placeholder="owner@example.com" {...field}/></FormControl><FormDescription>The owner remains legally separate and must have an active, verified PropBank account.</FormDescription><FormMessage/></FormItem>}/>}
 
-                  <FormField
+                  {selectedPropertyType === 'residential' && !structureUsesPlotArea(selectedStructure) && <FormField
                     control={form.control}
                     name="configuration"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Configuration / (Structure)</FormLabel>
+                        <FormLabel>Residential layout</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value || ""}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="Select configuration" />
+                              <SelectValue placeholder="Select Studio or BHK" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
@@ -824,14 +712,14 @@ const AddPropertyForm = () => {
                         <FormMessage />
                       </FormItem>
                     )}
-                  />
+                  />}
 
                   <FormField
                     control={form.control}
                     name="listingType"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Listing Type</FormLabel>
+                          <FormLabel>Property purpose</FormLabel>
                         <Select onValueChange={field.onChange} defaultValue={field.value}>
                           <FormControl>
                             <SelectTrigger>
@@ -841,7 +729,7 @@ const AddPropertyForm = () => {
                           <SelectContent>
                             <SelectItem value="rent">For Rent</SelectItem>
                             <SelectItem value="sell">For Sale</SelectItem>
-                            <SelectItem value="manage">To Manage</SelectItem>
+                            <SelectItem value="manage">Private Management</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
@@ -920,7 +808,7 @@ const AddPropertyForm = () => {
                     )}
                   />
 
-                  <FormField
+                  {!structureUsesPlotArea(selectedStructure) && <FormField
                     control={form.control}
                     name="floor"
                     render={({ field }) => (
@@ -932,7 +820,7 @@ const AddPropertyForm = () => {
                         <FormMessage />
                       </FormItem>
                     )}
-                  />
+                  />}
 
                   <FormField
                     control={form.control}
@@ -952,45 +840,53 @@ const AddPropertyForm = () => {
                 {/* Area Details */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 border rounded-lg">
                   <div className="lg:col-span-2">
-                    <h3 className="text-lg font-semibold">Area (in sqft)</h3>
+                    <h3 className="text-lg font-semibold">Area measurements</h3>
                   </div>
-                  <FormField
+                  {!structureUsesPlotArea(selectedStructure) && <FormField
                     control={form.control}
                     name="carpetArea"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Carpet Area (Sqft)</FormLabel>
-                        <FormControl>
-                          <Input type="number" placeholder="Enter carpet area" {...field} />
-                        </FormControl>
+                        <FormLabel>Carpet area</FormLabel>
+                        <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-2">
+                          <FormControl><Input type="number" min="0" placeholder="Enter carpet area" {...field} /></FormControl>
+                          <select aria-label="Carpet area unit" className="h-10 rounded-md border bg-background px-3" {...form.register('carpetAreaUnit')}>
+                            {['sq ft','sq m','sq yd'].map(unit=><option key={unit} value={unit}>{unit}</option>)}
+                          </select>
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}
-                  />
-                  <FormField
+                  />}
+                  {!structureUsesPlotArea(selectedStructure) && <FormField
                     control={form.control}
                     name="constructedArea"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Built-up Area (Sqft)</FormLabel>
-                        <FormControl>
-                          <Input type="number" placeholder="Enter built-up area" {...field} />
-                        </FormControl>
+                        <FormLabel>Built-up / Constructed area</FormLabel>
+                        <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-2">
+                          <FormControl><Input type="number" min="0" placeholder="Enter built-up area" {...field} /></FormControl>
+                          <select aria-label="Built-up / Constructed area unit" className="h-10 rounded-md border bg-background px-3" {...form.register('constructedAreaUnit')}>
+                            {['sq ft','sq m','sq yd'].map(unit=><option key={unit} value={unit}>{unit}</option>)}
+                          </select>
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}
-                  />
-                  {/* Plot Area - Only for Industrial properties */}
-                  {selectedPropertyType === "industrial" && (
+                  />}
+                  {structureUsesPlotArea(selectedStructure) && (
                     <FormField
                       control={form.control}
                       name="plotArea"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Plot Area (Sqft)</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Enter plot area" {...field} />
-                          </FormControl>
+                          <FormLabel>Plot area</FormLabel>
+                          <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-2">
+                            <FormControl><Input type="number" min="0" placeholder="Enter plot area" {...field} /></FormControl>
+                            <select aria-label="Plot area unit" className="h-10 rounded-md border bg-background px-3" {...form.register('plotAreaUnit')}>
+                              {['sq ft','sq m','sq yd','acre','hectare'].map(unit=><option key={unit} value={unit}>{unit}</option>)}
+                            </select>
+                          </div>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -1168,203 +1064,10 @@ const AddPropertyForm = () => {
                       )}
                     />
 
-                    <FormField control={form.control} name="tenantEmergencyContact"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Emergency Contact</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Name and Phone" {...field} value={field.value || ""} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-
-
-                    {/* Employment Details Section */}
-                    <div className="lg:col-span-3 mt-6 pt-4 border-t">
-                      <h4 className="text-md font-medium mb-4 text-gray-700 flex items-center gap-2">
-                        <User className="h-4 w-4" />
-                        Employment Details
-                      </h4>
-                    </div>
-
-                    <FormField
-                      control={form.control}
-                      name="tenantEmploymentStatus"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Employment Status</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value || ""}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select status" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="employed">Employed</SelectItem>
-                              <SelectItem value="self-employed">Self-Employed</SelectItem>
-                              <SelectItem value="unemployed">Unemployed</SelectItem>
-                              <SelectItem value="student">Student</SelectItem>
-                              <SelectItem value="retired">Retired</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField control={form.control} name="tenantEmployer"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Employer/Company</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Company name" {...field} value={field.value || ""} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-
-                    {/* Spouse Information Section */}
-                    <div className="lg:col-span-3 mt-6 pt-4 border-t">
-                      <FormField
-                        control={form.control}
-                        name="tenantIsMarried"
-                        render={({ field }) => (
-                          <FormItem className="flex flex-row items-start space-x-3 space-y-0">
-                            <FormControl>
-                              <Checkbox
-                                checked={field.value ?? false}
-                                onCheckedChange={field.onChange}
-                              />
-                            </FormControl>
-                            <div className="space-y-1 leading-none">
-                              <FormLabel>Is the tenant married?</FormLabel>
-                            </div>
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-
-                    {/* Spouse Details - Only show when isMarried is true */}
-                    {form.watch("tenantIsMarried") && (
-                      <>
-                        <div className="lg:col-span-3 p-4 bg-slate-50 rounded-lg border">
-                          <h4 className="text-md font-medium mb-4 text-gray-700 flex items-center gap-2">
-                            <User className="h-4 w-4" />
-                            Spouse Information
-                          </h4>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <FormField control={form.control} name="tenantSpouse.firstName"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Spouse First Name <span className="text-red-500">*</span></FormLabel>
-                                  <FormControl>
-                                    <Input placeholder="Enter spouse first name" {...field} value={field.value || ""} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            <FormField control={form.control} name="tenantSpouse.lastName"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Spouse Last Name <span className="text-red-500">*</span></FormLabel>
-                                  <FormControl>
-                                    <Input placeholder="Enter spouse last name" {...field} value={field.value || ""} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            <FormField control={form.control} name="tenantSpouse.email"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Spouse Email</FormLabel>
-                                  <FormControl>
-                                    <Input type="email" placeholder="spouse@example.com" {...field} value={field.value || ""} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            <FormField control={form.control} name="tenantSpouse.phone"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Spouse Phone <span className="text-red-500">*</span></FormLabel>
-                                  <FormControl>
-                                    <Input placeholder="+9193 XXXXXX" {...field} value={field.value || ""} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            <FormField
-                              control={form.control}
-                              name="tenantSpouse.employmentStatus"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Spouse Employment Status</FormLabel>
-                                  <Select onValueChange={field.onChange} value={field.value || ""}>
-                                    <FormControl>
-                                      <SelectTrigger>
-                                        <SelectValue placeholder="Select status" />
-                                      </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                      <SelectItem value="employed">Employed</SelectItem>
-                                      <SelectItem value="self-employed">Self-Employed</SelectItem>
-                                      <SelectItem value="unemployed">Unemployed</SelectItem>
-                                      <SelectItem value="student">Student</SelectItem>
-                                      <SelectItem value="retired">Retired</SelectItem>
-                                      <SelectItem value="homemaker">Homemaker</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            <FormField control={form.control} name="tenantSpouse.employer"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Spouse Employer/Company</FormLabel>
-                                  <FormControl>
-                                    <Input placeholder="Company name" {...field} value={field.value || ""} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            <div className="md:col-span-2">
-                              <FormField control={form.control} name="tenantSpouse.notes"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Spouse Additional Notes</FormLabel>
-                                    <FormControl>
-                                      <Textarea placeholder="Any additional notes about the spouse" rows={3} {...field} value={field.value || ""} />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </>
-                    )}
-
                     {/* Agreement Details Section */}
                     <div className="lg:col-span-3 mt-6 pt-4 border-t">
-                      <h4 className="text-md font-medium mb-4 text-gray-700">Agreement Details</h4>
+                      <h4 className="text-md font-medium mb-2 text-gray-700">Initial lease details</h4>
+                      <p className="text-sm text-muted-foreground">Complete deposits, notices, rent schedules and tenant profile details later in Add Tenant.</p>
                     </div>
 
                     <FormField
@@ -1400,7 +1103,6 @@ const AddPropertyForm = () => {
                         </FormItem>
                       )}
                     />
-
                     <FormField
                       control={form.control}
                       name="agreementStartDate"
@@ -1428,13 +1130,16 @@ const AddPropertyForm = () => {
                         </FormItem>
                       )}
                     />
+                    <FormField control={form.control} name="noticePeriod" render={({field})=><FormItem><FormLabel>Notice / Early Termination Period (months)</FormLabel><FormControl><Input type="number" min="0" max="120" {...field}/></FormControl><FormMessage/></FormItem>}/>
+                    <FormField control={form.control} name="lockInPeriod" render={({field})=><FormItem><FormLabel>Lock-in Period (months)</FormLabel><FormControl><Input type="number" min="0" max="120" {...field}/></FormControl><FormMessage/></FormItem>}/>
+                    <NextAgreementFields idPrefix="owner-next-agreement" enabled={addNextAgreementManually} currentAgreementEndDate={form.watch('agreementEndDate')||''} value={nextAgreementDraft} onEnabledChange={setAddNextAgreementManually} onChange={setNextAgreementDraft}/>
                   </div>
                 )}
 
 
 
                 {/* Pricing Information */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 border rounded-lg">
+                {['rent','sell'].includes(listingType||'') && <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 border rounded-lg">
                   <div className="lg:col-span-2">
                     <h3 className="text-lg font-semibold mb-4">
                       Pricing Information
@@ -1450,10 +1155,10 @@ const AddPropertyForm = () => {
                     <>
                       <FormField
                         control={form.control}
-                        name="monthlyRent"
+                        name={form.watch('rentalStatus')==='rented'?"monthlyRent":"expectedRent"}
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Monthly Rent (₹) *</FormLabel>
+                          <FormLabel>{form.watch('rentalStatus')==='rented'?'Finalized monthly rent':'Asking monthly rent'} (₹) *</FormLabel>
                             <FormControl>
                               <Input
                                 placeholder="Enter monthly rent amount (e.g., 25000)"
@@ -1461,58 +1166,12 @@ const AddPropertyForm = () => {
                                 {...field}
                               />
                             </FormControl>
+                            <AmountInWords amount={field.value}/>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
 
-                      {/* Additional periods only; Year 1 comes from the core agreement fields. */}
-                      {form.watch("rentalStatus") === "rented" && (
-                        <div className="mt-6 space-y-4 pt-4 border-t col-span-1 lg:col-span-2">
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                            <div><FormLabel className="text-base font-semibold">Additional Year-wise Rent (Optional)</FormLabel><FormDescription>Year 1 uses the monthly finalized rent and agreement dates above.</FormDescription></div>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              disabled={!agreementStartDate||rentScheduleFields.length>=additionalRentYearCount(agreementPeriod||'')}
-                              onClick={() => {const row=additionalRentPeriod(agreementStartDate||'',agreementPeriod||'',rentScheduleFields.length);if(row)appendRentSchedule(row);}}
-                            >
-                              <Plus className="h-4 w-4 mr-2" />
-                              Add Year {rentScheduleFields.length+2} Rent
-                            </Button>
-                          </div>
-
-                          <div className="space-y-4">
-                            {rentScheduleFields.map((field, index) => (
-                              <div key={field.id} className="grid grid-cols-1 md:grid-cols-[minmax(180px,1fr)_minmax(240px,1.4fr)_auto] gap-4 p-4 border rounded-lg bg-gray-50/50 items-end">
-                                <div>
-                                  <FormLabel className="text-xs">{form.watch(`rentSchedule.${index}.year`)} Monthly Rent (₹)</FormLabel>
-                                  <Input
-                                    type="number"
-                                    min="1"
-                                    {...form.register(`rentSchedule.${index}.amount`)}
-                                    placeholder="Amount"
-                                    className="bg-white"
-                                  />
-                                </div>
-                                <div className="grid gap-1"><FormLabel className="text-xs">Applicable Period</FormLabel><strong className="text-sm">{form.watch(`rentSchedule.${index}.fromDate`)} to {form.watch(`rentSchedule.${index}.toDate`)}</strong><span className="text-xs text-muted-foreground">{form.watch(`rentSchedule.${index}.months`)} month{form.watch(`rentSchedule.${index}.months`)==='1'?'':'s'}</span></div>
-                                <div className="flex justify-end pb-1">
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => {for(let row=rentScheduleFields.length-1;row>=index;row--)removeRentSchedule(row);}}
-                                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                    >
-                                      <Trash2 className="h-4 w-4 mr-2" />Remove
-                                    </Button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
                     </>
                   )}
 
@@ -1532,6 +1191,7 @@ const AddPropertyForm = () => {
                                   {...field}
                                 />
                               </FormControl>
+                              <AmountInWords amount={field.value}/>
                               <FormMessage />
                             </FormItem>
                           )}
@@ -1541,89 +1201,8 @@ const AddPropertyForm = () => {
                     </div>
                   )}
 
-                  {!form.watch("listingType") && (
-                    <div className="lg:col-span-2 text-center text-gray-500 py-8 bg-gray-50 rounded-lg">
-                      <p>Please select a listing type above to see pricing options</p>
-                    </div>
-                  )}
-                </div>
+                </div>}
 
-
-
-                {/* Security & Agreement - Only for Rent */}
-                {form.watch("listingType") === "rent" && (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 border rounded-lg">
-                    <div className="lg:col-span-2">
-                      <h3 className="text-lg font-semibold mb-4">Security Deposit</h3>
-                    </div>
-
-                    <FormField
-                      control={form.control}
-                      name="securityDeposit"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Security Deposit Amount (in ₹)</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Enter security deposit amount" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                )}
-
-
-                {/* Notice & Lock-in Period - Only for Rented properties */}
-                {form.watch("listingType") === "rent" && form.watch("rentalStatus") === "rented" && (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 border rounded-lg">
-                    <div className="lg:col-span-2">
-                      <h3 className="text-lg font-semibold mb-4">Notice and Lock-in Period</h3>
-                    </div>
-
-                    <FormField
-                      control={form.control}
-                      name="noticePeriod"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Notice Period / Early Termination Notice <span className="text-red-500">*</span></FormLabel>
-                          <Select
-                            onValueChange={field.onChange}
-                            value={field.value || ""}
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select Notice Period" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="1 Month">1 Month</SelectItem>
-                              <SelectItem value="2 Months">2 Months</SelectItem>
-                              <SelectItem value="3 Months">3 Months</SelectItem>
-                              <SelectItem value="4 Months">4 Months</SelectItem>
-                              <SelectItem value="5 Months">5 Months</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="lockInPeriod"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Lock-in Period (in Months)</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Specify lock-in period in months" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                )}
 
 
                 {/* Unit Condition & Maintenance */}
@@ -1761,7 +1340,7 @@ const AddPropertyForm = () => {
                       <FormItem>
                         <FormLabel>Building Image (Exterior view only)</FormLabel>
                         <FormDescription className="text-xs text-muted-foreground">
-                          Upload only the building exterior image. This image will be shown publicly.
+                          {listingType==='manage'?'Optional reference image for private property management.':'Upload the building exterior used for the reviewed public listing.'}
                         </FormDescription>
                         <FormControl>
                           <div className="space-y-4">
@@ -1791,7 +1370,7 @@ const AddPropertyForm = () => {
                               <div className="max-w-xs">
                                 <div className="relative group">
                                   <div className="aspect-video rounded-lg border-2 border-dashed border-gray-300 overflow-hidden">
-                                    <img
+                                    <SessionMediaImage
                                       src={uploadedImages[0]}
                                       alt="Building exterior"
                                       className="w-full h-full object-cover"
@@ -1864,7 +1443,7 @@ const AddPropertyForm = () => {
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                               {uploadedInternalImages.map((img, index) => (
                                 <div key={index} className="relative group aspect-video rounded-lg border border-gray-200 overflow-hidden">
-                                  <img src={img} alt={`Internal ${index + 1}`} className="w-full h-full object-cover" />
+                                  <SessionMediaImage src={img} alt={`Internal ${index + 1}`} className="w-full h-full object-cover" />
                                   <Button
                                     type="button"
                                     variant="destructive"

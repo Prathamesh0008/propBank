@@ -1,64 +1,775 @@
 "use client";
-import PendingConnections from './PendingConnections';
-import hubStyles from './PropertyHub.module.css';
-import {OwnerVerificationStatus} from '@/features/admin/OwnerVerification';
-import {useState} from 'react';
-import {useQuery} from '@tanstack/react-query';
-import {useAuth} from '@/contexts/AuthContext';
-import {useParams,Link} from '@/lib/navigation';
-import {workflowRequest} from '@/lib/client-workflows';
-import {todayIST,dueDate,maintenanceLabel,type ProductRecord} from '@/lib/property-product';
-import {Button} from '@/ui/button';
-import {Input} from '@/ui/input';
-import {Badge} from '@/ui/badge';
-import {ServiceRequestHistory} from '@/features/services/ServiceRequestWorkflow';
-import NegotiationPanel from '@/features/negotiations/NegotiationPanel';
+import PendingConnections from "./PendingConnections";
+import hubStyles from "./PropertyHub.module.css";
+import { OwnerVerificationStatus } from "@/features/admin/OwnerVerification";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
+import { useParams, Link } from "@/lib/navigation";
+import { workflowRequest } from "@/lib/client-workflows";
+import {
+  todayIST,
+  dueDate,
+  maintenanceLabel,
+  type ProductRecord,
+} from "@/lib/property-product";
+import { Button } from "@/ui/button";
+import { Input } from "@/ui/input";
+import { Badge } from "@/ui/badge";
+import { ServiceRequestHistory } from "@/features/services/ServiceRequestWorkflow";
+import NegotiationPanel from "@/features/negotiations/NegotiationPanel";
+import AmountInWords from "@/components/AmountInWords";
+import { SUPPORTING_DOCUMENT_TYPES } from "@/lib/supporting-documents";
 
-export interface HubResponse {hubs:ProductRecord[];actions:ProductRecord[];metrics:Record<string,number>;pipeline:ProductRecord[];truncated:boolean}
-export function useProductHub(propertyId?:string){const {user,loading}=useAuth();return useQuery({queryKey:['productHub',user?.uid,propertyId||'portfolio'],queryFn:()=>workflowRequest<HubResponse>(`property-hub${propertyId?'?propertyId='+encodeURIComponent(propertyId):''}`),enabled:!!user&&!loading,staleTime:0});}
-function CompactActions({actions,propertyTitles=false}:{actions:ProductRecord[];propertyTitles?:boolean}){
- if(!actions.length)return <div className={hubStyles.statusBar}><strong>Action required</strong><span>No pending actions</span></div>;
- return <details className={hubStyles.compactDisclosure}><summary><span><strong>Action required</strong><span className={hubStyles.summaryText}>{actions.length} pending</span></span><span className={hubStyles.expandLabel}>View details</span></summary><div className={hubStyles.actionList}>{actions.map((action,index)=><Link className="break-words" key={`${action.path}-${index}`} to={action.path}>{propertyTitles&&action.propertyTitle?<strong>{action.propertyTitle}: </strong>:null}{action.label}</Link>)}</div></details>;
+export interface HubResponse {
+  hubs: ProductRecord[];
+  actions: ProductRecord[];
+  metrics: Record<string, number>;
+  pipeline: ProductRecord[];
+  truncated: boolean;
 }
-export function ProductDashboard({admin=false}:{admin?:boolean}){
- const query=useProductHub();
- const pending=!admin?<PendingConnections/>:null;
- if(query.isLoading)return <>{pending}<p className={hubStyles.feedbackBar} role="status">Loading property actions…</p></>;
- if(query.error)return <>{pending}<div className={`${hubStyles.feedbackBar} ${hubStyles.errorBar}`} role="alert"><span>Could not load property actions.</span><Button size="sm" variant="outline" onClick={()=>query.refetch()}>Retry</Button></div></>;
- const data=query.data;if(!data)return <>{pending}</>;
- return <>{pending}<section className={hubStyles.dashboard}><div className={hubStyles.dashboardHeading}><h2>{admin?'Portfolio operations':'Property activity'}</h2><span>{data.hubs.length} {data.hubs.length===1?'property':'properties'}</span></div>{data.truncated&&<p className={hubStyles.notice}>Showing the first 250 authorized properties; totals cover this subset.</p>}
- {admin&&<details className={hubStyles.compactDisclosure}><summary><span><strong>Portfolio status</strong><span className={hubStyles.summaryText}>{Object.values(data.metrics).reduce((total,value)=>total+value,0)} tracked states</span></span><span className={hubStyles.expandLabel}>View metrics</span></summary><div className={hubStyles.metrics}>{Object.entries(data.metrics).map(([key,value])=><div className={hubStyles.metric} key={key}><span>{key.replace(/([A-Z])/g,' $1')}</span><strong>{value}</strong></div>)}</div></details>}
- <CompactActions actions={data.actions} propertyTitles/>
- <details className={hubStyles.compactDisclosure}><summary><span><strong>Property hubs and current states</strong><span className={hubStyles.summaryText}>{data.hubs.length} available</span></span><span className={hubStyles.expandLabel}>View details</span></summary><ul className={hubStyles.hubList}>{data.hubs.map(h=><li key={h.property.id}><Link to={`/manage-property/${h.property.id}`}>{h.property.title} · {h.property.id}</Link><span>{h.statuses.join(' · ')}</span></li>)}</ul></details>
- {!admin&&data.actions.some(a=>['broker','customer'].includes(a.role))&&<section id="assigned-offers"><h3 className="font-semibold">Your assigned / customer negotiations</h3><NegotiationPanel/></section>}
- {admin&&data.pipeline.length>0&&<details className={hubStyles.compactDisclosure}><summary><span><strong>Inquiry / customer progression</strong><span className={hubStyles.summaryText}>{data.pipeline.length} tracked</span></span><span className={hubStyles.expandLabel}>View details</span></summary><div className={hubStyles.pipeline}><p>Stages use recorded responses and visits/offers linked by property and user UID. Unlinked inquiries remain separate.</p>{data.pipeline.map(item=><p className="break-words" key={item.id}>{item.name||item.title||'Inquiry'} · {item.stage} {item.propertyId&&<Link to={`/manage-property/${item.propertyId}`}>Property</Link>}</p>)}</div></details>}</section></>;
+export function useProductHub(propertyId?: string) {
+  const { user, loading } = useAuth();
+  return useQuery({
+    queryKey: ["productHub", user?.uid, propertyId || "portfolio"],
+    queryFn: () =>
+      workflowRequest<HubResponse>(
+        `property-hub${propertyId ? "?propertyId=" + encodeURIComponent(propertyId) : ""}`,
+      ),
+    enabled: !!user && !loading,
+    staleTime: 0,
+  });
 }
-function Checklist({items}:{items:Array<[string,boolean,string]>}){return <ul className="space-y-2">{items.map(([label,done,path])=><li key={label}><Link className="underline" to={path}>{done?'✓ Recorded':'○ Not recorded'} — {label}</Link></li>)}</ul>;}
-export default function PropertyHub(){
- const {propertyId}=useParams<{propertyId:string}>(),{user}=useAuth();const query=useProductHub(propertyId);
- const [failure,setFailure]=useState(''),[feedback,setFeedback]=useState(''),[busy,setBusy]=useState(false);
- if(query.isLoading)return <main className="p-6" role="status">Loading Property 360…</main>;
- if(query.error||!query.data?.hubs[0])return <main className="p-6"><p role="alert">Property unavailable or access not permitted.</p><Link to="/manage-property">Back to properties</Link></main>;
- const h=query.data.hubs[0],p=h.property;
- async function save(event:React.FormEvent<HTMLFormElement>,action:string){event.preventDefault();setFailure('');setFeedback('');setBusy(true);const form=new FormData(event.currentTarget);try{await workflowRequest('property-hub',action==='internal_note'?{propertyId,action,note:form.get('note')}:{propertyId,action,version:h.ledgerVersion,month:form.get('month'),expectedRent:Number(form.get('expectedRent')),dueDate:form.get('dueDate'),status:form.get('status'),receiptId:form.get('receiptId')||'',notes:form.get('notes')||''},'PATCH');setFeedback('Tracking saved.');await query.refetch();}catch(error){setFailure(error instanceof Error?error.message:'Could not save.');await query.refetch();}finally{setBusy(false);}}
- const month=todayIST().slice(0,7),current=h.ledger.find((r:ProductRecord)=>r.month===month)||{};
- return <main className={`${hubStyles.hub} mx-auto max-w-6xl px-4 py-8 space-y-7`}><Link className="underline" to="/manage-property">Back to properties</Link><header className="space-y-3"><h1 className="text-2xl sm:text-3xl font-bold break-words">Property 360: {p.title}</h1><p className="break-words">{p.id} · {p.buildingName} · {p.unitNumber} · {p.location||p.address}</p><div className="flex flex-wrap gap-2">{h.statuses.map((s:string)=><Badge key={s}>{s}</Badge>)}</div>{p.createdAs==='tenant'&&<OwnerVerificationStatus status={p.ownershipVerification} reason={p.ownershipVerificationReason}/>}{p.ownershipVerification==='pending'&&<p>Tenant-supplied owner details await verification; owner permissions are unchanged.</p>}</header>
- <nav aria-label="Property sections" className={hubStyles.sectionNav}>{['overview','pending-connections','relationships','rent','agreement','documents','maintenance','inspection','reports','visits','negotiation','activity'].map(section=><a className="underline capitalize" key={section} href={`#${section}`}>{section.replaceAll('-',' ')}</a>)}</nav>
- {failure&&<p role="alert" className="text-destructive">{failure}</p>}{feedback&&<p role="status">{feedback}</p>}
- <section id="overview" className={`${hubStyles.hubSection} p-4 space-y-2`}><h2 className="text-xl font-semibold">Overview</h2><div className={hubStyles.overviewLine}><span>Access: {h.role}. Current rental state: {p.rentalStatus||'Not recorded'}.</span>{h.role==='owner'||h.role==='admin'?<Link to={`/edit-property/${p.id}`}>Edit details</Link>:null}</div><CompactActions actions={query.data.actions}/></section>
- <PendingConnections/>
- <section id="relationships" className={`${hubStyles.hubSection} p-4 space-y-2`}><h2 className="text-xl font-semibold">Owner / Tenant</h2><p>Owner: {p.ownerName||'Not linked / awaiting verification'}</p>{p.reportedOwner&&<details><summary>Tenant-supplied owner details</summary>{Object.entries(p.reportedOwner).map(([key,value])=><p className="break-words" key={key}>{key}: {String(value)}</p>)}</details>}{h.tenants.map((t:ProductRecord,index:number)=><p key={t.id||index}>{t.firstName} {t.lastName} · {t.lifecycle} · {t.linked?'Linked account':'Account not linked'}</p>)}{(h.role==='owner'||h.role==='admin')&&<Link className="underline" to={`/add-tenant/${p.id}`}>Manage tenant relationship</Link>}</section>
- <section id="rent" className={`${hubStyles.hubSection} p-4 space-y-4`}><h2 className="text-xl font-semibold">Rent ledger</h2><p className="text-sm">Tracking only. Due/overdue means payment has not been recorded here; receipts alone do not mark rent paid. Ledger notes are shared with property members.</p>{h.ledger.length?h.ledger.map((r:ProductRecord)=><article className="border rounded p-3 break-words" key={r.month}><strong>{r.month} · {r.displayStatus}</strong><p>Expected rent: ₹{r.expectedRent} · Due: {r.dueDate}</p><p>{r.notes}</p>{r.receiptId&&h.documents.find((d:ProductRecord)=>d.id===r.receiptId)&&<a className="underline" href={h.documents.find((d:ProductRecord)=>d.id===r.receiptId).fileUrl} target="_blank" rel="noopener noreferrer">Open receipt</a>}</article>):<p>No rent months recorded. Add supplied terms to track a month.</p>}
- {(h.role==='owner'||h.role==='admin')&&<form key={h.ledgerVersion} className="grid gap-3 sm:grid-cols-2" onSubmit={e=>save(e,'rent_ledger')}><label>Rent month<Input required type="month" name="month" defaultValue={month} onChange={event=>{const selected=h.ledger.find((r:ProductRecord)=>r.month===event.target.value)||{};const values={expectedRent:selected.expectedRent||p.monthlyRent||'',dueDate:selected.dueDate||dueDate(event.target.value,Number(p.paymentDueDate)||1),status:selected.status||'due',receiptId:selected.receiptId||'',notes:selected.derived?'':selected.notes||''};for(const [name,value] of Object.entries(values)){const input=event.currentTarget.form?.elements.namedItem(name) as HTMLInputElement|null;if(input)input.value=String(value);}}}/></label><label>Expected rent<Input required type="number" min="0" step="0.01" name="expectedRent" defaultValue={current.expectedRent||p.monthlyRent||''}/></label><label>Rent due date<Input required type="date" name="dueDate" defaultValue={current.dueDate||dueDate(month,Number(p.paymentDueDate)||1)}/></label><label>Recorded payment status<select aria-label="Recorded payment status" className="border rounded h-10 w-full" name="status" defaultValue={current.status||'due'}><option value="due">Due / Not recorded paid</option><option value="paid">Paid — recorded by owner/admin</option></select></label><label>Receipt document<select aria-label="Receipt document" className="border rounded h-10 w-full" name="receiptId" defaultValue={current.receiptId||''}><option value="">No receipt attached</option>{h.documents.filter((d:ProductRecord)=>d.documentType==='payment_receipt').map((d:ProductRecord)=><option value={d.id} key={d.id}>{d.documentName}</option>)}</select></label><label>Rent notes<Input maxLength={1000} name="notes" defaultValue={current.derived?'':current.notes||''}/></label><Button disabled={busy}>Save rent tracking</Button></form>}
- <Link className="underline" to={`/attach-documents/${p.id}?type=payment_receipt`}>Attach a receipt</Link></section>
- <section id="agreement" className={`${hubStyles.hubSection} p-4 space-y-3`}><h2 className="text-xl font-semibold">Agreement / Move-in / Move-out</h2><p>{p.agreementStartDate||'Start not recorded'} → {p.agreementEndDate||'End not recorded'} · {p.agreementStatus||'No workflow status recorded'}</p><div className="flex flex-wrap gap-4"><Link className="underline" to={`/renew-agreement/${p.id}`}>Renewal and owner approval</Link><Link className="underline" to={`/terminate-agreement/${p.id}`}>Notice / Termination</Link></div><div className="grid gap-4 sm:grid-cols-2"><div><h3 className="font-semibold">Move-in progress</h3><Checklist items={[["Tenant assigned",h.moveIn.tenantAssigned,`#relationships`],["Agreement recorded",h.moveIn.agreementRecorded,`#agreement`],["Initial inspection",h.moveIn.initialInspection,`/inspection-report/${p.id}`],["Documents attached",h.moveIn.documentsAttached,`/attach-documents/${p.id}`],["Active tenancy",h.moveIn.activeTenancy,'#relationships']]}/></div><div><h3 className="font-semibold">Move-out progress</h3><Checklist items={[["Notice / Termination",h.moveOut.notice,`/terminate-agreement/${p.id}`],["Final inspection / Handover report",h.moveOut.finalInspection,`/inspection-report/${p.id}`],["Tenancy closed",h.moveOut.closed,`#activity`]]}/><p>Unresolved requests: {h.moveOut.pendingTasks}. Handover/legal or financial settlement is not inferred from a report.</p></div></div></section>
- <section id="documents" className={`${hubStyles.hubSection} p-4`}><h2 className="text-xl font-semibold">Documents</h2><Link className="underline" to={`/attach-documents/${p.id}`}>Upload / List / Review documents</Link><p>{h.documents.length} document(s) recorded</p></section>
- <section id="maintenance" className={`${hubStyles.hubSection} p-4`}><h2 className="text-xl font-semibold">Maintenance</h2><Link className="underline" to={`/request-services/${p.id}`}>Raise request</Link><p>{h.requests.map((r:ProductRecord)=>`${r.serviceName}: ${maintenanceLabel(r.status)}${r.isArchived?' (Archived)':''}`).join(' · ')||'No requests recorded'}</p><ServiceRequestHistory propertyId={p.id} admin={h.role==='admin'}/></section>
- <section id="inspection" className={`${hubStyles.hubSection} p-4`}><h2 className="text-xl font-semibold">Inspection</h2><Link className="underline" to={`/inspection-report/${p.id}`}>Possession / Handover inspection and history</Link><p>{h.inspections.length} inspection(s) recorded</p></section>
- <section id="reports" className={`${hubStyles.hubSection} p-4`}><h2 className="text-xl font-semibold">TDS / Receipts</h2><p>Supplied reports and receipts only; no tax calculation or payment processing.</p><div className="flex flex-wrap gap-4"><Link className="underline" to={`/attach-documents/${p.id}?type=tds_report`}>TDS reports</Link><Link className="underline" to={`/attach-documents/${p.id}?type=payment_receipt`}>Payment receipts</Link></div></section>
- <section id="visits" className={`${hubStyles.hubSection} p-4 space-y-2`}><h2 className="text-xl font-semibold">Visit history</h2><Link className="underline" to={`/visit-planner?propertyId=${p.id}`}>Schedule / Manage visits</Link>{h.visits.length?h.visits.map((v:ProductRecord)=><article className="border rounded p-3" key={v.id}><p className="break-words">{v.title} · {v.status} · {new Date(v.visitDate).toLocaleString('en-IN')} · User: {v.userId}</p>{v.status==='scheduled'&&(v.userId===user?.uid||h.role==='admin')&&<div className="flex flex-wrap gap-2">{['completed','cancelled'].map(status=><Button disabled={busy} key={status} variant="outline" onClick={async()=>{setBusy(true);try{await workflowRequest(`visits/${v.id}`,{status},'PUT');await query.refetch();}catch(error){setFailure(error instanceof Error?error.message:'Could not update visit');}finally{setBusy(false);}}}>Mark {status}</Button>)}</div>}</article>):<p>No visits recorded for your permitted scope.</p>}</section>
- <section id="negotiation" className={`${hubStyles.hubSection} p-4`}><h2 className="text-xl font-semibold">Negotiation</h2><NegotiationPanel propertyId={p.id} admin={h.role==='admin'}/></section>
- <section id="activity" className={`${hubStyles.hubSection} p-4`}><h2 className="text-xl font-semibold">Activity / History</h2><p className="text-sm mb-3">Combines available record timestamps and existing histories; unrecorded historical events cannot be reconstructed.</p><ol className="space-y-3">{h.history.map((e:ProductRecord,index:number)=><li key={index} className="border-l-2 pl-3 break-words"><time>{new Date(e.at).toLocaleString('en-IN')}</time><p>{e.label}</p><small>{e.source} {e.actorUID}</small></li>)}</ol></section>
- {h.role==='admin'&&<section className="border rounded-lg p-4 space-y-3"><h2 className="text-xl font-semibold">Internal admin notes</h2><p>Visible to administrators only. Service resolution comments remain shared with request participants.</p>{h.internalNotes.map((n:ProductRecord)=><p className="break-words" key={n.id}>{n.text} · {new Date(n.at).toLocaleString('en-IN')} · {n.actorUID}</p>)}<form onSubmit={e=>save(e,'internal_note')}><label>Internal note<Input name="note" required maxLength={2000}/></label><Button disabled={busy}>Save internal note</Button></form></section>}
- </main>;
+function CompactActions({
+  actions,
+  propertyTitles = false,
+}: {
+  actions: ProductRecord[];
+  propertyTitles?: boolean;
+}) {
+  if (!actions.length)
+    return (
+      <div className={hubStyles.statusBar}>
+        <strong>Action required</strong>
+        <span>No pending actions</span>
+      </div>
+    );
+  return (
+    <details className={hubStyles.compactDisclosure}>
+      <summary>
+        <span>
+          <strong>Action required</strong>
+          <span className={hubStyles.summaryText}>
+            {actions.length} pending
+          </span>
+        </span>
+        <span className={hubStyles.expandLabel}>View details</span>
+      </summary>
+      <div className={hubStyles.actionList}>
+        {actions.map((action, index) => (
+          <Link
+            className="break-words"
+            key={`${action.path}-${index}`}
+            to={action.path}
+          >
+            {propertyTitles && action.propertyTitle ? (
+              <strong>{action.propertyTitle}: </strong>
+            ) : null}
+            {action.label}
+          </Link>
+        ))}
+      </div>
+    </details>
+  );
+}
+export function ProductDashboard({ admin = false }: { admin?: boolean }) {
+  const query = useProductHub();
+  const pending = !admin ? <PendingConnections /> : null;
+  if (query.isLoading)
+    return (
+      <>
+        {pending}
+        <p className={hubStyles.feedbackBar} role="status">
+          Loading property actions…
+        </p>
+      </>
+    );
+  if (query.error)
+    return (
+      <>
+        {pending}
+        <div
+          className={`${hubStyles.feedbackBar} ${hubStyles.errorBar}`}
+          role="alert"
+        >
+          <span>Could not load property actions.</span>
+          <Button size="sm" variant="outline" onClick={() => query.refetch()}>
+            Retry
+          </Button>
+        </div>
+      </>
+    );
+  const data = query.data;
+  if (!data) return <>{pending}</>;
+  return (
+    <>
+      {pending}
+      <section className={hubStyles.dashboard}>
+        <div className={hubStyles.dashboardHeading}>
+          <h2>{admin ? "Portfolio operations" : "Property activity"}</h2>
+          <span>
+            {data.hubs.length}{" "}
+            {data.hubs.length === 1 ? "property" : "properties"}
+          </span>
+        </div>
+        {data.truncated && (
+          <p className={hubStyles.notice}>
+            Showing the first 250 authorized properties; totals cover this
+            subset.
+          </p>
+        )}
+        {admin && (
+          <details className={hubStyles.compactDisclosure}>
+            <summary>
+              <span>
+                <strong>Portfolio status</strong>
+                <span className={hubStyles.summaryText}>
+                  {Object.values(data.metrics).reduce(
+                    (total, value) => total + value,
+                    0,
+                  )}{" "}
+                  tracked states
+                </span>
+              </span>
+              <span className={hubStyles.expandLabel}>View metrics</span>
+            </summary>
+            <div className={hubStyles.metrics}>
+              {Object.entries(data.metrics).map(([key, value]) => (
+                <div className={hubStyles.metric} key={key}>
+                  <span>{key.replace(/([A-Z])/g, " $1")}</span>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+        <CompactActions actions={data.actions} propertyTitles />
+        <details className={hubStyles.compactDisclosure}>
+          <summary>
+            <span>
+              <strong>Property hubs and current states</strong>
+              <span className={hubStyles.summaryText}>
+                {data.hubs.length} available
+              </span>
+            </span>
+            <span className={hubStyles.expandLabel}>View details</span>
+          </summary>
+          <ul className={hubStyles.hubList}>
+            {data.hubs.map((h) => (
+              <li key={h.property.id}>
+                <Link to={`/manage-property/${h.property.id}`}>
+                  {h.property.title} · {h.property.id}
+                </Link>
+                <span>{h.statuses.join(" · ")}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+        {!admin &&
+          data.actions.some((a) => ["broker", "customer"].includes(a.role)) && (
+            <section id="assigned-offers">
+              <h3 className="font-semibold">
+                Your assigned / customer negotiations
+              </h3>
+              <NegotiationPanel />
+            </section>
+          )}
+        {admin && data.pipeline.length > 0 && (
+          <details className={hubStyles.compactDisclosure}>
+            <summary>
+              <span>
+                <strong>Inquiry / customer progression</strong>
+                <span className={hubStyles.summaryText}>
+                  {data.pipeline.length} tracked
+                </span>
+              </span>
+              <span className={hubStyles.expandLabel}>View details</span>
+            </summary>
+            <div className={hubStyles.pipeline}>
+              <p>
+                Stages use recorded responses and visits/offers linked by
+                property and user UID. Unlinked inquiries remain separate.
+              </p>
+              {data.pipeline.map((item) => (
+                <p className="break-words" key={item.id}>
+                  {item.name || item.title || "Inquiry"} · {item.stage}{" "}
+                  {item.propertyId && (
+                    <Link to={`/manage-property/${item.propertyId}`}>
+                      Property
+                    </Link>
+                  )}
+                </p>
+              ))}
+            </div>
+          </details>
+        )}
+      </section>
+    </>
+  );
+}
+function Checklist({ items }: { items: Array<[string, boolean, string]> }) {
+  return (
+    <ul className="space-y-2">
+      {items.map(([label, done, path]) => (
+        <li key={label}>
+          <Link className="underline" to={path}>
+            {done ? "✓ Recorded" : "○ Not recorded"} — {label}
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+export default function PropertyHub() {
+  const { propertyId } = useParams<{ propertyId: string }>(),
+    { user } = useAuth();
+  const query = useProductHub(propertyId);
+  const [failure, setFailure] = useState(""),
+    [feedback, setFeedback] = useState(""),
+    [busy, setBusy] = useState(false),
+    [ledgerAmount, setLedgerAmount] = useState<string | null>(null);
+  if (query.isLoading)
+    return (
+      <main className="p-6" role="status">
+        Loading Property 360…
+      </main>
+    );
+  if (query.error || !query.data?.hubs[0])
+    return (
+      <main className="p-6">
+        <p role="alert">Property unavailable or access not permitted.</p>
+        <Link to="/manage-property">Back to properties</Link>
+      </main>
+    );
+  const h = query.data.hubs[0],
+    p = h.property;
+  const supportingDocuments = h.documents.filter((document: ProductRecord) =>
+    Object.hasOwn(SUPPORTING_DOCUMENT_TYPES, String(document.documentType)),
+  );
+  async function save(event: React.FormEvent<HTMLFormElement>, action: string) {
+    event.preventDefault();
+    setFailure("");
+    setFeedback("");
+    setBusy(true);
+    const form = new FormData(event.currentTarget);
+    try {
+      await workflowRequest(
+        "property-hub",
+        action === "internal_note"
+          ? { propertyId, action, note: form.get("note") }
+          : {
+              propertyId,
+              action,
+              version: h.ledgerVersion,
+              month: form.get("month"),
+              expectedRent: Number(form.get("expectedRent")),
+              dueDate: form.get("dueDate"),
+              status: form.get("status"),
+              receiptId: form.get("receiptId") || "",
+              notes: form.get("notes") || "",
+            },
+        "PATCH",
+      );
+      setFeedback("Tracking saved.");
+      await query.refetch();
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : "Could not save.");
+      await query.refetch();
+    } finally {
+      setBusy(false);
+    }
+  }
+  const month = todayIST().slice(0, 7),
+    current = h.ledger.find((r: ProductRecord) => r.month === month) || {};
+  const displayedLedgerAmount =
+    ledgerAmount === null
+      ? String(current.expectedRent || p.monthlyRent || "")
+      : ledgerAmount;
+  return (
+    <main className={`${hubStyles.hub} mx-auto max-w-6xl px-4 py-8 space-y-7`}>
+      <Link className="underline" to="/manage-property">
+        Back to properties
+      </Link>
+      <header className="space-y-3">
+        <h1 className="text-2xl sm:text-3xl font-bold break-words">
+          Property 360: {p.title}
+        </h1>
+        <p className="break-words">
+          {p.id} · {p.buildingName} · {p.unitNumber} · {p.location || p.address}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {h.statuses.map((s: string) => (
+            <Badge key={s}>{s}</Badge>
+          ))}
+        </div>
+        {p.createdAs === "tenant" && (
+          <OwnerVerificationStatus
+            status={p.ownershipVerification}
+            reason={p.ownershipVerificationReason}
+          />
+        )}
+        {p.createdAs === "tenant" && (!p.ownershipVerification || p.ownershipVerification === "pending") && (
+          <div className="space-y-2">
+            <p>Tenant-supplied owner details await verification; owner permissions are unchanged.</p>
+            {supportingDocuments.length ? <p role="status">Documents submitted — Awaiting review</p> : h.role === "tenant" ? <Button asChild variant="outline" size="sm"><Link to={`/attach-documents/${p.id}?supporting=1`}>Upload Supporting Documents</Link></Button> : null}
+          </div>
+        )}
+      </header>
+      <nav aria-label="Property sections" className={hubStyles.sectionNav}>
+        {[
+          "overview",
+          "pending-connections",
+          "relationships",
+          "rent",
+          "agreement",
+          "documents",
+          "maintenance",
+          "inspection",
+          "reports",
+          "visits",
+          "negotiation",
+          "activity",
+        ].map((section) => (
+          <a
+            className="underline capitalize"
+            key={section}
+            href={`#${section}`}
+          >
+            {section.replaceAll("-", " ")}
+          </a>
+        ))}
+      </nav>
+      {failure && (
+        <p role="alert" className="text-destructive">
+          {failure}
+        </p>
+      )}
+      {feedback && <p role="status">{feedback}</p>}
+      <section
+        id="overview"
+        className={`${hubStyles.hubSection} p-4 space-y-2`}
+      >
+        <h2 className="text-xl font-semibold">Overview</h2>
+        <div className={hubStyles.overviewLine}>
+          <span>
+            Access: {h.role}. Current rental state:{" "}
+            {p.rentalStatus || "Not recorded"}.
+          </span>
+          {h.role === "owner" || h.role === "admin" ? (
+            <Link to={`/edit-property/${p.id}`}>Edit details</Link>
+          ) : null}
+        </div>
+        <CompactActions actions={query.data.actions} />
+      </section>
+      <PendingConnections />
+      <section
+        id="relationships"
+        className={`${hubStyles.hubSection} p-4 space-y-2`}
+      >
+        <h2 className="text-xl font-semibold">Owner / Tenant</h2>
+        <p>Owner: {p.ownerName || "Not linked / awaiting verification"}</p>
+        {p.reportedOwner && (
+          <details>
+            <summary>Tenant-supplied owner details</summary>
+            {Object.entries(p.reportedOwner).map(([key, value]) => (
+              <p className="break-words" key={key}>
+                {key}: {String(value)}
+              </p>
+            ))}
+          </details>
+        )}
+        {h.tenants.map((t: ProductRecord, index: number) => (
+          <p key={t.id || index}>
+            {t.firstName} {t.lastName} · {t.lifecycle} ·{" "}
+            {t.linked ? "Linked account" : "Account not linked"}
+          </p>
+        ))}
+        {(h.role === "owner" || h.role === "admin") && (
+          <Link className="underline" to={`/add-tenant/${p.id}`}>
+            Manage tenant relationship
+          </Link>
+        )}
+      </section>
+      <section id="rent" className={`${hubStyles.hubSection} p-4 space-y-4`}>
+        <h2 className="text-xl font-semibold">Rent ledger</h2>
+        <p className="text-sm">
+          Tracking only. Due/overdue means payment has not been recorded here;
+          receipts alone do not mark rent paid. Ledger notes are shared with
+          property members.
+        </p>
+        {h.ledger.length ? (
+          h.ledger.map((r: ProductRecord) => (
+            <article className="border rounded p-3 break-words" key={r.month}>
+              <strong>
+                {r.month} · {r.displayStatus}
+              </strong>
+              <p>
+                Expected rent: ₹{r.expectedRent} · Due: {r.dueDate}
+              </p>
+              <p>{r.notes}</p>
+              {r.receiptId &&
+                h.documents.find(
+                  (d: ProductRecord) => d.id === r.receiptId,
+                ) && (
+                  <a
+                    className="underline"
+                    href={
+                      h.documents.find(
+                        (d: ProductRecord) => d.id === r.receiptId,
+                      ).fileUrl
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Open receipt
+                  </a>
+                )}
+            </article>
+          ))
+        ) : (
+          <p>No rent months recorded. Add supplied terms to track a month.</p>
+        )}
+        {(h.role === "owner" || h.role === "admin") && (
+          <form
+            key={h.ledgerVersion}
+            className="grid gap-3 sm:grid-cols-2"
+            onSubmit={(e) => save(e, "rent_ledger")}
+          >
+            <label>
+              Rent month
+              <Input
+                required
+                type="month"
+                name="month"
+                defaultValue={month}
+                onChange={(event) => {
+                  const selected =
+                    h.ledger.find(
+                      (r: ProductRecord) => r.month === event.target.value,
+                    ) || {};
+                  const values = {
+                    expectedRent: selected.expectedRent || p.monthlyRent || "",
+                    dueDate:
+                      selected.dueDate ||
+                      dueDate(
+                        event.target.value,
+                        Number(p.paymentDueDate) || 1,
+                      ),
+                    status: selected.status || "due",
+                    receiptId: selected.receiptId || "",
+                    notes: selected.derived ? "" : selected.notes || "",
+                  };
+                  setLedgerAmount(String(values.expectedRent));
+                  for (const [name, value] of Object.entries(values)) {
+                    if (name === "expectedRent") continue;
+                    const input = event.currentTarget.form?.elements.namedItem(
+                      name,
+                    ) as HTMLInputElement | null;
+                    if (input) input.value = String(value);
+                  }
+                }}
+              />
+            </label>
+            <label>
+              Expected rent
+              <Input
+                required
+                type="number"
+                min="0"
+                step="0.01"
+                name="expectedRent"
+                value={displayedLedgerAmount}
+                onChange={(event) => setLedgerAmount(event.target.value)}
+              />
+              <AmountInWords amount={displayedLedgerAmount} />
+            </label>
+            <label>
+              Rent due date
+              <Input
+                required
+                type="date"
+                name="dueDate"
+                defaultValue={
+                  current.dueDate ||
+                  dueDate(month, Number(p.paymentDueDate) || 1)
+                }
+              />
+            </label>
+            <label>
+              Recorded payment status
+              <select
+                aria-label="Recorded payment status"
+                className="border rounded h-10 w-full"
+                name="status"
+                defaultValue={current.status || "due"}
+              >
+                <option value="due">Due / Not recorded paid</option>
+                <option value="paid">Paid — recorded by owner/admin</option>
+              </select>
+            </label>
+            <label>
+              Receipt document
+              <select
+                aria-label="Receipt document"
+                className="border rounded h-10 w-full"
+                name="receiptId"
+                defaultValue={current.receiptId || ""}
+              >
+                <option value="">No receipt attached</option>
+                {h.documents
+                  .filter(
+                    (d: ProductRecord) => d.documentType === "payment_receipt",
+                  )
+                  .map((d: ProductRecord) => (
+                    <option value={d.id} key={d.id}>
+                      {d.documentName}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label>
+              Rent notes
+              <Input
+                maxLength={1000}
+                name="notes"
+                defaultValue={current.derived ? "" : current.notes || ""}
+              />
+            </label>
+            <Button disabled={busy}>Save rent tracking</Button>
+          </form>
+        )}
+        <Link
+          className="underline"
+          to={`/attach-documents/${p.id}?type=payment_receipt`}
+        >
+          Attach a receipt
+        </Link>
+      </section>
+      <section
+        id="agreement"
+        className={`${hubStyles.hubSection} p-4 space-y-3`}
+      >
+        <h2 className="text-xl font-semibold">
+          Agreement / Move-in / Move-out
+        </h2>
+        <p>
+          {p.agreementStartDate || "Start not recorded"} →{" "}
+          {p.agreementEndDate || "End not recorded"} ·{" "}
+          {p.agreementStatus || "No workflow status recorded"}
+        </p>
+        <div className="flex flex-wrap gap-4">
+          <Link className="underline" to={`/renew-agreement/${p.id}`}>
+            Renewal and owner approval
+          </Link>
+          <Link className="underline" to={`/terminate-agreement/${p.id}`}>
+            Notice / Termination
+          </Link>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <h3 className="font-semibold">Move-in progress</h3>
+            <Checklist
+              items={[
+                ["Tenant assigned", h.moveIn.tenantAssigned, `#relationships`],
+                [
+                  "Agreement recorded",
+                  h.moveIn.agreementRecorded,
+                  `#agreement`,
+                ],
+                [
+                  "Initial inspection",
+                  h.moveIn.initialInspection,
+                  `/inspection-report/${p.id}`,
+                ],
+                [
+                  "Documents attached",
+                  h.moveIn.documentsAttached,
+                  `/attach-documents/${p.id}`,
+                ],
+                ["Active tenancy", h.moveIn.activeTenancy, "#relationships"],
+              ]}
+            />
+          </div>
+          <div>
+            <h3 className="font-semibold">Move-out progress</h3>
+            <Checklist
+              items={[
+                [
+                  "Notice / Termination",
+                  h.moveOut.notice,
+                  `/terminate-agreement/${p.id}`,
+                ],
+                [
+                  "Final inspection / Handover report",
+                  h.moveOut.finalInspection,
+                  `/inspection-report/${p.id}`,
+                ],
+                ["Tenancy closed", h.moveOut.closed, `#activity`],
+              ]}
+            />
+            <p>
+              Unresolved requests: {h.moveOut.pendingTasks}. Handover/legal or
+              financial settlement is not inferred from a report.
+            </p>
+          </div>
+        </div>
+      </section>
+      <section id="documents" className={`${hubStyles.hubSection} p-4`}>
+        <h2 className="text-xl font-semibold">Documents</h2>
+        <Link className="underline" to={`/attach-documents/${p.id}`}>
+          Upload / List / Review documents
+        </Link>
+        <p>{h.documents.length} document(s) recorded</p>
+        {supportingDocuments.length>0&&<p>{supportingDocuments.length} supporting document(s) available for verification review.</p>}
+      </section>
+      <section id="maintenance" className={`${hubStyles.hubSection} p-4`}>
+        <h2 className="text-xl font-semibold">Maintenance</h2>
+        <Link className="underline" to={`/request-services/${p.id}`}>
+          Raise request
+        </Link>
+        <p>
+          {h.requests
+            .map(
+              (r: ProductRecord) =>
+                `${r.serviceName}: ${maintenanceLabel(r.status)}${r.isArchived ? " (Archived)" : ""}`,
+            )
+            .join(" · ") || "No requests recorded"}
+        </p>
+        <ServiceRequestHistory propertyId={p.id} admin={h.role === "admin"} />
+      </section>
+      <section id="inspection" className={`${hubStyles.hubSection} p-4`}>
+        <h2 className="text-xl font-semibold">Inspection</h2>
+        <Link className="underline" to={`/inspection-report/${p.id}`}>
+          Possession / Handover inspection and history
+        </Link>
+        <p>{h.inspections.length} inspection(s) recorded</p>
+      </section>
+      <section id="reports" className={`${hubStyles.hubSection} p-4`}>
+        <h2 className="text-xl font-semibold">TDS / Receipts</h2>
+        <p>
+          Supplied reports and receipts only; no tax calculation or payment
+          processing.
+        </p>
+        <div className="flex flex-wrap gap-4">
+          <Link
+            className="underline"
+            to={`/attach-documents/${p.id}?type=tds_report`}
+          >
+            TDS reports
+          </Link>
+          <Link
+            className="underline"
+            to={`/attach-documents/${p.id}?type=payment_receipt`}
+          >
+            Payment receipts
+          </Link>
+        </div>
+      </section>
+      <section id="visits" className={`${hubStyles.hubSection} p-4 space-y-2`}>
+        <h2 className="text-xl font-semibold">Visit history</h2>
+        <Link className="underline" to={`/visit-planner?propertyId=${p.id}`}>
+          Schedule / Manage visits
+        </Link>
+        {h.visits.length ? (
+          h.visits.map((v: ProductRecord) => (
+            <article className="border rounded p-3" key={v.id}>
+              <p className="break-words">
+                {v.title} · {v.status} ·{" "}
+                {new Date(v.visitDate).toLocaleString("en-IN")} · User:{" "}
+                {v.userId}
+              </p>
+              {v.status === "scheduled" &&
+                (v.userId === user?.uid || h.role === "admin") && (
+                  <div className="flex flex-wrap gap-2">
+                    {["completed", "cancelled"].map((status) => (
+                      <Button
+                        disabled={busy}
+                        key={status}
+                        variant="outline"
+                        onClick={async () => {
+                          setBusy(true);
+                          try {
+                            await workflowRequest(
+                              `visits/${v.id}`,
+                              { status },
+                              "PUT",
+                            );
+                            await query.refetch();
+                          } catch (error) {
+                            setFailure(
+                              error instanceof Error
+                                ? error.message
+                                : "Could not update visit",
+                            );
+                          } finally {
+                            setBusy(false);
+                          }
+                        }}
+                      >
+                        Mark {status}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+            </article>
+          ))
+        ) : (
+          <p>No visits recorded for your permitted scope.</p>
+        )}
+      </section>
+      <section id="negotiation" className={`${hubStyles.hubSection} p-4`}>
+        <h2 className="text-xl font-semibold">Negotiation</h2>
+        <NegotiationPanel propertyId={p.id} admin={h.role === "admin"} />
+      </section>
+      <section id="activity" className={`${hubStyles.hubSection} p-4`}>
+        <h2 className="text-xl font-semibold">Activity / History</h2>
+        <p className="text-sm mb-3">
+          Combines available record timestamps and existing histories;
+          unrecorded historical events cannot be reconstructed.
+        </p>
+        <ol className="space-y-3">
+          {h.history.map((e: ProductRecord, index: number) => (
+            <li key={index} className="border-l-2 pl-3 break-words">
+              <time>{new Date(e.at).toLocaleString("en-IN")}</time>
+              <p>{e.label}</p>
+              <small>
+                {e.source} {e.actorUID}
+              </small>
+            </li>
+          ))}
+        </ol>
+      </section>
+      {h.role === "admin" && (
+        <section className="border rounded-lg p-4 space-y-3">
+          <h2 className="text-xl font-semibold">Internal admin notes</h2>
+          <p>
+            Visible to administrators only. Service resolution comments remain
+            shared with request participants.
+          </p>
+          {h.internalNotes.map((n: ProductRecord) => (
+            <p className="break-words" key={n.id}>
+              {n.text} · {new Date(n.at).toLocaleString("en-IN")} · {n.actorUID}
+            </p>
+          ))}
+          <form onSubmit={(e) => save(e, "internal_note")}>
+            <label>
+              Internal note
+              <Input name="note" required maxLength={2000} />
+            </label>
+            <Button disabled={busy}>Save internal note</Button>
+          </form>
+        </section>
+      )}
+    </main>
+  );
 }

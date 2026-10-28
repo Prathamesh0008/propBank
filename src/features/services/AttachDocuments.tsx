@@ -2,6 +2,7 @@
 import styles from "./DocumentWorkspace.module.css";
 
 import { apiFetch } from '@/lib/api-client';
+import {useAuth} from '@/contexts/AuthContext';
 
 import { useParams, useNavigate, useLocation } from "@/lib/navigation";
 import { ArrowLeft, FileText, Loader2, Upload, X, Eye, Plus, Trash2 } from "lucide-react";
@@ -13,6 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useRef } from "react";
+import AmountInWords from '@/components/AmountInWords';
+import {SUPPORTING_DOCUMENT_MIME_TYPES,SUPPORTING_DOCUMENT_TYPES,uploadSupportingDocument,type SupportingDocumentType} from '@/lib/supporting-documents';
 import { auth } from "../../firebase";
 import { User, onAuthStateChanged } from "firebase/auth";
 import { API_BASE_URL } from "../../utils/config";
@@ -51,12 +54,18 @@ const DOCUMENT_TYPES = [
   "tds_report",
   "payment_receipt"
 ];
+const SUPPORTING_TYPES=Object.keys(SUPPORTING_DOCUMENT_TYPES);
 
 const AttachDocuments = () => {
+  const {fileAccess,retryFileAccess}=useAuth();
+  const [previewFailed,setPreviewFailed]=useState(false),[previewRevision,setPreviewRevision]=useState(0);
   const { propertyId } = useParams();
   const location=useLocation();
   const reportType=new URLSearchParams(location.search).get("type")||"";
+  const supportingMode=new URLSearchParams(location.search).get("supporting")==="1";
   const [metadata,setMetadata]=useState({financialYear:"",period:"",amount:"",receiptDate:""});
+  const [fieldErrors,setFieldErrors]=useState<Record<string,string>>({});
+  const [reviewDraft,setReviewDraft]=useState<Record<string,{status:string;comment:string}>>({});
   const [loadError,setLoadError]=useState("");
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -67,15 +76,19 @@ const AttachDocuments = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [viewingDocument, setViewingDocument] = useState<Document | null>(null);
+  useEffect(()=>setPreviewFailed(false),[viewingDocument?.id,fileAccess.revision]);
 
   // Form state
   const [documentName, setDocumentName] = useState<string>("");
-  const [documentType, setDocumentType] = useState<string>(reportType);
+  const [documentType, setDocumentType] = useState<string>(reportType||(supportingMode?'rental_agreement':''));
   const [fileUrl, setFileUrl] = useState<string>("");
+  const [selectedFile,setSelectedFile]=useState<File|null>(null);
+  const [documentRequestKey,setDocumentRequestKey]=useState(()=>crypto.randomUUID());
   const [description, setDescription] = useState<string>("");
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
 
-  const visibleDocuments=documents.filter(doc=>!reportType||doc.documentType===reportType);
+  const visibleDocuments=documents.filter(doc=>supportingMode?SUPPORTING_TYPES.includes(doc.documentType):!reportType||doc.documentType===reportType);
+  const availableDocumentTypes=supportingMode?SUPPORTING_TYPES:DOCUMENT_TYPES;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -148,7 +161,7 @@ const AttachDocuments = () => {
       return;
     }
 
-    if (!file.type.startsWith('image/') && !file.type.includes('pdf')) {
+    if (supportingMode&&!SUPPORTING_DOCUMENT_MIME_TYPES.includes(file.type as typeof SUPPORTING_DOCUMENT_MIME_TYPES[number])||!supportingMode&&!file.type.startsWith('image/')&&!file.type.includes('pdf')) {
       toast({
         title: "Invalid File",
         description: "Please upload an image or PDF file",
@@ -156,6 +169,8 @@ const AttachDocuments = () => {
       });
       return;
     }
+
+    if(supportingMode){setSelectedFile(file);setFileUrl('selected');return;}
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -186,14 +201,14 @@ const AttachDocuments = () => {
       return;
     }
 
-    if (!documentName.trim() || !documentType || !fileUrl) {
-      toast({
-        title: "Required Fields Missing",
-        description: "Please provide document name, type, and file",
-        variant: "destructive"
-      });
-      return;
-    }
+    const nextErrors:Record<string,string>={};
+    if(!documentName.trim())nextErrors.documentName='Enter a document name.';
+    else if(documentName.trim().length>150)nextErrors.documentName='Document name must be 150 characters or fewer.';
+    if(!documentType)nextErrors.documentType='Choose a document type.';
+    if(!fileUrl)nextErrors.file='Choose an image or PDF.';
+    if(description.length>1000)nextErrors.description='Description must be 1000 characters or fewer.';
+    if(["tds_report","payment_receipt"].includes(documentType)&&metadata.amount&&(Number(metadata.amount)<0||!Number.isFinite(Number(metadata.amount))))nextErrors.amount='Enter a valid non-negative amount.';
+    setFieldErrors(nextErrors);if(Object.keys(nextErrors).length)return;
 
     setSubmitting(true);
     try {
@@ -211,16 +226,17 @@ const AttachDocuments = () => {
         return;
       }
 
+      const applicableMetadata=["tds_report","payment_receipt"].includes(documentType)?metadata:{};
       const requestBody = {
         propertyId: propertyId || '',
         documentName: documentName.trim(),
         documentType: documentType,
         fileUrl: fileUrl,
         description: description.trim(),
-        ...metadata,
+        ...applicableMetadata,
       };
 
-      const response = await apiFetch(`${API_BASE_URL}/documents`, {
+      const response = supportingMode&&selectedFile ? null : await apiFetch(`${API_BASE_URL}/documents`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -229,28 +245,15 @@ const AttachDocuments = () => {
         body: JSON.stringify(requestBody),
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-
-        let errorMessage = `Server error: ${response.status} ${response.statusText}`;
-        try {
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.message || errorMessage;
-        } catch {
-          // If not JSON, use the text
-          errorMessage = errorText || errorMessage;
-        }
-        throw new Error(errorMessage);
+      if (response&&!response.ok) {
+        const errorData=await response.json().catch(()=>null) as {message?:string}|null;
+        const safeMessage=response.status===400?errorData?.message:response.status===403?'You do not have permission to upload documents for this property.':response.status===413?'The selected file is too large.':'The document could not be uploaded. Please try again.';
+        throw new Error(safeMessage||'The document could not be uploaded.');
       }
-
-      const responseText = await response.text();
 
       let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch (parseError) {
-        throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`);
-      }
+      if(supportingMode&&selectedFile)data={success:true,document:await uploadSupportingDocument(propertyId||'',selectedFile,documentType as SupportingDocumentType,documentRequestKey)};
+      else {const responseText = await response!.text();try {data = JSON.parse(responseText);} catch {throw new Error('The document service returned an invalid response. Please try again.');}}
 
       if (data.success) {
         // Send a notification to the admin
@@ -286,9 +289,13 @@ const AttachDocuments = () => {
         });
         // Reset form
         setDocumentName("");
-        setDocumentType(reportType);
+        setDocumentType(reportType||(supportingMode?'rental_agreement':''));
         setFileUrl("");
+        setSelectedFile(null);
+        setDocumentRequestKey(crypto.randomUUID());
         setDescription("");
+        setMetadata({financialYear:"",period:"",amount:"",receiptDate:""});
+        setFieldErrors({});
         setShowAddForm(false);
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
@@ -318,6 +325,16 @@ const AttachDocuments = () => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const updateReview=async(doc:Document)=>{
+    const draft=reviewDraft[doc.id]||{status:doc.status||'submitted',comment:doc.adminComment||''};
+    if(draft.comment.length>2000){setLoadError('Review comment must be 2000 characters or fewer.');return;}
+    try{
+      const response=await apiFetch(`${API_BASE_URL}/documents/${doc.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(draft)});
+      if(!response.ok)throw new Error(response.status===403?'Administrator access is required.':'The document review could not be saved.');
+      setDocuments(current=>current.map(item=>item.id===doc.id?{...item,status:draft.status,adminComment:draft.comment}:item));setLoadError('');
+    }catch(error){setLoadError(error instanceof Error?error.message:'The document review could not be saved.');}
   };
 
   const handleDelete = async (documentId: string) => {
@@ -388,7 +405,7 @@ const AttachDocuments = () => {
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5" />
-                  {reportType === "tds_report" ? "TDS Updation Report" : "Documents and receipts"}
+                  {reportType === "tds_report" ? "TDS Updation Report" : supportingMode ? "Property Supporting Documents" : "Documents and receipts"}
                 </CardTitle>
                 <CardDescription className="mt-2">
                   {property && `Property: ${property.title || property.id}`}
@@ -403,6 +420,7 @@ const AttachDocuments = () => {
           <CardContent>
             {loadError && <p role="alert" className="text-destructive">{loadError}</p>}
             {reportType === "tds_report" && <p className="mb-4">TDS tracking records supplied amounts and documents. No tax computation is performed.</p>}
+            {supportingMode && <p className="mb-4 text-sm text-muted-foreground">Upload rental evidence for administrator review. A document submission does not establish or transfer legal ownership.</p>}
             {visibleDocuments.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -426,7 +444,11 @@ const AttachDocuments = () => {
                           <p className="text-sm">Status: {doc.status || "submitted"} · {doc.financialYear} {doc.period} {doc.amount && ` · Reported amount: ₹${doc.amount}`}</p>
                           {doc.adminComment && <p>Admin response: {doc.adminComment}</p>}
                           <details><summary>Status history</summary>{doc.statusHistory?.map((event,index)=><p key={index}>{event.status} · {new Date(event.at).toLocaleString()} {event.comment}</p>)}</details>
-                          {property?.userRole === "admin" && <div className="flex flex-wrap gap-2">{["verified","rejected","submitted"].map(status=><Button key={status} size="sm" variant="outline" onClick={async()=>{try{const comment=window.prompt("Report review comment");if(comment===null)return;const response=await apiFetch(`${API_BASE_URL}/documents/${doc.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status,comment})});if(!response.ok)throw new Error("Could not update report");setDocuments(current=>current.map(item=>item.id===doc.id?{...item,status,adminComment:comment}:item));}catch(error){setLoadError(error instanceof Error?error.message:"Update failed");}}}>{status}</Button>)}</div>}
+                          {property?.userRole === "admin" && <div className="mt-3 grid gap-2 sm:grid-cols-[12rem_1fr_auto]">
+                            <Label className="sr-only" htmlFor={`review-status-${doc.id}`}>Review status</Label><select id={`review-status-${doc.id}`} className="h-10 rounded border px-2" value={reviewDraft[doc.id]?.status||doc.status||'submitted'} onChange={event=>setReviewDraft(current=>({...current,[doc.id]:{status:event.target.value,comment:current[doc.id]?.comment??doc.adminComment??''}}))}><option value="submitted">Submitted</option><option value="verified">Verified</option><option value="rejected">Rejected</option></select>
+                            <Label className="sr-only" htmlFor={`review-comment-${doc.id}`}>Review comment</Label><Input id={`review-comment-${doc.id}`} maxLength={2000} placeholder="Review comment" value={reviewDraft[doc.id]?.comment??doc.adminComment??''} onChange={event=>setReviewDraft(current=>({...current,[doc.id]:{status:current[doc.id]?.status??doc.status??'submitted',comment:event.target.value}}))}/>
+                            <Button size="sm" variant="outline" onClick={()=>void updateReview(doc)}>Save review</Button>
+                          </div>}
                           {doc.description && (
                             <p className="text-sm mt-2">{doc.description}</p>
                           )}
@@ -480,26 +502,29 @@ const AttachDocuments = () => {
                   value={documentName}
                   onChange={(e) => setDocumentName(e.target.value)}
                   required
+                  maxLength={150}
                 />
+                {fieldErrors.documentName&&<p role="alert" className="text-sm text-destructive">{fieldErrors.documentName}</p>}
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="documentType">Document Type *</Label>
-                <Select value={documentType} onValueChange={setDocumentType}>
+                <Select value={documentType} onValueChange={value=>{setDocumentType(value);setMetadata({financialYear:"",period:"",amount:"",receiptDate:""});setFieldErrors(previous=>({...previous,documentType:'',amount:''}));}}>
                   <SelectTrigger id="documentType">
                     <SelectValue placeholder="Select document type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {DOCUMENT_TYPES.map((type) => (
+                  {availableDocumentTypes.map((type) => (
                       <SelectItem key={type} value={type}>
-                        {type}
+                        {SUPPORTING_DOCUMENT_TYPES[type as keyof typeof SUPPORTING_DOCUMENT_TYPES]||type}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {fieldErrors.documentType&&<p role="alert" className="text-sm text-destructive">{fieldErrors.documentType}</p>}
               </div>
 
-              {["tds_report","payment_receipt"].includes(documentType) && <div className="grid gap-3 sm:grid-cols-2">{Object.entries(metadata).map(([key,value])=><div key={key}><Label htmlFor={key}>{({financialYear:"Financial year",period:"Period",amount:"Reported amount",receiptDate:"Receipt date"} as Record<string,string>)[key]}</Label><Input id={key} type={key==="receiptDate"?"date":"text"} value={value} onChange={e=>setMetadata({...metadata,[key]:e.target.value})}/></div>)}</div>}
+              {["tds_report","payment_receipt"].includes(documentType) && <div className="grid gap-3 sm:grid-cols-2">{Object.entries(metadata).map(([key,value])=><div key={key}><Label htmlFor={key}>{({financialYear:"Financial year",period:"Reporting period",amount:"Reported amount (₹)",receiptDate:"Receipt date"} as Record<string,string>)[key]}</Label><Input id={key} type={key==="receiptDate"?"date":key==="amount"?"number":"text"} min={key==="amount"?0:undefined} step={key==="amount"?'0.01':undefined} maxLength={key==="amount"?undefined:80} value={value} onChange={e=>setMetadata({...metadata,[key]:e.target.value})}/>{key==='amount'&&<AmountInWords amount={value}/>} {fieldErrors[key]&&<p role="alert" className="text-sm text-destructive">{fieldErrors[key]}</p>}</div>)}</div>}
               <div className="space-y-2">
                 <Label htmlFor="file">File *</Label>
                 {fileUrl ? (
@@ -512,6 +537,7 @@ const AttachDocuments = () => {
                       size="sm"
                       onClick={() => {
                         setFileUrl("");
+                        setSelectedFile(null);
                         if (fileInputRef.current) {
                           fileInputRef.current.value = '';
                         }
@@ -524,7 +550,7 @@ const AttachDocuments = () => {
                   <div>
                     <Input
                       type="file"
-                      accept="image/*,application/pdf"
+                      accept={supportingMode?"application/pdf,image/jpeg,image/png,image/webp":"image/*,application/pdf"}
                       onChange={handleFileUpload}
                       ref={fileInputRef}
                       className="hidden"
@@ -539,6 +565,7 @@ const AttachDocuments = () => {
                     </Label>
                   </div>
                 )}
+                {fieldErrors.file&&<p role="alert" className="text-sm text-destructive">{fieldErrors.file}</p>}
               </div>
 
               <div className="space-y-2">
@@ -549,7 +576,9 @@ const AttachDocuments = () => {
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   rows={3}
+                  maxLength={1000}
                 />
+                {fieldErrors.description&&<p role="alert" className="text-sm text-destructive">{fieldErrors.description}</p>}
               </div>
 
               <div className="flex gap-4">
@@ -576,9 +605,12 @@ const AttachDocuments = () => {
                   onClick={() => {
                     setShowAddForm(false);
                     setDocumentName("");
-                    setDocumentType("");
+                    setDocumentType(reportType||(supportingMode?'rental_agreement':''));
                     setFileUrl("");
+                    setSelectedFile(null);
                     setDescription("");
+                    setMetadata({financialYear:"",period:"",amount:"",receiptDate:""});
+                    setFieldErrors({});
                     if (fileInputRef.current) {
                       fileInputRef.current.value = '';
                     }
@@ -603,15 +635,23 @@ const AttachDocuments = () => {
             </DialogHeader>
             {viewingDocument && (
               <div className="mt-4">
-                {viewingDocument.contentType?.startsWith('image/') || viewingDocument.fileUrl.startsWith('data:image/') ? (
+                {viewingDocument.fileUrl.startsWith('/api/media/')&&fileAccess.phase!=='ready' ? (
+                  <div role="status" className="space-y-3 p-6 text-sm"><p>{fileAccess.message||'Preparing secure file access...'}</p>{!['preparing','retrying'].includes(fileAccess.phase)&&<Button type="button" variant="outline" onClick={()=>void retryFileAccess()}>Retry secure file access</Button>}</div>
+                ) : previewFailed ? (
+                  <div role="alert" className="space-y-3 p-6 text-sm"><p>This file could not be opened. Check your connection or contact support if access was removed.</p><Button type="button" variant="outline" onClick={()=>{setPreviewFailed(false);setPreviewRevision(value=>value+1);}}>Retry preview</Button></div>
+                ) : viewingDocument.contentType?.startsWith('image/') || viewingDocument.fileUrl.startsWith('data:image/') ? (
                   <img
+                    key={`${viewingDocument.id}:${fileAccess.revision}:${previewRevision}`}
                     src={viewingDocument.fileUrl}
+                    onError={()=>setPreviewFailed(true)}
                     alt={viewingDocument.documentName}
                     className="max-w-full h-auto rounded-md border"
                   />
                 ) : viewingDocument.contentType==='application/pdf' || viewingDocument.fileUrl.includes('pdf') || viewingDocument.fileUrl.startsWith('data:application/pdf') ? (
                   <iframe
+                     key={`${viewingDocument.id}:${fileAccess.revision}:${previewRevision}`}
                      src={viewingDocument.fileUrl}
+                     onError={()=>setPreviewFailed(true)}
                      className="w-full h-[600px] border rounded"
                      title={viewingDocument.documentName}
                   />

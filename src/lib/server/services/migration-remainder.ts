@@ -15,6 +15,13 @@ import {prepareFile,saveMediaRecord,prepareMediaBindings,restoreFileReferences} 
 import {fileFields} from '../file-projection';
 import {discoverFor} from './relationship-links';
 import {syncAuthenticationProfile} from './auth-activity';
+import {
+  INSPECTION_ALL_FILE_FIELDS,
+  inspectionPayload,
+  inspectionType,
+  validateInspectionFiles,
+  type InspectionFiles,
+} from '../../inspection-report-policy';
 
 const fail = (message:string,status:number) => jsonResponse({success:false,message},status);
 async function strings(request:Request,fields:string[]) {
@@ -69,6 +76,7 @@ export async function createServiceRequest(request:Request) {
   try{req=await strings(request,['userUID','serviceId','propertyId','message','image']);}catch{return fail('Invalid request body',400);}
   if(!req.userUID||!req.serviceId)return fail('Missing required fields: userUID, serviceId',400);
   requireSelfOrAdmin(user,s(req.userUID));
+  if(s(req.message).length>2000)return fail('Request details must be 2000 characters or fewer',400);
   const profile=await getUser(s(req.userUID));if(!profile)return fail('User not found',404);
   const service=await getRecord(COLLECTIONS.services,s(req.serviceId),'Service')||clientServices[s(req.serviceId)];if(!service)return fail('Service not found',404);
   if(service.isActive===false)return fail('Service is inactive',400);
@@ -88,6 +96,8 @@ export async function updateServiceRequest(request:Request,id:string) {
   try{req=await strings(request,['status','adminNotes','resolutionReport','adminImage','action']);}catch{return fail('Invalid request body',400);}
   if(req.status&&!['pending','in_progress','completed','cancelled','resolved'].includes(s(req.status)))return fail('Invalid service request status',400);
   if(req.action&&!['archive','unarchive'].includes(s(req.action)))return fail('Invalid archive action',400);
+  if(s(req.adminNotes).length>4000||s(req.resolutionReport).length>8000)return fail('Resolution details exceed the allowed length',400);
+  if(req.action&&Object.entries(req).some(([key,value])=>key!=='action'&&value))return fail('Archive changes must be submitted separately',400);
   const ref=getDatabase().collection(COLLECTIONS.serviceRequests).doc(id);let updated:RecordData={};
   const existing=await ref.get();if(!existing.exists)throw new ApiError(404,'Service request not found');
   restoreFileReferences(COLLECTIONS.serviceRequests,id,req,existing.data()!);
@@ -111,18 +121,32 @@ export async function createReportOrReview(request:Request,kind:'report'|'review
   const user=await identity(request,true);let req:RecordData;
   try{req=await readModel(request,kind==='report'?'CreateInspectionReportRequest':'CreateReviewRequest');}catch{return plainError('Invalid request body',400);}
   if(kind==='report'&&!['on_possession','on_handover'].includes(s(req.reportType)))return plainError("Invalid report type. Must be 'on_possession' or 'on_handover'",400);
-  if(kind==='review'&&!['tenant','owner'].includes(s(req.reviewerType)))return plainError("Invalid reviewer type. Must be 'tenant' or 'owner'",400);
+  if(kind==='review'&&req.reviewerType&&!['tenant','owner'].includes(s(req.reviewerType)))return plainError("Invalid reviewer type. Must be 'tenant' or 'owner'",400);
   const profile=await getUser(user.uid);if(!profile)return plainError('User not found',404);
   const property=await getProperty(s(req.propertyId));if(!property)return plainError('Property not found',404);
   await propertyMember(user,s(req.propertyId));
   if(kind==='report'&&!s(req.report).trim())return plainError('Inspection report details are required',400);
+  if(kind==='report') {
+    const type=inspectionType(req.reportType);
+    if(!type)return plainError('Invalid report type',400);
+    if(req.apartmentConditionImage)return plainError('Use the condition images field for inspection photos',400);
+    const attachmentError=validateInspectionFiles(type,req as InspectionFiles);
+    if(attachmentError)return plainError(attachmentError,400);
+    const permitted=inspectionPayload(type,req as InspectionFiles);
+    for(const field of INSPECTION_ALL_FILE_FIELDS)delete req[field];
+    Object.assign(req,permitted);
+  }
   if(kind==='review') {
     const answers=req.reviewerType==='tenant'?req.tenantPart:req.ownerPart;
     if(!isRecord(answers)||!Object.values(answers).some(value=>typeof value==='string'&&value.trim()))return plainError('At least one review response is required',400);
   }
   if(kind==='review') {
-    const reviewerType=user.uid===property.ownerUID?'owner':'tenant';
-    if(user.role!=='admin'&&req.reviewerType!==reviewerType)return plainError('Reviewer relationship does not match property',403);
+    const reviewerType=user.uid===property.ownerUID?'owner':isPropertyTenant(user,property)?'tenant':'';
+    if(!reviewerType)return plainError('An active owner or tenant relationship is required to review this property',403);
+    if(req.reviewerType&&req.reviewerType!==reviewerType)return plainError('Reviewer relationship does not match property',403);
+    req.reviewerType=reviewerType;
+    if(reviewerType==='tenant')req.ownerPart={};
+    else req.tenantPart={};
   }
   if(kind==='report')for(const field of fileFields.inspection_reports){if(Array.isArray(req[field]))req[field]=await Promise.all((req[field] as string[]).map(value=>prepareFile(value,user,s(req.propertyId),field)));else if(req[field])req[field]=await prepareFile(s(req[field]),user,s(req.propertyId),field);}
   const now=new Date(),name=kind==='report'?'InspectionReport':'Review',collection=kind==='report'?COLLECTIONS.inspectionReports:COLLECTIONS.reviews;

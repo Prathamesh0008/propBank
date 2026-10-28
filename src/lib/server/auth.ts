@@ -46,7 +46,8 @@ export async function userFromToken(token:DecodedIdToken):Promise<AuthenticatedU
   if(token.email_verified!==true)throw new AccessError(403,'Verify your email before accessing PropBank','EMAIL_VERIFICATION_REQUIRED');
   const profile = await getDatabase().collection(COLLECTIONS.users).doc(token.uid).get();
   const data = profile.data();
-  if (!data || data.isActive === false) throw new AccessError(403, 'Active user profile required');
+  if (!data) throw new AccessError(403, 'Active user profile required','ACCOUNT_PROFILE_REQUIRED');
+  if (data.isActive === false) throw new AccessError(403, 'Active user profile required','ACCOUNT_DISABLED');
   if (!['admin', 'agent', 'individual'].includes(data.role)) {
     throw new AccessError(403, 'Valid persisted user role required');
   }

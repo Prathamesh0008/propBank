@@ -95,10 +95,33 @@ const cookieName='propbank_media';
 export async function mediaSession(request:Request) {
   const secure=process.env.NODE_ENV==='production'||new URL(request.url).protocol==='https:'?'; Secure':'';
   if(request.method==='DELETE')return new Response(null,{status:204,headers:{'Set-Cookie':`${cookieName}=; Path=/api/media; HttpOnly; SameSite=Strict; Max-Age=0${secure}`,'Cache-Control':'no-store'}});
-  await requireUser(request);
-  const token=request.headers.get('authorization')!.replace(/^Bearer\s+/i,'');
-  const cookie=await getFirebaseAdminAuth().createSessionCookie(token,{expiresIn:20*60*1000});
-  return new Response(null,{status:204,headers:{'Set-Cookie':`${cookieName}=${cookie}; Path=/api/media; HttpOnly; SameSite=Strict; Max-Age=1200${secure}`,'Cache-Control':'no-store'}});
+  let stage='authenticate';
+  try{
+    const user=await requireUser(request);
+    if(request.method==='GET'){
+      stage='verify_cookie';
+      const cookie=request.headers.get('cookie')?.split(';').map(value=>value.trim()).find(value=>value.startsWith(cookieName+'='))?.slice(cookieName.length+1);
+      if(!cookie)return jsonResponse({success:false,code:'FILE_SESSION_COOKIE_MISSING',message:'Secure file session cookie was not retained'},401);
+      try{const session=await getFirebaseAdminAuth().verifySessionCookie(cookie,true);if(session.uid!==user.uid)return jsonResponse({success:false,code:'FILE_SESSION_COOKIE_MISMATCH',message:'Secure file session must be renewed'},401);}
+      catch(error){if(['auth/session-cookie-expired','auth/session-cookie-revoked','auth/invalid-session-cookie','auth/argument-error','auth/user-disabled','auth/user-not-found'].includes((error as {code?:string}).code||''))return jsonResponse({success:false,code:'FILE_SESSION_COOKIE_INVALID',message:'Secure file session must be renewed'},401);throw error;}
+      return new Response(null,{status:204,headers:{'Cache-Control':'private, no-store','Vary':'Cookie, Authorization'}});
+    }
+    stage='create_cookie';
+    const token=request.headers.get('authorization')!.replace(/^Bearer\s+/i,'');
+    const cookie=await getFirebaseAdminAuth().createSessionCookie(token,{expiresIn:20*60*1000});
+    return new Response(null,{status:204,headers:{'Set-Cookie':`${cookieName}=${cookie}; Path=/api/media; HttpOnly; SameSite=Strict; Max-Age=1200${secure}`,'Cache-Control':'private, no-store','Vary':'Cookie, Authorization'}});
+  }catch(error){
+    if(error instanceof AccessError)throw error;
+    const rawCode=typeof error==='object'&&error!==null&&'code' in error?String(error.code):'unknown';
+    const code=/^[a-z0-9/_.-]{1,80}$/.test(rawCode)?rawCode:'unknown',reference=randomUUID();
+    console.error(`private_file_session_failed ${JSON.stringify({reference,stage,code})}`);
+    if(code==='auth/user-disabled')return jsonResponse({success:false,code:'ACCOUNT_DISABLED',message:'Private file access is not permitted for this account',reference},403);
+    if(['auth/id-token-expired','auth/id-token-revoked','auth/user-token-expired','auth/invalid-id-token','auth/session-cookie-revoked','auth/user-not-found'].includes(code))return jsonResponse({success:false,code:'FILE_SESSION_AUTHENTICATION',message:'Sign in again to prepare secure file access',reference},401);
+    const configuration=['auth/insufficient-permission','auth/invalid-credential','auth/invalid-argument','app/invalid-credential','7','permission-denied'].includes(code)||error instanceof Error&&/service.account|default credentials|project.*match|project changed/i.test(error.message);
+    const temporary=['auth/network-request-failed','14','4','unavailable','deadline-exceeded'].includes(code);
+    const limited=code==='auth/too-many-requests';
+    return jsonResponse({success:false,code:configuration?'FILE_SESSION_CONFIGURATION':limited?'FILE_SESSION_RATE_LIMIT':temporary?'FILE_SESSION_TEMPORARY':'FILE_SESSION_UNAVAILABLE',message:'Secure file access is unavailable. Please try again or contact support.',reference},limited?429:configuration||temporary?503:500);
+  }
 }
 async function mediaUser(request:Request) {
   if(request.headers.has('authorization'))return requireUser(request);

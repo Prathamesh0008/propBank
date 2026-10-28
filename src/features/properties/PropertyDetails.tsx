@@ -6,6 +6,7 @@ import NegotiationPanel from '@/features/negotiations/NegotiationPanel';
 import {ServiceRequestHistory} from '@/features/services/ServiceRequestWorkflow';
 import ReviewHistory from '@/features/services/ReviewHistory';
 import { apiFetch } from '@/lib/api-client';
+import SessionMediaImage from '@/components/SessionMediaImage';
 
 import { useParams, useNavigate } from "@/lib/navigation";
 import { ArrowLeft, Eye, MapPin, Home, Calendar, CheckCircle, ClipboardList, FileText, Scale, Wrench, RefreshCw, FileX, Image as ImageIcon, Loader2, MessageSquare } from "lucide-react";
@@ -492,7 +493,7 @@ const PropertyDetails = () => {
       {/* Hero Section */}
       <div className={styles.hero}>
         {property.images && property.images.length > 0 ? (
-          <img
+          <SessionMediaImage
             src={property.images[0]}
             alt={property.title}
             className={styles.heroImage}
@@ -598,7 +599,7 @@ const PropertyDetails = () => {
               <CardContent>
                 <div className="rounded-lg overflow-hidden border bg-gradient-to-br from-gray-100 to-gray-200 relative h-64 flex items-center justify-center">
                   {property.images && property.images.length > 0 && property.images[0] ? (
-                    <img
+                    <SessionMediaImage
                       src={property.images[0]}
                       alt={property.title}
                       className="w-full h-full object-cover absolute inset-0"
@@ -627,7 +628,7 @@ const PropertyDetails = () => {
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                       {property.internalImages.map((img, index) => (
                         <div key={index} className="rounded-lg overflow-hidden border bg-gray-100 relative h-32 flex items-center justify-center group">
-                          <img
+                          <SessionMediaImage
                             src={img}
                             alt={`Internal ${index + 1}`}
                             className="w-full h-full object-cover"
@@ -1092,7 +1093,7 @@ const PropertyDetails = () => {
                           {request.serviceImage && (
                             <div className="mt-3 pt-3 border-t">
                               <label className="text-xs font-medium text-muted-foreground mb-2 block">Attachment</label>
-                              <img
+                              <SessionMediaImage
                                 src={request.serviceImage}
                                 alt="Service Attachment"
                                 className="max-w-full h-auto max-h-48 rounded border shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
@@ -1126,7 +1127,7 @@ const PropertyDetails = () => {
                               )}
                               {request.adminImage && (
                                 <div className="mt-2">
-                                  <img
+                                  <SessionMediaImage
                                     src={request.adminImage}
                                     alt="Admin attachment"
                                     className="max-w-full h-auto max-h-48 rounded border border-blue-200 shadow-sm cursor-pointer hover:opacity-90 transition-opacity"

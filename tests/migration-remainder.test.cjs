@@ -39,11 +39,58 @@ test('inspection reports preserve managed attachments, typed schema, notificatio
  const byUser=route(app,'inspection-reports/user/[userId]');assert.equal((await byUser.GET(request('/inspection-reports/user/tenant','admin'),context('tenant','userId'))).status,200);assert.equal((await byUser.GET(request('/inspection-reports/user/tenant','other'),context('tenant','userId'))).status,403);
  const notification=Object.values(app.state.admin_notifications)[0];assert.equal(notification.type,'inspection_report');assert.match(notification.message,/On Possession/);assert.equal(notification.tenantName,'Tenant Name');
 });
+test('inspection reports isolate report-specific attachments before storage staging',async()=>{
+ const possession=isolated({users,properties}),possessionRoute=route(possession,'inspection-reports');
+ const wrongPossession=await possessionRoute.POST(request('/inspection-reports','tenant','POST',{propertyId:'P',reportType:'on_possession',report:'Possession report',handoverLetterFile:'data:application/pdf;base64,AQID'}));
+ assert.equal(wrongPossession.status,400);assert.equal(possession.objects.length,0);assert.equal(Object.keys(possession.state.inspection_reports||{}).length,0);
+
+ const handover=isolated({users,properties}),handoverRoute=route(handover,'inspection-reports');
+ const wrongHandover=await handoverRoute.POST(request('/inspection-reports','tenant','POST',{propertyId:'P',reportType:'on_handover',report:'Handover report',possessionLetterFile:'data:application/pdf;base64,AQID'}));
+ assert.equal(wrongHandover.status,400);assert.equal(handover.objects.length,0);assert.equal(Object.keys(handover.state.inspection_reports||{}).length,0);
+
+ const valid=isolated({users,properties}),validRoute=route(valid,'inspection-reports');
+ const response=await validRoute.POST(request('/inspection-reports','tenant','POST',{propertyId:'P',reportType:'on_handover',report:'Handover report',handoverLetterFile:'data:application/pdf;base64,AQID',electricityBillMeterImage:'data:image/jpeg;base64,AQID'}));
+ assert.equal(response.status,201);const {report}=await response.json();assert.match(report.handoverLetterFile,/^\/api\/media\//);assert.equal(report.possessionLetterFile,undefined);assert.equal(valid.objects.filter(item=>item.operation==='PutObjectCommand').length,2);
+});
+test('inspection report attachment limits and MIME rules fail before storage staging',async()=>{
+ const tooMany=isolated({users,properties}),tooManyRoute=route(tooMany,'inspection-reports');
+ const quantity=await tooManyRoute.POST(request('/inspection-reports','tenant','POST',{propertyId:'P',reportType:'on_possession',report:'Condition report',apartmentConditionImages:Array.from({length:9},()=> 'data:image/png;base64,AQID')}));
+ assert.equal(quantity.status,400);assert.equal(tooMany.objects.length,0);
+
+ const invalidType=isolated({users,properties}),invalidRoute=route(invalidType,'inspection-reports');
+ const mime=await invalidRoute.POST(request('/inspection-reports','tenant','POST',{propertyId:'P',reportType:'on_possession',report:'Condition report',apartmentConditionImages:['data:image/gif;base64,AQID']}));
+ assert.equal(mime.status,400);assert.equal(invalidType.objects.length,0);
+
+ const oversized=isolated({users,properties}),oversizedRoute=route(oversized,'inspection-reports');
+ const largeBody='A'.repeat(Math.ceil((5*1024*1024+1)/3)*4);
+ const size=await oversizedRoute.POST(request('/inspection-reports','tenant','POST',{propertyId:'P',reportType:'on_possession',report:'Condition report',possessionLetterFile:`data:application/pdf;base64,${largeBody}`}));
+ assert.equal(size.status,400);assert.equal(oversized.objects.length,0);
+});
+test('switching inspection report types retains common files and removes obsolete conditional files',()=>{
+ const policy=isolated().load('@/lib/inspection-report-policy');
+ const common='data:image/png;base64,AQID',letter='data:application/pdf;base64,AQID';
+ const handover=policy.switchInspectionType('on_handover',{possessionLetterFile:letter,handoverLetterFile:letter,electricityBillMeterImage:common});
+ assert.equal(handover.possessionLetterFile,undefined);assert.equal(handover.handoverLetterFile,letter);assert.equal(handover.electricityBillMeterImage,common);
+ const possession=policy.switchInspectionType('on_possession',handover);
+ assert.equal(possession.handoverLetterFile,undefined);assert.equal(possession.electricityBillMeterImage,common);
+ const fourMegabytes='A'.repeat(Math.ceil((4*1024*1024)/3)*4);
+ assert.match(policy.validateInspectionFiles('on_possession',{apartmentConditionImages:Array(7).fill(`data:image/png;base64,${fourMegabytes}`)}),/total 25 MB/);
+});
 test('reviews preserve nested rating defaults, owner/tenant metadata and structured notification',async()=>{
  const app=isolated({users,properties}),r=route(app,'reviews');
  const result=await r.POST(request('/reviews','tenant','POST',{propertyId:'P',reviewerType:'tenant',tenantPart:{overallExperience:'Great',softNature:'Yes'}}));assert.equal(result.status,201);
  const {review}=await result.json();assert.equal(review.reviewerId,'tenant');assert.equal(review.tenantId,'T');assert.equal(review.tenantPart.overallExperience,'Great');assert.equal(review.ownerPart.overallExperience,'');assert.equal(review.tenantPart.ownerTransparent,'');assert.ok(app.state.reviews[review.id].createdAt instanceof Date);
  const notification=Object.values(app.state.admin_notifications)[0];assert.equal(notification.reviewerType,'tenant');assert.match(notification.message,/- Overall Experience: Great/);assert.equal(notification.tenantPart.softNature,'Yes');
+});
+test('review relationship is derived from trusted property membership',async()=>{
+ const app=isolated({users,properties}),r=route(app,'reviews');
+ const tenant=await r.POST(request('/reviews','tenant','POST',{propertyId:'P',tenantPart:{overallExperience:'Accurate tenant review'},ownerPart:{overallExperience:'Must not be used'}}));
+ assert.equal(tenant.status,201);const tenantBody=await tenant.json();assert.equal(tenantBody.review.reviewerType,'tenant');assert.equal(tenantBody.review.ownerPart.overallExperience,'');
+ assert.equal((await r.POST(request('/reviews','tenant','POST',{propertyId:'P',reviewerType:'owner',ownerPart:{overallExperience:'Forged'}}))).status,403);
+ assert.equal((await r.POST(request('/reviews','owner','POST',{propertyId:'P',reviewerType:'tenant',tenantPart:{overallExperience:'Forged'}}))).status,403);
+ assert.equal((await r.POST(request('/reviews','admin','POST',{propertyId:'P',reviewerType:'owner',ownerPart:{overallExperience:'Admin is not the owner'}}))).status,403);
+ const owner=await r.POST(request('/reviews','owner','POST',{propertyId:'P',ownerPart:{overallExperience:'Accurate owner review'}}));
+ assert.equal(owner.status,201);assert.equal((await owner.json()).review.reviewerType,'owner');
 });
 test('site settings use the original document and replacement semantics with persisted admin permission',async()=>{
  const app=isolated({users}),r=route(app,'admin/site-settings');

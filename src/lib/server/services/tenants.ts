@@ -1,12 +1,13 @@
 import 'server-only';
 import { normalizeEmailAddress } from '@/lib/email-address';
+import {normalizeNextAgreementDraft,sameNextAgreementDraft,validateNextAgreementDraft} from '@/lib/next-agreement-draft';
 import {indianMobile} from '@/lib/indian-phone';
 import { getDatabase, COLLECTIONS } from '../firestore';
 import { AccessError } from '../auth';
 import { requireOwnerOrAdmin, requireSelfOrAdmin } from '../permissions';
 import { ApiError, jsonResponse, plainError } from '../http';
 import { model, storeModel, wireModel, wireValue, isRecord, stringValue as s, type RecordData } from './contracts';
-import { identity, propertyMember, readModel, readObject, getRecord, getRecords } from './domain-contracts';
+import { identity, propertyMember, readObject, getRecord, getRecords } from './domain-contracts';
 import { bestEffort, escapeHtml } from './property-effects';
 import { getUser, saveUser, resolveTenantIdentity } from './users';
 import { prepareLink, stageLinks, validContact } from './relationship-links';
@@ -14,7 +15,7 @@ import { persistUserEvent, dispatchEmailOutbox, type TransactionalEmailEvent } f
 const collection=()=>getDatabase().collection(COLLECTIONS.tenants);
 export async function createTenants(request:Request) {
   const user=await identity(request);let req:RecordData;
-  try{req=await readModel(request,'CreateTenantRequest');}catch{return plainError('Invalid JSON',400);}
+  try{const raw=await readObject(request);req=model('CreateTenantRequest',raw,true);if(Array.isArray(raw.tenants)&&Array.isArray(req.tenants))req.tenants=(req.tenants as RecordData[]).map((tenant,index)=>({...tenant,...(isRecord(raw.tenants![index])&&raw.tenants[index].nextAgreementDraft!==undefined?{nextAgreementDraft:raw.tenants[index].nextAgreementDraft}:{})}));}catch{return plainError('Invalid JSON',400);}
   if(!req.propertyId)return plainError('Property ID is required',400);
   if(!req.ownerUID)return plainError('Owner UID is required',400);
   const tenants=Array.isArray(req.tenants)?req.tenants as RecordData[]:[];
@@ -28,7 +29,8 @@ export async function createTenants(request:Request) {
   for(const value of tenants) {
     if(!value.firstName||!value.lastName||!value.email||!value.phone)return plainError(`First name, last name, email, and phone are required for tenant ${s(value.firstName)} ${s(value.lastName)}`,400);
     const email=normalizeEmailAddress(value.email);if(!email)return plainError('Invalid tenant email',400);value.email=email;
-    const doc=collection().doc();const now=new Date();const tenant=model('Tenant',{...value,userUID:'',linkConfirmationRequired:true,phoneE164:validContact(value.phone),id:doc.id,propertyId:req.propertyId,ownerUID:req.ownerUID,isActive:true,createdAt:now,updatedAt:now});
+    if(value.nextAgreementDraft!==undefined&&value.nextAgreementDraft!==null){value.nextAgreementDraft=normalizeNextAgreementDraft(value.nextAgreementDraft,s(value.leaseEndDate));const error=validateNextAgreementDraft(value.nextAgreementDraft,s(value.leaseEndDate));if(error)return plainError(error,400);}
+    const doc=collection().doc();const now=new Date();const tenant:RecordData={...model('Tenant',{...value,userUID:'',linkConfirmationRequired:true,phoneE164:validContact(value.phone),id:doc.id,propertyId:req.propertyId,ownerUID:req.ownerUID,isActive:true,createdAt:now,updatedAt:now}),...(value.nextAgreementDraft?{nextAgreementDraft:value.nextAgreementDraft}:{})};
     const embedded={...tenant};delete embedded.propertyId;delete embedded.ownerUID;
     if(!tenant.isMarried||!tenant.spouse)delete embedded.spouse;
     added.push(embedded);
@@ -50,10 +52,11 @@ export async function createTenants(request:Request) {
     if(previous.length+added.length>50)throw new AccessError(403,'Property tenant relationship limit reached');
     const writeLinks=await stageLinks(tx,candidates,intents);invitationEvents=writeLinks.events;
     writeLinks();
-    for(const tenant of added)tx.create(collection().doc(s(tenant.id)),storeModel('Tenant',{...tenant,propertyId:req.propertyId,ownerUID:req.ownerUID}));
+    for(const tenant of added)tx.create(collection().doc(s(tenant.id)),{...storeModel('Tenant',{...tenant,propertyId:req.propertyId,ownerUID:req.ownerUID}),...(tenant.nextAgreementDraft?{nextAgreementDraft:tenant.nextAgreementDraft}:{})});
     const tenancy:RecordData={};
     if(!previous.some((tenant:RecordData)=>tenant.isActive===true)) {
       for(const [root,field] of [['monthlyRent','monthlyRent'],['securityDeposit','securityDeposit'],['paymentDueDate','paymentDueDate'],['agreementStartDate','leaseStartDate'],['agreementEndDate','leaseEndDate']])if(added[0][field])tenancy[root]=added[0][field];
+      if(added[0].nextAgreementDraft)tenancy.nextAgreementDraft=added[0].nextAgreementDraft;
       tenancy.agreementStatus='active';
       if(fresh.data()?.agreementStatus==='terminated') {
         const history=Array.isArray(fresh.data()?.agreementHistory)?fresh.data()!.agreementHistory:[];
@@ -84,17 +87,21 @@ export async function getTenant(request:Request,id:string) {
 }
 export async function updateTenant(request:Request,id:string) {
   const user=await identity(request);let updates:RecordData;try{updates=await readObject(request);}catch{return plainError('Invalid JSON',400);}
-  const tenant=await getRecord(COLLECTIONS.tenants,id,'Tenant');if(!tenant)return plainError('Tenant not found',404);
+  const expectedPropertyUpdatedAt=s(updates.expectedPropertyUpdatedAt);delete updates.expectedPropertyUpdatedAt;
+  const tenantSnapshot=await collection().doc(id).get();if(!tenantSnapshot.exists)return plainError('Tenant not found',404);
+  const tenant={...tenantSnapshot.data(),...model('Tenant',tenantSnapshot.data()||{})};
   requireOwnerOrAdmin(user,{ownerUID:s(tenant.ownerUID)});
   const protectedNames=['ownerUID','propertyId','userUID','id','createdAt','linkConfirmationRequired','phoneE164','linkedAt','linkedByUID'];
   if(Object.keys(updates).some(key=>protectedNames.some(field=>field.toLowerCase()===key.toLowerCase()&&field!==key)))throw new AccessError(403,'Relationship field aliases cannot be changed');
   for(const field of ['ownerUID','propertyId','userUID'])if(field in updates&&updates[field]!==tenant[field])throw new AccessError(403,'Tenant relationships cannot be reassigned');
   if(Object.keys(updates).some(key=>key.includes('.')||key.startsWith('__')))return plainError('Invalid tenant field',400);
   if(['linkConfirmationRequired','phoneE164','linkedAt','linkedByUID'].some(key=>key in updates))throw new AccessError(403,'Relationship verification fields are server controlled');
+  if('email' in updates){const email=normalizeEmailAddress(updates.email);if(!email)return plainError('Invalid tenant email',400);updates.email=email;}
   if('phone' in updates)updates.phoneE164=validContact(updates.phone);
+  if('nextAgreementDraft' in updates&&updates.nextAgreementDraft!==null){const unchangedLegacy=sameNextAgreementDraft(updates.nextAgreementDraft,tenant.nextAgreementDraft);updates.nextAgreementDraft=normalizeNextAgreementDraft(updates.nextAgreementDraft,s(updates.leaseEndDate||tenant.leaseEndDate));const error=validateNextAgreementDraft(updates.nextAgreementDraft,s(updates.leaseEndDate||tenant.leaseEndDate),unchangedLegacy);if(error)return plainError(error,400);}
   delete updates.id;delete updates.createdAt;updates.updatedAt=new Date();
   try{model('Tenant',{...tenant,...updates},true);}catch{return plainError('Invalid tenant fields',400);}
-  await syncTenant(id,updates,user);return jsonResponse({success:true,message:'Tenant updated successfully'});
+  await syncTenant(id,updates,user,expectedPropertyUpdatedAt);return jsonResponse({success:true,message:'Tenant updated successfully'});
 }
 export async function deleteTenant(request:Request,id:string) {
   const user=await identity(request);const tenant=await getRecord(COLLECTIONS.tenants,id,'Tenant');if(!tenant)return plainError('Tenant not found',404);
@@ -119,10 +126,11 @@ export async function manageAdminTenancy(request:Request,propertyId:string) {
     if(value.monthlyRent&&(!Number.isFinite(Number(value.monthlyRent))||Number(value.monthlyRent)<0))return plainError('Monthly rent must be a valid amount',400);
     if(value.securityDeposit&&(!Number.isFinite(Number(value.securityDeposit))||Number(value.securityDeposit)<0))return plainError('Security deposit must be a valid amount',400);
     if(value.leaseStartDate&&value.leaseEndDate&&s(value.leaseEndDate)<s(value.leaseStartDate))return plainError('Agreement end date must be after the start date',400);
+    if(value.nextAgreementDraft!==undefined&&value.nextAgreementDraft!==null){value.nextAgreementDraft=normalizeNextAgreementDraft(value.nextAgreementDraft,s(value.leaseEndDate));const error=validateNextAgreementDraft(value.nextAgreementDraft,s(value.leaseEndDate));if(error)return plainError(error,400);}
     await resolveTenantIdentity(s(value.email),s(value.userUID)); // Preserve admin's explicit account validation, without granting tenancy.
     const linkedUID='';
     const doc=collection().doc();const now=new Date();
-    added=model('Tenant',{...value,userUID:linkedUID,id:doc.id,propertyId,ownerUID:'',isActive:true,createdAt:now,updatedAt:now});
+    added={...model('Tenant',{...value,userUID:linkedUID,id:doc.id,propertyId,ownerUID:'',isActive:true,createdAt:now,updatedAt:now}),...(value.nextAgreementDraft?{nextAgreementDraft:value.nextAgreementDraft}:{})};
     Object.assign(added,{assignedByUID:user.uid,assignmentSource:'admin',linkConfirmationRequired:true,phoneE164:validContact(value.phone)});
   }
   let removedUID='';let removedUIDs:string[]=[];let ownerUID='';let propertyForNotification:RecordData|null=null;
@@ -161,12 +169,12 @@ export async function manageAdminTenancy(request:Request,propertyId:string) {
       if(activeDocuments.get(tenantId))tx.update(collection().doc(tenantId),{isActive:false,updatedAt:new Date(),removedByUID:user.uid});
       next=previous.map((tenant:RecordData)=>tenant.id===tenantId?{...tenant,isActive:false,updatedAt:new Date(),removedByUID:user.uid}:tenant);
     }
-    if(added)tx.create(collection().doc(s(added.id)),{...storeModel('Tenant',{...added,propertyId,ownerUID}),assignedByUID:user.uid,assignmentSource:'admin'});
+    if(added)tx.create(collection().doc(s(added.id)),{...storeModel('Tenant',{...added,propertyId,ownerUID}),...(added.nextAgreementDraft?{nextAgreementDraft:added.nextAgreementDraft}:{}),assignedByUID:user.uid,assignmentSource:'admin'});
     const history=Array.isArray(property.relationshipHistory)?property.relationshipHistory:[];
     if(history.length>=500)throw new ApiError(409,'Property relationship history limit reached');
     const activeAfter=next.filter((tenant:RecordData)=>tenant.isActive===true);
     const terms:RecordData={};
-    if(added)for(const [root,field] of [['monthlyRent','monthlyRent'],['securityDeposit','securityDeposit'],['paymentDueDate','paymentDueDate'],['agreementStartDate','leaseStartDate'],['agreementEndDate','leaseEndDate']])terms[root]=added[field]||'';
+    if(added)for(const [root,field] of [['monthlyRent','monthlyRent'],['securityDeposit','securityDeposit'],['paymentDueDate','paymentDueDate'],['agreementStartDate','leaseStartDate'],['agreementEndDate','leaseEndDate'],['nextAgreementDraft','nextAgreementDraft']])terms[root]=added[field]||'';
     tx.update(propertyRef,{...terms,tenants:next,tenancyRevision:revision+1,rentalStatus:activeAfter.length?'rented':'available',listingType:'rent',updatedAt:new Date(),relationshipHistory:[...history,{action:`tenant_${action}`,actorUID:user.uid,userUID:added?.userUID||removedUID,relationship:'tenant',propertyId,tenantId:added?.id||req.tenantId,at:new Date(),revision:revision+1}]});
     propertyForNotification={...property,...terms,tenants:next,tenancyRevision:revision+1};
   });
@@ -177,7 +185,7 @@ export async function manageAdminTenancy(request:Request,propertyId:string) {
   if(propertyForNotification)await bestEffort(()=>persistUserEvent({eventType:`tenancy.tenant_${action}`,eventId:`${propertyId}:${Number(req.expectedRevision)+1}:${action}`,recipients:[{uid:ownerUID,role:'owner'},...(added?.userUID?[{uid:s(added.userUID),role:'tenant'}]:[]),...removedUIDs.map(uid=>({uid,role:'former_tenant'}))],propertyId,recordId:propertyId,templateId:`tenant-${action}`,subject:`Tenant ${action} completed`,title:'Tenant relationship updated',bodyHtml:`<p>The tenant relationship for <strong>${escapeHtml(s(propertyForNotification.title))}</strong> was ${action==='replace'?'replaced':action==='remove'?'removed':'assigned'}.</p>`,bodyText:`The tenant relationship for ${s(propertyForNotification.title)} was ${action==='replace'?'replaced':action==='remove'?'removed':'assigned'}.`,action:{label:'View property',path:`/manage-property/${propertyId}`}}));
   return jsonResponse({success:true,message:`Tenant ${action} completed`,tenancyRevision:Number(req.expectedRevision)+1,tenant:added?wireValue(added):undefined});
 }
-async function syncTenant(id:string,updates:RecordData,user:Awaited<ReturnType<typeof identity>>) {
+async function syncTenant(id:string,updates:RecordData,user:Awaited<ReturnType<typeof identity>>,expectedPropertyUpdatedAt='') {
   await getDatabase().runTransaction(async tx=>{
     const ref=collection().doc(id),snapshot=await tx.get(ref);
     if(!snapshot.exists)throw new AccessError(403,'Tenant access required');
@@ -185,11 +193,24 @@ async function syncTenant(id:string,updates:RecordData,user:Awaited<ReturnType<t
     if('userUID' in updates&&updates.userUID!==tenant.userUID)throw new ApiError(409,'Tenant identity changed; refresh before editing');
     const property=await tx.get(propertyRef);
     if(!property.exists)throw new AccessError(403,'Property access required');
+    const propertyUpdatedAt=property.data()?.updatedAt;
+    const propertyUpdatedMillis=propertyUpdatedAt?.toDate?propertyUpdatedAt.toDate().getTime():new Date(propertyUpdatedAt||0).getTime();
+    if(expectedPropertyUpdatedAt&&propertyUpdatedMillis!==new Date(expectedPropertyUpdatedAt).getTime())throw new ApiError(409,'Property or agreement details changed; refresh before saving tenant details');
     requireOwnerOrAdmin(user,{ownerUID:s(property.data()?.ownerUID)});
     if(property.data()?.ownerUID!==tenant.ownerUID)throw new AccessError(403,'Tenant owner relationship changed');
     const tenants=(Array.isArray(property.data()?.tenants)?property.data()!.tenants:[]).filter(isRecord).map((entry:RecordData)=>entry.id===id?{...entry,...updates}:entry);
-    const candidates=updates.phone&&tenant.linkConfirmationRequired===true&&!tenant.userUID?[await prepareLink('tenant',s(tenant.propertyId),s(updates.phone),user.uid,s(tenant.ownerUID),id,updates.email??tenant.email)]:[];
+    const candidates=(updates.phone||updates.email)&&tenant.linkConfirmationRequired===true&&!tenant.userUID?[await prepareLink('tenant',s(tenant.propertyId),s(updates.phone||tenant.phone),user.uid,s(tenant.ownerUID),id,updates.email??tenant.email)]:[];
     const writeLinks=await stageLinks(tx,candidates);writeLinks();
-    tx.update(ref,updates);tx.update(propertyRef,{tenants,rentalStatus:tenants.some((t:RecordData)=>t.isActive===true)?'rented':'available',updatedAt:new Date()});
+    const propertyUpdates:RecordData={tenants,rentalStatus:tenants.some((t:RecordData)=>t.isActive===true)?'rented':'available',updatedAt:new Date(),tenancyRevision:Number(property.data()?.tenancyRevision||0)+1};
+    if(tenant.isActive===true) {
+      for(const [root,field] of [['monthlyRent','monthlyRent'],['securityDeposit','securityDeposit'],['paymentDueDate','paymentDueDate'],['agreementStartDate','leaseStartDate'],['agreementEndDate','leaseEndDate'],['noticePeriod','noticePeriod'],['lockInPeriod','lockInPeriod'],['escalationPercentage','escalationPercentage'],['escalationAmount','escalationAmount'],['rentSchedule','rentSchedule'],['nextAgreementDraft','nextAgreementDraft']])if(field in updates)propertyUpdates[root]=updates[field];
+      const changedTerms=Object.keys(propertyUpdates).filter(key=>['monthlyRent','securityDeposit','paymentDueDate','agreementStartDate','agreementEndDate','noticePeriod','lockInPeriod','escalationPercentage','escalationAmount','rentSchedule'].includes(key)&&JSON.stringify(propertyUpdates[key])!==JSON.stringify(property.data()?.[key]??''));
+      if(changedTerms.length) {
+        const history=Array.isArray(property.data()?.agreementHistory)?property.data()!.agreementHistory:[];
+        if(history.length>=500)throw new ApiError(409,'Agreement history limit reached');
+        propertyUpdates.agreementHistory=[...history,{action:'tenant_details_updated',actorUID:user.uid,at:new Date(),previousTerms:Object.fromEntries(changedTerms.map(key=>[key,property.data()?.[key]??'']))}];
+      }
+    }
+    tx.update(ref,updates);tx.update(propertyRef,propertyUpdates);
   });
 }

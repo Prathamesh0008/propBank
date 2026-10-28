@@ -1,56 +1,58 @@
 "use client";
 import {useQueryClient} from '@tanstack/react-query';
-
-
-import { createContext, useContext, useEffect, useState, useRef, ReactNode } from "react";
+import {createContext,useContext,useEffect,useState,useRef,useCallback,type ReactNode} from 'react';
 import {apiFetch} from '@/lib/api-client';
 import {useToast} from '@/hooks/use-toast';
-import { auth } from "@/firebase";
-import { User, onIdTokenChanged } from "firebase/auth";
+import {ToastAction} from '@/ui/toast';
+import {auth} from '@/firebase';
+import {onIdTokenChanged,type User} from 'firebase/auth';
+import {privateFileSession,claimFileSessionNotice} from '@/lib/private-file-client';
+import {INITIAL_FILE_SESSION,type FileSessionState} from '@/lib/private-file-session';
 
-interface AuthContextType {
-  user: User | null;
-  loading: boolean;
-}
+interface AuthContextType {user:User|null;loading:boolean;fileAccess:FileSessionState;retryFileAccess:()=>Promise<void>}
+const AuthContext=createContext<AuthContextType>({user:null,loading:true,fileAccess:INITIAL_FILE_SESSION,retryFileAccess:async()=>{}});
+export const useAuth=()=>useContext(AuthContext);
 
-const AuthContext = createContext<AuthContextType>({ user: null, loading: true });
+export const AuthProvider=({children}:{children:ReactNode})=>{
+  const queryClient=useQueryClient(),{toast,dismiss}=useToast();
+  const previousUID=useRef<string|undefined>(undefined),publishedUID=useRef<string|undefined>(undefined);
+  const [user,setUser]=useState<User|null>(null),[loading,setLoading]=useState(true);
+  const [fileAccess,setFileAccess]=useState(privateFileSession.snapshot);
+  const notice=useRef<string|undefined>(undefined),readyRevision=useRef(-1);
+  const retryFileAccess=useCallback(()=>privateFileSession.retry(),[]);
 
-export const useAuth = () => useContext(AuthContext);
-
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const queryClient=useQueryClient();
-  const {toast}=useToast();
-  const previousUID=useRef(auth.currentUser?.uid);
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
+  useEffect(()=>privateFileSession.subscribe(setFileAccess),[]);
+  useEffect(()=>{
     let generation=0;
-    let sessionWork=Promise.resolve();
-    const sync=(firebaseUser:User|null)=>{
-      sessionWork=sessionWork.catch(()=>{}).then(async()=>{
-        const response=firebaseUser?await apiFetch('/api/media/session',{method:'POST',signal:AbortSignal.timeout(15000)}):await fetch('/api/media/session',{method:'DELETE',signal:AbortSignal.timeout(15000)});
-        if(!response.ok)throw new Error('Private file session could not be initialized');
-      });
-      return sessionWork;
-    };
-    const unsubscribe = onIdTokenChanged(auth, async (firebaseIdentity) => {
-      const firebaseUser=firebaseIdentity?.emailVerified===true?firebaseIdentity:null;
-      const current=++generation;
-      setLoading(true);
+    // Do not hold the Firebase observer open while acquiring tokens or cookies.
+    const unsubscribe=onIdTokenChanged(auth,identity=>{
+      const firebaseUser=identity?.emailVerified===true?identity:null,current=++generation;
       if(previousUID.current!==firebaseUser?.uid)queryClient.clear();
       previousUID.current=firebaseUser?.uid;
-      // Guest redirects/logout must not depend on a storage-route network round trip.
-      if(!firebaseUser){setUser(null);setLoading(false);void sync(null).catch(()=>{});return;}
-      try{await sync(firebaseUser);}catch{if(current===generation)toast({title:'Private files unavailable',description:'File access could not be initialized. Reload when connected to try again.',variant:'destructive'});}
-      if(current!==generation)return;
-      setUser(firebaseUser);
-      if(firebaseUser.emailVerified)void apiFetch('/api/relationship-links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'discover'})}).catch(()=>{});
-      setLoading(false);
+      const session=privateFileSession.setUser(firebaseUser);
+      if(!firebaseUser){publishedUID.current=undefined;setUser(null);setLoading(false);return;}
+      if(publishedUID.current!==firebaseUser.uid)setLoading(true);
+      void session.then(()=>{
+        if(current!==generation||auth.currentUser?.uid!==firebaseUser.uid||!auth.currentUser.emailVerified)return;
+        publishedUID.current=firebaseUser.uid;setUser(firebaseUser);setLoading(false);
+        void apiFetch('/api/relationship-links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'discover'})}).catch(()=>{});
+      });
     });
-    const interval=window.setInterval(()=>{if(auth.currentUser)void sync(auth.currentUser).catch(()=>{});},10*60*1000);
-    return () => {generation++;window.clearInterval(interval);unsubscribe();};
-  }, [queryClient,toast]);
+    const renew=()=>{void privateFileSession.renew();};
+    const interval=window.setInterval(renew,10*60*1000);
+    window.addEventListener('online',renew);window.addEventListener('focus',renew);
+    return ()=>{generation++;unsubscribe();window.clearInterval(interval);window.removeEventListener('online',renew);window.removeEventListener('focus',renew);};
+  },[queryClient]);
 
-  return <AuthContext.Provider value={{ user, loading }}>{children}</AuthContext.Provider>;
+  useEffect(()=>{
+    if(fileAccess.phase==='ready'&&fileAccess.revision!==readyRevision.current){
+      readyRevision.current=fileAccess.revision;
+      void Promise.all(['userProperties','property','productHub','documents'].map(key=>queryClient.invalidateQueries({queryKey:[key]})));
+    }
+    if(fileAccess.phase!=='failed'){if(notice.current){dismiss(notice.current);notice.current=undefined;}return;}
+    if(!user||fileAccess.uid!==user.uid||auth.currentUser?.uid!==user.uid||!claimFileSessionNotice(fileAccess.revision))return;
+    notice.current=toast({title:'Secure file access',description:fileAccess.message,variant:'destructive',action:<ToastAction altText="Retry secure file access" onClick={()=>void retryFileAccess()}>Retry</ToastAction>}).id;
+  },[fileAccess,user,queryClient,toast,dismiss,retryFileAccess]);
+
+  return <AuthContext.Provider value={{user,loading,fileAccess,retryFileAccess}}>{children}</AuthContext.Provider>;
 };

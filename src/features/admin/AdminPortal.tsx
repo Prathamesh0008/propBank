@@ -187,13 +187,14 @@ const AdminPortal = () => {
     try {
       let finalBannerImages = [...(siteSettings.bannerImages || [])];
 
+      let failedBannerImages:string[]=[];
       if (pendingBannerImages.length > 0) {
         setUploadingBanner(true);
         const uploadedUrls: string[] = [];
 
         for (let i = 0; i < pendingBannerImages.length; i++) {
-          const url = await uploadBase64Image(pendingBannerImages[i], 'banners', `banner-${Date.now()}-${i}`);
-          uploadedUrls.push(url);
+          try {const url = await uploadBase64Image(pendingBannerImages[i], 'banners', `banner-${Date.now()}-${i}`);uploadedUrls.push(url);}
+          catch {failedBannerImages.push(pendingBannerImages[i]);}
         }
 
         finalBannerImages = [...finalBannerImages, ...uploadedUrls];
@@ -213,11 +214,13 @@ const AdminPortal = () => {
 
       if (response.ok) {
         setSiteSettings(settingsToSave);
-        setPendingBannerImages([]);
+        setPendingBannerImages(failedBannerImages);
 
         toast({
           title: "Settings Updated",
-          description: pendingBannerImages.length > 0
+          description: failedBannerImages.length
+            ? `Site settings were saved. ${failedBannerImages.length} banner image(s) could not be uploaded and remain pending.`
+            : pendingBannerImages.length > 0
             ? `Site settings updated. ${pendingBannerImages.length} banner image(s) uploaded.`
             : "Site settings have been updated successfully.",
         });

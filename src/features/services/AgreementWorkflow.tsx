@@ -9,6 +9,7 @@ import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Label } from '@/ui/label';
 import { Card,CardHeader,CardTitle,CardContent } from '@/ui/card';
+import AmountInWords from '@/components/AmountInWords';
 
 export default function AgreementWorkflow({renew}:{renew:boolean}) {
   const {propertyId}=useParams();const {user,loading:authLoading}=useAuth();const cache=useQueryClient();
@@ -19,6 +20,8 @@ export default function AgreementWorkflow({renew}:{renew:boolean}) {
   const property=query.data?.property,owner=property?.ownerUID===user?.uid;
   const member=owner||property?.userRole==='tenant';
   const pending=property?.agreementRequest?.status==='pending'?property.agreementRequest:undefined;
+  const reviewingPendingRenewal=renew&&owner&&pending?.kind==='renewal';
+  const tenantProposedRenewal=reviewingPendingRenewal&&pending?.requestedBy!==user?.uid;
   useEffect(()=>{if(property){setTerms({...renewalPrefill(property),...(pending?.proposedTerms||pending?.terms||{})});setNotice(String(pending?.noticePeriod||property.noticePeriod||'1 Month'));if(pending?.noticeStartDate||property.noticeStartDate)setStart(String(pending?.noticeStartDate||property.noticeStartDate).slice(0,10));setEnd(String(pending?.terminationDate||property.anticipatedTerminationDate||'').slice(0,10));}},[property,pending]);
   async function submit(action:string) {
     if(!property||busy)return;
@@ -26,7 +29,7 @@ export default function AgreementWorkflow({renew}:{renew:boolean}) {
     setBusy(true);setFailure('');setFeedback('');
     try {
       const endpoint=`agreements/${renew?(owner?'renew':'request-renewal'):(owner?'terminate':'request-termination')}`;
-      const body={propertyId:property.id,action,...(pending?{requestId:pending.id}:{}),...(renew?{terms:Object.fromEntries(Object.entries(terms).filter(([,value])=>value!==''))}:action==='terminate'?{}:{noticePeriod:notice,...(notice?{noticeStartDate:start,terminationDate:end}:{})})};
+      const body={propertyId:property.id,action,...(pending?{requestId:pending.id}:{}),...(renew&&action==='request'?{terms:Object.fromEntries(Object.entries(terms).filter(([,value])=>value!==''))}:!renew&&action!=='terminate'?{noticePeriod:notice,...(notice?{noticeStartDate:start,terminationDate:end}:{})}:{})};
       await workflowRequest(endpoint,body);
       await Promise.all([query.refetch(),cache.invalidateQueries({queryKey:['userProperties']}),cache.invalidateQueries({queryKey:['property',property.id]})]);
       setFeedback(action==='reject'?'Request rejected.':renew&&action==='approve'?'Renewal approved. Agreed terms updated.':!renew&&action==='terminate'?'Agreement terminated; history retained.':owner&&!renew?'Notice recorded. Final termination requires an owner decision.':'Request submitted; pending owner approval.');
@@ -41,9 +44,9 @@ export default function AgreementWorkflow({renew}:{renew:boolean}) {
       {property&&<><h2 className="font-semibold break-words">{property.title} · {property.id}</h2>
         <p>Agreement status: {String(property.agreementStatus||'Active')} · {owner?'Owner':'Tenant'}</p>
         <p className="text-sm">Current rent: ₹{String(property.monthlyRent||'Not supplied')} · {String(property.agreementStartDate||'')} → {String(property.agreementEndDate||'')}</p>
-        {pending&&<p className={styles.notice}>Pending {pending.kind} request. Existing terms remain in effect until the owner decides.</p>}
+        {pending&&<p className={styles.notice}>{reviewingPendingRenewal?(tenantProposedRenewal?'Tenant-proposed renewal terms are shown below for review. ':'Pending renewal terms are shown below for review. ')+'Approving accepts these exact terms.':'Pending '+pending.kind+' request. Existing terms remain in effect until the owner decides.'}</p>}
         {member&&property.agreementStatus!=='terminated'&&<form onSubmit={e=>{e.preventDefault();void submit('request');}} className="space-y-4">
-          {renew?<div className="grid gap-4 sm:grid-cols-2">{renewalFields.map(([key,label])=><div key={key}><Label htmlFor={key}>{label}</Label><Input id={key} type={key.includes('Date')?'date':'text'} value={terms[key]||''} onChange={e=>setTerms({...terms,[key]:e.target.value})}/></div>)}<div><Label htmlFor="maintenance-payer">Maintenance paid by</Label><select id="maintenance-payer" className="h-10 w-full rounded border px-3" value={terms.maintenanceToBePaidBy||''} onChange={e=>setTerms({...terms,maintenanceToBePaidBy:e.target.value})}><option value="">Select</option><option value="owner">Owner</option><option value="tenant">Tenant</option></select></div></div>:<div className="grid gap-4 sm:grid-cols-3"><div><Label htmlFor="notice-period">Notice period</Label><Input id="notice-period" value={notice} onChange={e=>setNotice(e.target.value)}/></div><div><Label htmlFor="notice-start">Notice start</Label><Input id="notice-start" type="date" value={start} onChange={e=>setStart(e.target.value)} required/></div><div><Label htmlFor="termination-date">Termination date</Label><Input id="termination-date" type="date" min={start} value={end} onChange={e=>setEnd(e.target.value)} required/></div></div>}
+          {renew?<div className="grid gap-4 sm:grid-cols-2">{renewalFields.map(([key,label])=><div key={key}><Label htmlFor={key}>{label}</Label><Input id={key} type={key.includes('Date')?'date':'text'} value={terms[key]||''} readOnly={reviewingPendingRenewal} aria-readonly={reviewingPendingRenewal} onChange={e=>setTerms({...terms,[key]:e.target.value})}/>{['monthlyRent','securityDeposit','escalationAmount'].includes(key)&&<AmountInWords amount={terms[key]}/>}</div>)}<div><Label htmlFor="maintenance-payer">Maintenance paid by</Label><select id="maintenance-payer" className="h-10 w-full rounded border px-3" value={terms.maintenanceToBePaidBy||''} disabled={reviewingPendingRenewal} onChange={e=>setTerms({...terms,maintenanceToBePaidBy:e.target.value})}><option value="">Select</option><option value="owner">Owner</option><option value="tenant">Tenant</option></select></div></div>:<div className="grid gap-4 sm:grid-cols-3"><div><Label htmlFor="notice-period">Notice period</Label><Input id="notice-period" value={notice} onChange={e=>setNotice(e.target.value)}/></div><div><Label htmlFor="notice-start">Notice start</Label><Input id="notice-start" type="date" value={start} onChange={e=>setStart(e.target.value)} required/></div><div><Label htmlFor="termination-date">Termination date</Label><Input id="termination-date" type="date" min={start} value={end} onChange={e=>setEnd(e.target.value)} required/></div></div>}
           <div className="flex flex-wrap gap-3">
             {!pending&&<Button disabled={busy} type="submit">{renew?'Submit renewal request':owner?'Serve notice':'Request termination'}</Button>}
             {owner&&pending&&pending.kind===(renew?'renewal':'termination')&&<>{renew?<Button type="button" disabled={busy} onClick={()=>void submit('approve')}>Approve renewal</Button>:<Button type="button" disabled={busy||!start||!end} onClick={()=>void submit('request')}>Approve notice</Button>}<Button type="button" variant="outline" disabled={busy} onClick={()=>void submit('reject')}>Reject request</Button></>}

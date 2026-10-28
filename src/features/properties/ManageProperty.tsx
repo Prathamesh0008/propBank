@@ -7,6 +7,7 @@ import ListingModeration from './ListingModeration';
 import {ProductDashboard} from './PropertyHub';
 import { propertyCategoryMatches } from '@/lib/client-workflows';
 import { apiFetch } from '@/lib/api-client';
+import SessionMediaImage from '@/components/SessionMediaImage';
 
 import { Building2, Plus, Edit3, MessageSquare, MoreVertical, Users, UserPlus, Eye, Edit, Archive, Wrench, Filter, Home, X, FileText, Star, Scale, Paperclip, RefreshCw, XCircle, Key } from "lucide-react";
 import { Button } from "@/ui/button";
@@ -807,7 +808,7 @@ const ManageProperty = () => {
                                 {/* Property Image Thumbnail - Always show with fallback */}
                                 <div className="w-full sm:w-40 h-32 sm:h-auto flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 relative overflow-hidden flex items-center justify-center">
                                   {property.images && property.images.length > 0 && property.images[0] ? (
-                                    <img
+                                    <SessionMediaImage
                                       src={property.images[0]}
                                       alt={property.title}
                                       className="w-full h-full object-cover absolute inset-0"
@@ -1101,7 +1102,7 @@ const ManageProperty = () => {
                                 {/* Property Image Thumbnail - Always show with fallback */}
                                 <div className="w-full sm:w-40 h-32 sm:h-auto flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 relative overflow-hidden flex items-center justify-center">
                                   {property.images && property.images.length > 0 && property.images[0] ? (
-                                    <img
+                                    <SessionMediaImage
                                       src={property.images[0]}
                                       alt={property.title}
                                       className="w-full h-full object-cover absolute inset-0"
@@ -1166,6 +1167,12 @@ const ManageProperty = () => {
                                             <FileText className="h-4 w-4 mr-2" />
                                             Inspection Report
                                           </DropdownMenuItem>
+                                          {property.createdAs==='tenant'&&(!property.ownershipVerification||property.ownershipVerification==='pending')&&(
+                                            <DropdownMenuItem onClick={()=>navigate(`/attach-documents/${property.id}?supporting=1`)}>
+                                              <Paperclip className="h-4 w-4 mr-2" />
+                                              Upload Supporting Documents
+                                            </DropdownMenuItem>
+                                          )}
                                           <DropdownMenuItem onClick={() => navigate(`/attach-documents/${property.id}?type=tds_report`)}>
                                             <FileText className="h-4 w-4 mr-2" />TDS Updation Report
                                           </DropdownMenuItem>

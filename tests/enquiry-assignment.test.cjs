@@ -87,7 +87,7 @@ test('existing property/general enquiry intake cannot forge tracking and remains
  const app=setup(),api=route(app,'admin/notifications');
  const r=await api.POST(request('/admin/notifications','tenant','POST',{type:'property_enquiry',propertyId:'P',userId:'tenant',brokerUID:'broker',status:'closed_won',notes:'FORGED_PRIVATE',history:[]}));assert.equal(r.status,201);const id=(await r.json()).notification.id;
  assert.ok(!app.state.enquiry_assignments);assert.ok(!JSON.stringify(app.state.admin_notifications[id]).includes('FORGED_PRIVATE'));
- const general=await api.POST(request('/admin/notifications',null,'POST',{type:'general_inquiry',userName:'Guest',userEmail:'guest@test.invalid',userPhone:'1234567890',inquiryType:'rent',propertyType:'residential'}));assert.equal(general.status,201);
+ const general=await api.POST(request('/admin/notifications',null,'POST',{type:'general_inquiry',userName:'Guest',userEmail:'guest@test.invalid',userPhone:'9876543210',inquiryType:'rent',propertyType:'residential'}));assert.equal(general.status,201);
  const generalRows=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='enquiry.general_created');assert.equal(generalRows.length,1);assert.equal(generalRows[0].recipientEmail,'admin@test.invalid');assert.ok(generalRows[0].html.includes('Guest'));assert.ok(!generalRows[0].html.includes('OWNER_SECRET'));
  const admin=(await(await list(app,'admin')).json()).enquiries;assert.equal(admin.length,3);assert.ok(admin.some(e=>e.id===id&&e.status==='new'&&e.brokerUID===''));
  assert.equal((await api.GET(request('/admin/notifications','admin'))).status,200);

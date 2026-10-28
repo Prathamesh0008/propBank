@@ -54,13 +54,14 @@ test('file deletion uses a managed ID, verifies uploader and never mutates legac
 });
 
 test('visit CRUD validates partial changes and never upserts a missing visit',async()=>{
- const app=isolated({users,properties}),root=route(app,'visits'),detail=route(app,'visits/[id]');
+ const app=isolated({users,properties:{...properties,P:{...properties.P,moderationStatus:'approved',isActive:true,status:'active',rentalStatus:'available',isRented:false}}}),root=route(app,'visits'),detail=route(app,'visits/[id]');
  assert.equal((await root.POST(request('/visits','owner','POST',{title:'Visit',visitDate:'2025-02-30T00:00:00Z',reminderType:'email'}))).status,400);
  const result=await root.POST(request('/visits','owner','POST',{title:'Visit',description:'Keep',propertyId:'P',visitDate:'2099-01-01T00:00:00Z',reminderType:'email',reminderTime:30}));assert.equal(result.status,201);const {visit}=await json(result);
  assert.equal((await detail.GET(request('/visits/'+visit.id,'other'),context(visit.id))).status,403);
- assert.equal((await detail.PUT(request('/visits/'+visit.id,'owner','PUT',{isCompleted:true}),context(visit.id))).status,200);
  assert.equal((await detail.PUT(request('/visits/'+visit.id,'owner','PUT',{visitDate:'bad'}),context(visit.id))).status,400);
- const updated=await json(await detail.PUT(request('/visits/'+visit.id,'owner','PUT',{title:'Renamed',reminderTime:0}),context(visit.id)));assert.equal(updated.visit.isCompleted,true);assert.equal(updated.visit.description,'Keep');assert.equal(updated.visit.reminderTime,0);
+ const updated=await json(await detail.PUT(request('/visits/'+visit.id,'owner','PUT',{title:'Renamed'}),context(visit.id)));assert.equal(updated.visit.isCompleted,false);assert.equal(updated.visit.description,'Keep');assert.equal(updated.visit.reminderTime,30);
+ assert.equal((await detail.PUT(request('/visits/'+visit.id,'owner','PUT',{isCompleted:true}),context(visit.id))).status,200);
+ assert.equal((await detail.PUT(request('/visits/'+visit.id,'owner','PUT',{title:'Too late'}),context(visit.id))).status,409);
  for(const uid of ['owner','admin'])assert.equal((await detail.PUT(request('/visits/missing',uid,'PUT',{}),context('missing'))).status,404);
  assert.equal((await root.GET(request('/visits?userId=owner','other'))).status,403);
  assert.equal((await detail.DELETE(request('/visits/'+visit.id,'owner','DELETE'),context(visit.id))).status,200);
@@ -128,7 +129,7 @@ test('tenant requests persist pending status without changing owner-approved ter
 
 test('notifications retain anonymous inquiry, enrichment, property query precedence, admin permissions and array response',async()=>{
  const app=isolated({users,properties});app.env.ADMIN_EMAIL='admin@test.invalid';const r=route(app,'admin/notifications');
- const inquiry=await r.POST(request('/admin/notifications',null,'POST',{type:'general_inquiry',userName:'Guest',userEmail:'guest@test.invalid',inquiryType:'buy',propertyType:'residential',userPhone:'1234567890',requestVisit:true,visitDate:'2030-01-01',visitTime:'09:00 AM',message:'Keep'}));assert.equal(inquiry.status,201);assert.equal((await json(inquiry)).notification.priority,'medium');
+ const inquiry=await r.POST(request('/admin/notifications',null,'POST',{type:'general_inquiry',userName:'Guest',userEmail:'guest@test.invalid',inquiryType:'buy',propertyType:'residential',userPhone:'9876543210',requestVisit:true,visitDate:'2030-01-01',visitTime:'09:00 AM',message:'Keep'}));assert.equal(inquiry.status,201);assert.equal((await json(inquiry)).notification.priority,'medium');
  assert.equal((await r.POST(request('/admin/notifications',null,'POST',{type:'property_enquiry',userId:'owner'}))).status,401);
  assert.equal((await r.POST(request('/admin/notifications','tenant','POST',{type:'property_enquiry',userId:'owner'}))).status,403);
  const created=await json(await r.POST(request('/admin/notifications','tenant','POST',{type:'property_enquiry',propertyId:'P',propertyTitle:'Fake title',userId:'tenant',timestamp:'invalid',isRead:true})));assert.equal(created.notification.propertyTitle,'Existing Home');assert.equal(created.notification.ownerPhone,'');assert.equal(created.notification.userPhone,'456');
@@ -166,15 +167,15 @@ test('visit and notification RFC3339 nanoseconds survive persistence and retriev
  const app=isolated({users}),r=route(app,'visits');const date='2099-01-01T00:00:00.123456789+05:30';
  const {visit}=await json(await r.POST(request('/visits','owner','POST',{title:'Precise',visitDate:date,reminderType:'email'})));assert.equal(visit.visitDate,date);assert.equal(app.state.visits[visit.id].visitDate.nanoseconds,123456789);
  const fetched=await json(await route(app,'visits/[id]').GET(request('/visits/'+visit.id,'owner'),context(visit.id)));assert.equal(fetched.visit.visitDate,'2098-12-31T18:30:00.123456789Z');
- const {notification}=await json(await route(app,'admin/notifications').POST(request('/admin/notifications','owner','POST',{type:'general_inquiry',inquiryType:'rent',propertyType:'residential',timestamp:date})));assert.notEqual(notification.timestamp,date);assert.ok(app.state.admin_notifications[notification.id].timestamp instanceof Date);
+ const {notification}=await json(await route(app,'admin/notifications').POST(request('/admin/notifications',null,'POST',{type:'general_inquiry',inquiryType:'rent',propertyType:'residential',userName:'Guest',userEmail:'guest@test.invalid',userPhone:'9876543210',timestamp:date})));assert.notEqual(notification.timestamp,date);assert.ok(app.state.admin_notifications[notification.id].timestamp instanceof Date);
 });
 test('Firestore field tags, omitted zero times and nested documents match Go SDK empty-value rules',{skip:fs.existsSync(path.resolve('tests/go-reference'))?false:'Original Go reference source is unavailable'},()=>{
  const c=isolated().load('@/lib/server/services/contracts');
  for(const kind of ['Visit','Tenant','Document','AdminNotification','Property','User'])for(const data of [{},{id:'existing',createdAt:'2025-01-01T00:00:00.123Z',tenants:[],spouse:{firstName:'Spouse'},archiveHistory:[{action:'archived',timestamp:'2025-01-01T00:00:00Z'}]}])assert.deepEqual(JSON.parse(JSON.stringify(c.wireValue(c.storeModel(kind,c.model(kind,data))))),goReference(kind,data,true),kind);
  const visit=c.model('Visit',{});assert.equal(c.wireModel('Visit',visit).notifiedAt,'0001-01-01T00:00:00Z');assert.equal('notifiedAt' in c.storeModel('Visit',visit),false);
 });
-test('visit updates reject unknown fields and preserve omitted completion state',async()=>{
+test('visit updates reject unknown fields and preserve terminal completion state',async()=>{
  const app=isolated({users,visits:{V:{...defaults,id:'V',userId:'owner',title:'Keep',visitDate:new Date('2099-01-01'),isCompleted:true}}});const r=route(app,'visits/[id]');
  assert.equal((await r.PUT(request('/visits/V','owner','PUT',{nested:{}}),context('V'))).status,400);
- assert.equal((await r.PUT(request('/visits/V','owner','PUT',{title:'Changed'}),context('V'))).status,200);assert.equal(app.state.visits.V.isCompleted,true);
+ assert.equal((await r.PUT(request('/visits/V','owner','PUT',{title:'Changed'}),context('V'))).status,409);assert.equal(app.state.visits.V.title,'Keep');assert.equal(app.state.visits.V.isCompleted,true);
 });

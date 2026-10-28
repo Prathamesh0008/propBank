@@ -4,6 +4,7 @@ import styles from "./PropertyForm.module.css";
 
 import ClientPropertyFields, {clientPropertySchema} from './ClientPropertyFields';
 import { apiFetch } from '@/lib/api-client';
+import AmountInWords from '@/components/AmountInWords';
 
 import { useParams, useNavigate, useLocation } from "@/lib/navigation";
 import { ArrowLeft, Building2, CheckCircle2, CheckSquare, Loader2, XCircle } from "lucide-react";
@@ -26,6 +27,7 @@ import { FurnishedChecklistModal } from "./FurnishedChecklistModal";
 import { uploadBase64Image } from "../../services/uploadService";
 import { usePropertyDetails } from "../../hooks/useProperties";
 import { useQueryClient } from "@tanstack/react-query";
+import {PROPERTY_CONFIGURATIONS,propertyCategory,structureUsesPlotArea} from '@/lib/property-category';
 
 
 
@@ -33,7 +35,9 @@ const formSchema = z.object({
   ...clientPropertySchema,
   propertyTitle: z.string().min(1, "Property title is required"),
   propertyType: z.string().min(1, "Property type is required"),
-  configuration: z.string().min(1, "Configuration is required"),
+  // Legacy commercial and industrial records may not have a residential BHK
+  // layout. Preserve those records without forcing an unrelated value.
+  configuration: z.string().optional(),
   listingType: z.string().min(1, "Listing type is required"),
   unitNumber: z.string().optional(),
   floor: z.string().optional(),
@@ -364,31 +368,12 @@ const EditProperty = () => {
   };
 
   const getConfigurationOptions = () => {
-    switch (form.watch("propertyType")) {
-      case "residential":
-        return [
-          { value: "bunglow", label: "Bunglow" },
-          { value: "2 BHK Flat", label: "2 BHK" },
-          { value: "3 BHK Flat", label: "3 BHK" },
-          { value: "4 BHK Flat", label: "4 BHK" },
-          { value: "5+ BHK Flat", label: "5+ BHK" },
-        ];
-      case "commercial":
-        return [
-          { value: "office", label: "Office" },
-          { value: "shop", label: "Shop" },
-        ];
-      case "industrial":
-        return [
-          { value: "unit", label: "Unit" },
-          { value: "shed", label: "Shed" },
-          { value: "Plot/land", label: "Plot/land" },
-          { value: "RCC", label: "RCC" },
-        ];
-      default:
-        return [];
-    }
+    const current=form.watch('configuration');
+    return [...(current&&!PROPERTY_CONFIGURATIONS.includes(current as typeof PROPERTY_CONFIGURATIONS[number])?[{value:current,label:current}]:[]),...PROPERTY_CONFIGURATIONS.map(value=>({value,label:value}))];
   };
+
+  const editCategory=propertyCategory(form.watch('propertyCategory')||form.watch('propertyType'));
+  const editPlotStructure=structureUsesPlotArea(form.watch('structure'));
 
   const getUnitLabel = () => {
     switch (form.watch("propertyType")) {
@@ -519,7 +504,7 @@ const EditProperty = () => {
 
       const updateData = {
         ...Object.fromEntries(Object.entries(safeRestData).filter(([key])=>!["saleStatus","buyerFirstName","buyerLastName","buyerPhone"].includes(key))),
-        title: propertyTitle, 
+        title: propertyTitle,
         images: uploadedImages,
         furnishedChecklist: checkedFurnishedItems,
         ownerUID: property?.ownerUID || currentUser.uid,
@@ -657,7 +642,15 @@ const EditProperty = () => {
                 toast({ title: "Please review the highlighted fields", description: firstMessage || `${invalidFields.length} field(s) need attention.`, variant: "destructive" });
               })} className={`${styles.formBody} space-y-8`}>
                 <ClientPropertyFields form={form} disabled={!isPropertyEditable()}/>
-                <div className="grid gap-4 sm:grid-cols-2">{(["escalationPercentage","escalationAmount"] as const).map(name=><FormField key={name} control={form.control} name={name} render={({field})=><FormItem><FormLabel>{name==="escalationPercentage"?"Rent escalation percentage":"Rent escalation fixed amount"}</FormLabel><FormControl><Input {...field} value={field.value||""}/></FormControl><FormMessage/></FormItem>}/>)}</div>
+                <fieldset className="grid gap-4 sm:grid-cols-2">
+                  <legend className="font-semibold mb-3">Unit and area details</legend>
+                  <FormField control={form.control} name="unitNumber" render={({field})=><FormItem><FormLabel>{getUnitLabel()}</FormLabel><FormControl><Input disabled={!isPropertyEditable()} {...field} value={field.value||''}/></FormControl><FormMessage/></FormItem>}/>
+                  {!editPlotStructure&&<FormField control={form.control} name="floor" render={({field})=><FormItem><FormLabel>Floor</FormLabel><FormControl><Input disabled={!isPropertyEditable()} {...field} value={field.value||''}/></FormControl><FormMessage/></FormItem>}/>}
+                  {!editPlotStructure&&<FormField control={form.control} name="carpetArea" render={({field})=><FormItem><FormLabel>Carpet area</FormLabel><FormControl><Input type="number" min="0" disabled={!isPropertyEditable()} {...field} value={field.value||''}/></FormControl><FormMessage/></FormItem>}/>}
+                  {!editPlotStructure&&<FormField control={form.control} name="constructedArea" render={({field})=><FormItem><FormLabel>Built-up / Constructed area</FormLabel><FormControl><Input type="number" min="0" disabled={!isPropertyEditable()} {...field} value={field.value||''}/></FormControl><FormMessage/></FormItem>}/>}
+                  {editPlotStructure&&<FormField control={form.control} name="plotArea" render={({field})=><FormItem><FormLabel>Plot area</FormLabel><FormControl><Input type="number" min="0" disabled={!isPropertyEditable()} {...field} value={field.value||''}/></FormControl><FormMessage/></FormItem>}/>}
+                </fieldset>
+                <div className="grid gap-4 sm:grid-cols-2">{(["escalationPercentage","escalationAmount"] as const).map(name=><FormField key={name} control={form.control} name={name} render={({field})=><FormItem><FormLabel>{name==="escalationPercentage"?"Rent escalation percentage":"Rent escalation fixed amount"}</FormLabel><FormControl><Input {...field} value={field.value||""}/></FormControl>{name==='escalationAmount'&&<AmountInWords amount={field.value}/>}<FormMessage/></FormItem>}/>)}</div>
 
                 {/* Basic Property Information */}
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 p-6 border rounded-lg">
@@ -683,12 +676,12 @@ const EditProperty = () => {
                     )}
                   />
 
-                  <FormField
+                  {editCategory==='residential'&&!editPlotStructure&&<FormField
                     control={form.control}
                     name="configuration"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Configuration / (Structure)</FormLabel>
+                        <FormLabel>Residential layout</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value} disabled={!isPropertyEditable()}>
                           <FormControl>
                             <SelectTrigger>
@@ -706,7 +699,7 @@ const EditProperty = () => {
                         <FormMessage />
                       </FormItem>
                     )}
-                  />
+                  />}
 
                   <FormField
                     control={form.control}
@@ -841,6 +834,7 @@ const EditProperty = () => {
                                 {...field}
                               />
                             </FormControl>
+                            <AmountInWords amount={field.value}/>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -860,6 +854,7 @@ const EditProperty = () => {
                                 {...field}
                               />
                             </FormControl>
+                            <AmountInWords amount={field.value}/>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -991,6 +986,7 @@ const EditProperty = () => {
                               {...field}
                             />
                           </FormControl>
+                          <AmountInWords amount={field.value}/>
                           <FormMessage />
                         </FormItem>
                       )}

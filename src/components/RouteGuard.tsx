@@ -9,7 +9,7 @@ import { API_BASE_URL } from "@/utils/config";
 import { useToast } from "@/hooks/use-toast";
 
 export default function RouteGuard({ children, admin = false }: { children: ReactNode; admin?: boolean }) {
-  const { user, loading } = useAuth();
+  const { user, loading, fileAccess } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
   const [verifiedUid, setVerifiedUid] = useState<string | null>(null);
@@ -40,7 +40,7 @@ export default function RouteGuard({ children, admin = false }: { children: Reac
   if (loading || !user || (admin && verifiedUid !== user.uid)) return (
     <div className="flex items-center justify-center min-h-screen"><div className="text-center">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4" />
-      <p>{admin ? "Verifying admin access..." : "Loading..."}</p>
+      <p>{loading&&['preparing','retrying'].includes(fileAccess?.phase)?fileAccess.message:admin ? "Verifying admin access..." : "Loading..."}</p>
     </div></div>
   );
   return children;

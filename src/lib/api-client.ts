@@ -2,8 +2,15 @@ import { auth } from '@/firebase';
 
 export async function firebaseAuthorizationHeaders(initial?: HeadersInit): Promise<Headers> {
   const headers=new Headers(initial);
+  const startingUID=auth.currentUser?.uid;
   await auth.authStateReady();
-  if (auth.currentUser) headers.set('Authorization',`Bearer ${await auth.currentUser.getIdToken()}`);
+  const user=auth.currentUser;
+  if(startingUID&&user?.uid!==startingUID){const error=new Error('Account changed before the request could start');error.name='AbortError';throw error;}
+  if (user) {
+    const token=await user.getIdToken();
+    if(auth.currentUser?.uid!==user.uid){const error=new Error('Account changed before the request could start');error.name='AbortError';throw error;}
+    headers.set('Authorization',`Bearer ${token}`);
+  }
   else headers.delete('Authorization');
   return headers;
 }

@@ -16,6 +16,7 @@ import { propertyService, type Property } from "@/services/propertyService";
 import { TimePicker } from "@/ui/time-picker";
 import styles from "./VisitPlanner.module.css";
 import {useAuth} from '@/contexts/AuthContext';
+import { indiaCalendarDate, indiaDateTimeParts, indiaLocalDateTime } from '@/lib/form-validation';
 
 
 const VisitPlanner = () => {
@@ -92,7 +93,7 @@ const VisitPlanner = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.title || !formData.date || !formData.time) {
+    if (!formData.title.trim() || !formData.date || !formData.time) {
       toast({
         title: "Error",
         description: "Please fill in all required fields",
@@ -114,15 +115,15 @@ const VisitPlanner = () => {
       setSubmitting(true);
       
       // Combine date and time into ISO string
-      const visitDateTime = new Date(`${formData.date}T${formData.time}`);
-      if(!Number.isFinite(visitDateTime.getTime())||visitDateTime.getTime()<=Date.now()){
+      const visitDateTime = indiaLocalDateTime(formData.date,formData.time);
+      if(!visitDateTime||visitDateTime.getTime()<=Date.now()){
         toast({title:'Choose a future time',description:'Visits must be scheduled for a future date and time.',variant:'destructive'});return;
       }
       
       const visitRequest: CreateVisitRequest = {
-        title: formData.title,
+        title: formData.title.trim(),
         ...(formData.propertyId?{propertyId:formData.propertyId}:{}),
-        description: formData.description,
+        description: formData.description.trim(),
         visitDate: visitDateTime.toISOString(),
         reminderType: 'email',
         reminderTime: 30,
@@ -177,8 +178,8 @@ const VisitPlanner = () => {
   };
 
   const beginReschedule=(visit:Visit)=>{
-    const date=new Date(visit.visitDate),local=new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString();
-    setEditingVisit(visit);setFormData({title:visit.title,description:visit.description||'',date:local.slice(0,10),time:local.slice(11,16),propertyId:visit.propertyId||''});setIsAddingVisit(true);
+    const local=indiaDateTimeParts(visit.visitDate);
+    setEditingVisit(visit);setFormData({title:visit.title,description:visit.description||'',date:local.date,time:local.time,propertyId:visit.propertyId||''});setIsAddingVisit(true);
   };
 
   const formatDate = (dateString: string) => {
@@ -363,17 +364,17 @@ const VisitPlanner = () => {
                 <CardHeader className="pb-3 sm:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                     <MapPin className="h-4 w-4 sm:h-5 sm:w-5" />
-                    {editingVisit?'Reschedule Property Visit':'Schedule Property Visit'}
+                    {editingVisit?'Reschedule Visit':'Plan a Visit or Reminder'}
                   </CardTitle>
                   <CardDescription className="text-xs sm:text-sm">
-                    Plan your property visit and get notified before the appointment
+                    Link a listed property for a viewing, or leave it unselected for a general reminder.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="pt-0">
                   <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
                     <div className="space-y-1 sm:space-y-2">
                       <Label htmlFor="title" className="text-xs sm:text-sm">Visit Title *</Label>
-                      <Input id="title" value={formData.title} className="text-sm" required
+                      <Input id="title" value={formData.title} className="text-sm" required maxLength={120}
                         onChange={(e) => handleInputChange('title', e.target.value)}placeholder="E.g., Visit Apartment in Downtown"/>
                     </div>
 
@@ -390,12 +391,13 @@ const VisitPlanner = () => {
                       {propertiesError&&<p className={styles.fieldNotice}>{propertiesError}</p>}
                       {!propertiesLoading&&!propertiesError&&properties.length===0&&<p className={styles.fieldHelp}>No eligible properties are currently listed. You can schedule a general visit.</p>}
                       {editingVisit&&<p className={styles.fieldHelp}>The linked property stays unchanged when a visit is rescheduled.</p>}
+                      {editingVisit&&<p className={styles.fieldHelp}>To prevent a schedule update being applied to the wrong listing, create a new visit if the property changes.</p>}
                     </div>
 
                     <div className="space-y-1 sm:space-y-2">
                       <Label htmlFor="date" className="text-xs sm:text-sm">Visit Date *</Label>
                       <DatePicker value={formData.date} className="text-sm"
-                        onChange={(value) => handleInputChange('date', value)} min={new Date().toISOString().split('T')[0]}
+                        onChange={(value) => handleInputChange('date', value)} min={indiaCalendarDate()}
                       />
                     </div>
 
@@ -403,12 +405,12 @@ const VisitPlanner = () => {
 
                     <div className="space-y-1 sm:space-y-2">
                       <Label htmlFor="description" className="text-xs sm:text-sm">Visit Details</Label>
-                      <Textarea id="description" value={formData.description} rows={3} className="resize-none text-sm"
+                      <Textarea id="description" value={formData.description} rows={3} className="resize-none text-sm" maxLength={1000}
                         onChange={(e) => handleInputChange('description', e.target.value)} 
                         placeholder="Property address, contact person, special notes..."/>
                     </div>
 
-                    <p className={styles.reminderHelp}>You and the PropBank administrator will receive an email reminder 30 minutes before your visit.</p>
+                    <p className={styles.reminderHelp}><Bell aria-hidden="true" /> Confirmation: an email reminder is scheduled 30 minutes beforehand. A property selection represents a property visit; no selection creates a general visit reminder.</p>
 
                     <div className="flex flex-col gap-2 pt-3 sm:pt-4 border-t">
                       <Button type="submit" disabled={submitting}

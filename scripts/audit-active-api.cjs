@@ -65,10 +65,15 @@ for(const [file,source]of parsed) {
     for(const pair of pairs) {const method=pair.method;let endpoint=pair.endpoint;
      if(!endpoint.startsWith('/api'))throw new Error(`Nonlocal request needs review: ${endpoint}`);
      endpoint=endpoint.replace(/\/negotiations\/:param/g,'/negotiations/:id').replace(/\/properties\/:param/g,'/properties/:id').replace(/\/users\/:param/g,'/users/:id').replace(/\/visits\/:param/g,'/visits/:id').replace(/\/documents\/property\/:param/g,'/documents/property/:propertyId').replace(/\/documents\/:param/g,'/documents/:id').replace(/\/inspection-reports\/property\/:param/g,'/inspection-reports/property/:propertyId').replace(/\/inspection-reports\/user\/:param/g,'/inspection-reports/user/:userId').replace(/\/service-requests\/:param/g,'/service-requests/:id').replace(/\/admin\/notifications\/:param/g,'/admin/notifications/:id');
-     endpoint=endpoint.replace(/\/enquiries\/:param/g,'/enquiries/:id');
+     endpoint=endpoint.replace(/\/enquiries\/:param/g,'/enquiries/:id').replace(/\/tenants\/:param/g,'/tenants/:id').replace(/\/admin\/email-deliveries\/:param/g,'/admin/email-deliveries/:id');
      endpoint=endpoint.replace(/(status|dateFrom|dateTo)=:param/g,'$1=:filter');
      endpoint=endpoint.replace(/(userId|ownerUID|userUID)=:param/g,'$1=:uid').replace(/phone=:param/g,'phone=:phone').replace(/userEmail=:param/g,'userEmail=:email').replace(/listingType=:param/g,'listingType=:listingType').replace(/propertyId=:param/g,'propertyId=:propertyId');
      endpoint=endpoint.replace(/tenantUID=:param/g,'tenantUID=:uid');
+     endpoint=endpoint.replace(/([?&][A-Za-z][\w-]*)=:param/g,'$1=:filter');
+     // A template interpolation may represent an entire optional query string.
+     // The route inventory compares pathnames below, so retain an explicit query
+     // marker without treating it as an unresolved path parameter.
+     endpoint=endpoint.replace(/\?:param$/,'?query=:filter');
      if(endpoint.includes(':param'))throw new Error(`Unnormalized endpoint ${endpoint}`);
      operations.push({method,endpoint,caller:relative(file)+':'+(source.getLineAndCharacterOfPosition(n.getStart()).line+1),reachable:reachable.has(file)});
     }
