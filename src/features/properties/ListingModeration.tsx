@@ -15,7 +15,7 @@ export interface ListingReview {
 export default function ListingModeration({property,admin=false}:{property:ListingReview;admin?:boolean}) {
   const [current,setCurrent]=useState(property),[reason,setReason]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const queries=useQueryClient();
-  if(!current.moderationStatus&&(current.createdAs==='tenant'||!['rent','sell'].includes(current.listingType||'')))return null;
+  if(!current.moderationStatus&&(current.createdAs==='tenant'||!['rent','sell','sell_rent'].includes(current.listingType||'')))return null;
   const status=current.moderationStatus??'unreviewed';
   async function decide(action:string) {
     setBusy(true);setError('');

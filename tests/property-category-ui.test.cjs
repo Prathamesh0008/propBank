@@ -2,7 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),ts=require('typescript'),React=require('react');
 const {renderToStaticMarkup}=require('react-dom/server');
-const choices={residential:['Apartment','Independent House','Villa','Residential Plot'],commercial:['Office','Shop','Showroom','Commercial Plot'],industrial:['Warehouse','Factory','Industrial Shed','Industrial Plot']};
+const choices={residential:['Flat','Bungalow'],commercial:['Office','Shop','Showroom','Commercial Plot'],industrial:['Warehouse','Factory','Industrial Shed','Industrial Plot']};
 function harness(category){
  const state=[],requests=[],cache=new Map();let index=0;
  const react={...React,useState:initial=>{const key=index++;if(!(key in state))state[key]=initial;return [state[key],value=>{state[key]=typeof value==='function'?value(state[key]):value;}];}};
@@ -31,7 +31,7 @@ function harness(category){
 }
 function nodes(tree){if(!tree||typeof tree!=='object')return [];if(Array.isArray(tree))return tree.flatMap(nodes);if(typeof tree.type==='function')return nodes(tree.type(tree.props));return [tree,...nodes(tree.props?.children)];}
 function texts(tree){return tree==null?'':Array.isArray(tree)?tree.map(texts).join(''):typeof tree==='object'?texts(tree.props?.children):String(tree);}
-function options(tree){return nodes(tree).filter(node=>node.type==='select'&&['Property type','Property type / Structure'].includes(node.props['aria-label'])).flatMap(node=>nodes(node.props.children).filter(node=>node.type==='option').map(node=>texts(node.props.children))).slice(1);}
+function options(tree){return nodes(tree).filter(node=>node.type==='select'&&['Property Type','Property type','Property type / Structure'].includes(node.props['aria-label'])).flatMap(node=>nodes(node.props.children).filter(node=>node.type==='option').map(node=>texts(node.props.children))).slice(1);}
 function expression(name){const file=path.resolve('src/features/properties/AddPropertyForm.tsx'),source=ts.createSourceFile(file,fs.readFileSync(file,'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);let result;function walk(node){if(ts.isVariableDeclaration(node)&&node.name.getText(source)===name)result=node.initializer.getText(source);ts.forEachChild(node,walk);}walk(source);assert.ok(result);return ts.transpile(`const value=${result};`,{target:ts.ScriptTarget.ES2022}).replace(/^const value\s*=\s*/, '').replace(/;\s*$/,'');}
 
 for(const category of Object.keys(choices))test(`${category} forms omit category controls and show only the category's structure options`,async()=>{
@@ -44,14 +44,25 @@ test('owner submit uses the selected route category, not editable form metadata'
 test('configuration is a residential layout and no longer repeats commercial or industrial property types',()=>{
  const getOptions=new Function('PROPERTY_CONFIGURATIONS',`return (${expression('getConfigurationOptions')});`)(['Studio','1 BHK','2 BHK','3 BHK','4 BHK','5+ BHK']);assert.deepEqual(getOptions().map(value=>value.label),['Studio','1 BHK','2 BHK','3 BHK','4 BHK','5+ BHK']);
 });
-test('tenant fields follow structure semantics without discarding retained form state',()=>{
- const residential=harness('residential');let html=renderToStaticMarkup(residential.renderTenant());assert.match(html,/Residential layout/);assert.match(html,/Carpet area/);assert.doesNotMatch(html,/>Plot area</);
+test('owner intake title includes the selected category without a duplicate category badge',()=>{
+ const source=fs.readFileSync('src/features/properties/AddPropertyForm.tsx','utf8');assert.match(source,/List your \{selectedPropertyType\.charAt\(0\)\.toUpperCase\(\) \+ selectedPropertyType\.slice\(1\)\} property/);assert.doesNotMatch(source,/bg-primary\/10 text-primary rounded-md/);
+});
+test('owner, tenant and edit intake do not render separate property-title and building-name controls',()=>{
+ const shared=fs.readFileSync('src/features/properties/ClientPropertyFields.tsx','utf8'),owner=fs.readFileSync('src/features/properties/AddPropertyForm.tsx','utf8'),tenant=fs.readFileSync('src/features/properties/TenantPropertyForm.tsx','utf8'),edit=fs.readFileSync('src/features/properties/EditProperty.tsx','utf8');
+ assert.ok(shared.indexOf("['propertyTitle','Property Name']")<shared.indexOf("['structure','Property Type']"));assert.doesNotMatch(shared,/\['buildingName','Building \/ Society name'\]/);
+ assert.equal((owner.match(/name="propertyTitle"/g)||[]).length,0);assert.match(owner,/buildingName: data\.propertyTitle/);
+ assert.equal((tenant.match(/Property Name \*/g)||[]).length,1);assert.doesNotMatch(tenant,/Building \/ Society name/);assert.match(tenant,/key==='propertyTitle'\?\{buildingName:value\}/);
+ assert.equal((edit.match(/name="propertyTitle"/g)||[]).length,0);
+});
+test('tenant fields follow structure semantics without duplicate non-plot area-unit selectors',()=>{
+ const residential=harness('residential');let html=renderToStaticMarkup(residential.renderTenant());assert.match(html,/Residential layout/);assert.match(html,/Carpet area \(sq ft\)/);assert.match(html,/Built-up \/ Constructed area \(sq ft\)/);assert.doesNotMatch(html,/>Plot area|Carpet area unit|Built-up \/ Constructed area unit/);
  residential.state[0]={...residential.state[0],structure:'Residential Plot',configuration:'3 BHK',carpetArea:'850',plotArea:'1200'};html=renderToStaticMarkup(residential.renderTenant());assert.match(html,/>Plot area</);assert.match(html,/Plot area unit/);assert.doesNotMatch(html,/Residential layout|Carpet area unit|Built-up \/ Constructed area unit/);assert.equal(residential.state[0].configuration,'3 BHK');assert.equal(residential.state[0].carpetArea,'850');
  for(const category of ['commercial','industrial']){const h=harness(category),markup=renderToStaticMarkup(h.renderTenant());assert.doesNotMatch(markup,/Residential layout|BHK/);}
 });
-test('owner creation summary omits duplicate area units and expected rent while Edit Property keeps them',()=>{
+test('owner creation and editing use one visible property name while Edit Property keeps legacy area controls',()=>{
  const h=harness('residential'),creation=renderToStaticMarkup(h.ownerFields('residential',true)),edit=renderToStaticMarkup(h.ownerFields(undefined));
- assert.match(creation,/Property type/);assert.match(creation,/Building \/ Society name/);
+ assert.match(creation,/Property Name/);assert.match(creation,/Property Type/);assert.doesNotMatch(creation,/Building \/ Society name/);assert.equal((creation.match(/Property Name/g)||[]).length,1);
+ assert.match(edit,/Property Name/);assert.doesNotMatch(edit,/Building \/ Society name/);
  for(const label of ['Area unit','Carpet area unit','Built-up \/ Constructed area unit','Plot area unit','Expected rent'])assert.doesNotMatch(creation,new RegExp(label));
  for(const label of ['Area unit','Carpet area unit','Built-up \/ Constructed area unit','Plot area unit'])assert.match(edit,new RegExp(label));
 });

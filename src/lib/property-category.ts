@@ -6,14 +6,14 @@ export function propertyCategory(value: unknown): PropertyCategory | null {
   return PROPERTY_CATEGORIES.includes(normalized as PropertyCategory) ? normalized as PropertyCategory : null;
 }
 export const PROPERTY_STRUCTURES: Record<PropertyCategory, readonly string[]> = {
-  residential: ['Apartment', 'Independent House', 'Villa', 'Residential Plot'],
+  residential: ['Flat', 'Bungalow'],
   commercial: ['Office', 'Shop', 'Showroom', 'Commercial Plot'],
   industrial: ['Warehouse', 'Factory', 'Industrial Shed', 'Industrial Plot'],
 };
 // Existing records keep their original structure values. Creation accepts both
 // vocabularies, while the new forms present only the clearer canonical terms.
 export const LEGACY_PROPERTY_STRUCTURES: Record<PropertyCategory, readonly string[]> = {
-  residential: ['Flat', 'Bungalow'],
+  residential: ['Apartment', 'Independent House', 'Villa', 'Residential Plot', 'Flat', 'Bungalow'],
   commercial: ['Office', 'Shop'],
   industrial: ['Unit', 'RCC Shed', 'Land'],
 };

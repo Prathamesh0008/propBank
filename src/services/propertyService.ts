@@ -23,7 +23,10 @@ interface Property {
   state: string;
   zipCode: string;
   propertyType: string;
-  listingType?: string; // 'rent' | 'sell'
+  propertyCategory?:string;
+  structure?:string;
+  buildingName?:string;
+  listingType?: string; // 'rent' | 'sell' | 'sell_rent' | 'manage'
   projectCondition?: string; // 'New Project' | 'Ready Project' | 'Preleased'
   internalImages?: string[];
   possessionDate?: string;
@@ -50,6 +53,11 @@ interface Property {
   carpetArea?: string; // e.g., "1200 sqft"
   constructedArea?: string; // e.g., "1500 sqft"
   plotArea?: string; // added plotArea
+  areaUnit?:string;
+  carpetAreaUnit?:string;
+  constructedAreaUnit?:string;
+  plotAreaUnit?:string;
+  expectedRent?:string;
   monthlyRent?: string;
   sellingPrice?: string;
   personName?: string;
@@ -74,6 +82,10 @@ interface Property {
   agreementEndDate?: string;
   noticePeriod?: string;
   lockInPeriod?: string;
+  nextAgreementDraft?:{durationMonths?:string;startDate:string;endDate:string;monthlyRent:string;securityDeposit:string;noticePeriod:string;lockInPeriod:string};
+  agreementStatus?:string;
+  tenancyRevision?:number;
+  maintenanceCharges?:string;
   maintenanceToBePaidBy?: string;
   specificComments?: string;
   tenants?: any[];

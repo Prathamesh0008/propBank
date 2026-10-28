@@ -76,7 +76,7 @@ export async function prepareMediaBindings(tx:Transaction,user:AuthenticatedUser
       for(const use of used)kept.push({collection,id,propertyId,field:use.field});
       if(kept.length>50)throw new ApiError(400,'File reference limit reached');
     }
-    const privateUse=used.some(use=>!(collection==='properties'&&use.field==='images'&&next.createdAs!=='tenant'&&['rent','sell'].includes(next.listingType)||collection==='siteSettings'&&use.field==='bannerImages'));
+    const privateUse=used.some(use=>!(collection==='properties'&&use.field==='images'&&next.createdAs!=='tenant'&&['rent','sell','sell_rent'].includes(next.listingType)||collection==='siteSettings'&&use.field==='bannerImages'));
     changes.push({ref:files().doc(snapshot.id),data:{privateOnly:data.privateOnly===true||privateUse,propertyId:data.propertyId||propertyId,bindings:kept,status:kept.length?'attached':'pending',updatedAt:new Date()}});
   }
   return ()=>{for(const change of changes)tx.update(change.ref,change.data);};

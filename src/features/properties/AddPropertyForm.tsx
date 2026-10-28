@@ -62,6 +62,7 @@ const formSchema = z.object({
 
   // Pricing Details (conditional based on listing type)
   monthlyRent: z.string().optional(), // For rent
+  securityDeposit: z.string().optional(),
   sellingPrice: z.string().optional(), // For sell
 
   // Payment Details
@@ -327,6 +328,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
       // Pricing
       monthlyRent: "",
       expectedRent: "",
+      securityDeposit: "",
       sellingPrice: "",
       paymentDueDate: "",
       agreementPeriod: "",
@@ -379,9 +381,10 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
       }
       if(addNextAgreementManually){const draftError=validateNextAgreementDraft(nextAgreementDraft,data.agreementEndDate||'');if(draftError){toast({title:'Check next agreement details',description:draftError,variant:'destructive'});return;}}
       // Validate pricing based on listing type
-      const occupiedRental=data.listingType === "rent" && data.rentalStatus === "rented";
+      const includesRent=['rent','sell_rent'].includes(data.listingType),includesSale=['sell','sell_rent'].includes(data.listingType);
+      const occupiedRental=includesRent && data.rentalStatus === "rented";
       const rentValue=occupiedRental?data.monthlyRent:data.expectedRent;
-      if (data.listingType === "rent" && (!rentValue || rentValue.trim() === "")) {
+      if (includesRent && (!rentValue || rentValue.trim() === "" || !Number.isFinite(Number(rentValue)) || Number(rentValue)<=0)) {
         const field=occupiedRental?'monthlyRent':'expectedRent';
         form.setError(field,{type:'manual',message:occupiedRental?'Enter the finalized monthly rent.':'Enter the asking monthly rent.'});
         toast({
@@ -391,8 +394,14 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
         });
         return;
       }
+      if (includesRent && (!data.securityDeposit || data.securityDeposit.trim() === "" || !Number.isFinite(Number(data.securityDeposit)) || Number(data.securityDeposit)<0)) {
+        form.setError('securityDeposit',{type:'manual',message:occupiedRental?'Enter the finalized security deposit.':'Enter the expected security deposit.'});
+        toast({title:'Missing Security Deposit',description:occupiedRental?'Enter the deposit agreed for the current tenancy.':'Enter the expected deposit for this rental listing.',variant:'destructive'});
+        return;
+      }
 
-      if (data.listingType === "sell" && (!data.sellingPrice || data.sellingPrice.trim() === "")) {
+      if (includesSale && (!data.sellingPrice || data.sellingPrice.trim() === "" || !Number.isFinite(Number(data.sellingPrice)) || Number(data.sellingPrice)<=0)) {
+        form.setError('sellingPrice',{type:'manual',message:'Enter a valid expected selling price.'});
         toast({
           title: "Missing Selling Price",
           description: "Please enter the selling price for sale properties.",
@@ -402,7 +411,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
       }
 
       // Validate buyer details for sold properties
-      if (data.listingType === "sell" && data.saleStatus === "sold") {
+      if (includesSale && data.saleStatus === "sold") {
         if (!data.buyerFirstName || data.buyerFirstName.trim() === "") {
           toast({
             title: "Missing Buyer Information",
@@ -432,7 +441,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
       }
 
       // Validate tenant details for rented properties
-      if (data.listingType === "rent" && data.rentalStatus === "rented") {
+      if (includesRent && data.rentalStatus === "rented") {
         if (!data.tenantFirstName || data.tenantFirstName.trim() === "") {
           toast({
             title: "Missing Tenant Information",
@@ -521,9 +530,11 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
       // Prepare property data for backend API
       const propertyData = {
         ...data,
+        buildingName: data.propertyTitle,
         nextAgreementDraft:addNextAgreementManually?nextAgreementDraft:undefined,
         monthlyRent: data.rentalStatus==='rented'?data.monthlyRent:'',
-        expectedRent: data.listingType==='rent'&&data.rentalStatus!=='rented'?data.expectedRent:'',
+        expectedRent: includesRent&&data.rentalStatus!=='rented'?data.expectedRent:'',
+        sellingPrice: includesSale?data.sellingPrice:'',
         configuration: selectedPropertyType==='residential'&&!structureUsesPlotArea(data.structure)?data.configuration:'',
         // The measurement controls below are authoritative. Keep the legacy
         // aggregate unit aligned for older property readers.
@@ -561,7 +572,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
       const result = await readPropertyResponse(response);
 
       if (result.success) {
-        const listingTypeText = data.listingType === "rent" ? "rental property" : "property for sale";
+        const listingTypeText = data.listingType === "rent" ? "rental property" : data.listingType==='sell_rent'?'sale and rental property':"property for sale";
 
         // Invalidate property queries so they refetch the newly added property
         queryClient.invalidateQueries({ queryKey: ['userProperties'] });
@@ -629,16 +640,8 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
               <Building2 className="h-8 w-8 text-primary-foreground" />
             </div>
             <div>
-              <h1 className={styles.title}>List your property</h1>
-              <p className="text-lg text-muted-foreground">
-                Property details, thoughtfully organized
-                {selectedPropertyType && (
-                  <span className="ml-2 px-2 py-1 text-sm bg-primary/10 text-primary rounded-md">
-                    {selectedPropertyType.charAt(0).toUpperCase() + selectedPropertyType.slice(1)}
-                  </span>
-                )}
-
-              </p>
+              <h1 className={styles.title}>List your {selectedPropertyType.charAt(0).toUpperCase() + selectedPropertyType.slice(1)} property</h1>
+              <p className="text-lg text-muted-foreground">Property details, thoughtfully organized</p>
             </div>
           </div>
         </div>
@@ -647,7 +650,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
           <CardHeader>
             <CardTitle>Tell us about the space</CardTitle>
             <CardDescription>
-              Complete the details below. Your listing will be reviewed before it appears in public search.
+              Complete the property details below. Sale and rental listings are reviewed before appearing in public search; private-management properties remain private.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -668,24 +671,10 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                 <ClientPropertyFields form={form} fixedCategory={selectedPropertyType} creation/>
 
                 {/* Basic Property Information */}
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 p-4 border rounded-lg">
-                  <div className="lg:col-span-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 border rounded-lg">
+                  <div className="lg:col-span-2">
                     <h3 className="text-lg font-semibold mb-4">Property Details</h3>
                   </div>
-
-                  <FormField
-                    control={form.control}
-                    name="propertyTitle"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Property title</FormLabel>
-                        <FormControl>
-                          <Input placeholder="e.g., Lakeview 2 BHK" autoComplete="off" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
 
                   {accountRole==='agent'&&<FormField control={form.control} name="agentOwnerEmail" render={({field})=><FormItem><FormLabel>Registered legal owner email</FormLabel><FormControl><Input type="email" placeholder="owner@example.com" {...field}/></FormControl><FormDescription>The owner remains legally separate and must have an active, verified PropBank account.</FormDescription><FormMessage/></FormItem>}/>}
 
@@ -729,6 +718,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                           <SelectContent>
                             <SelectItem value="rent">For Rent</SelectItem>
                             <SelectItem value="sell">For Sale</SelectItem>
+                            <SelectItem value="sell_rent">For Sale and Rent</SelectItem>
                             <SelectItem value="manage">Private Management</SelectItem>
                           </SelectContent>
                         </Select>
@@ -738,7 +728,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                   />
 
                   {/* Rental Status - Only show for rental properties */}
-                  {form.watch("listingType") === "rent" && (
+                  {['rent','sell_rent'].includes(listingType||'') && (
                     <FormField
                       control={form.control}
                       name="rentalStatus"
@@ -763,7 +753,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                   )}
 
                   {/* Sale Status - Only show for sale properties */}
-                  {form.watch("listingType") === "sell" && (
+                  {['sell','sell_rent'].includes(listingType||'') && (
                     <FormField
                       control={form.control}
                       name="saleStatus"
@@ -787,6 +777,24 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                     />
                   )}
                 </div>
+
+                {/* Keep asking prices beside the listing purpose so they remain
+                    distinct from finalized agreement terms collected below. */}
+                {['rent','sell','sell_rent'].includes(listingType||'') && <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 border rounded-lg">
+                  <div className="lg:col-span-2">
+                    <h3 className="text-lg font-semibold">Pricing</h3>
+                    <p className="text-sm text-muted-foreground">{['rent','sell_rent'].includes(listingType||'')&&form.watch('rentalStatus')==='rented'?'Record the finalized rental amounts and the separate sale asking price.':'Enter the asking price shown with this listing.'}</p>
+                  </div>
+                  {['rent','sell_rent'].includes(listingType||'')&&<>
+                    <FormField control={form.control} name={form.watch('rentalStatus')==='rented'?"monthlyRent":"expectedRent"} render={({field})=><FormItem><FormLabel>{form.watch('rentalStatus')==='rented'?'Finalized Monthly Rent':'Expected Monthly Rent'} (₹) *</FormLabel><FormControl><Input placeholder="e.g., 25000" type="number" min="0" step="0.01" {...field}/></FormControl><AmountInWords amount={field.value}/><FormMessage/></FormItem>}/>
+                    <FormField control={form.control} name="securityDeposit" render={({field})=><FormItem><FormLabel>{form.watch('rentalStatus')==='rented'?'Finalized Security Deposit':'Expected Security Deposit'} (₹) *</FormLabel><FormControl><Input placeholder="e.g., 75000" type="number" min="0" step="0.01" {...field}/></FormControl><AmountInWords amount={field.value}/><FormMessage/></FormItem>}/>
+                  </>}
+                  {['sell','sell_rent'].includes(listingType||'')&&<FormField
+                    control={form.control}
+                    name="sellingPrice"
+                    render={({field})=><FormItem><FormLabel>Expected Selling Price (₹) *</FormLabel><FormControl><Input placeholder="e.g., 5000000" type="number" min="0" step="0.01" {...field}/></FormControl><AmountInWords amount={field.value}/><FormMessage/></FormItem>}
+                  />}
+                </div>}
 
                 {/* Unit Details */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-4 border rounded-lg">
@@ -895,7 +903,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                 </div>
 
                 {/* Buyer Information - Only show when property is already sold */}
-                {form.watch("listingType") === "sell" && form.watch("saleStatus") === "sold" && (
+                {['sell','sell_rent'].includes(listingType||'') && form.watch("saleStatus") === "sold" && (
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-4 border rounded-lg">
                     <div className="lg:col-span-3">
                       <h3 className="text-lg font-semibold mb-4">Buyer Information</h3>
@@ -955,7 +963,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                 )}
 
                 {/* Tenant Information - Only show when property is already rented */}
-                {form.watch("listingType") === "rent" && form.watch("rentalStatus") === "rented" && (
+                {['rent','sell_rent'].includes(listingType||'') && form.watch("rentalStatus") === "rented" && (
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-4 border rounded-lg">
                     <div className="lg:col-span-3">
                       <h3 className="text-lg font-semibold mb-4">Current Tenant Information</h3>
@@ -1135,76 +1143,6 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                     <NextAgreementFields idPrefix="owner-next-agreement" enabled={addNextAgreementManually} currentAgreementEndDate={form.watch('agreementEndDate')||''} value={nextAgreementDraft} onEnabledChange={setAddNextAgreementManually} onChange={setNextAgreementDraft}/>
                   </div>
                 )}
-
-
-
-                {/* Pricing Information */}
-                {['rent','sell'].includes(listingType||'') && <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 border rounded-lg">
-                  <div className="lg:col-span-2">
-                    <h3 className="text-lg font-semibold mb-4">
-                      Pricing Information
-                      {form.watch("listingType") && (
-                        <span className="ml-2 text-sm font-normal text-gray-600">
-                          ({form.watch("listingType") === "rent" ? "Rental Details" : "Sale Details"})
-                        </span>
-                      )}
-                    </h3>
-                  </div>
-
-                  {form.watch("listingType") === "rent" && (
-                    <>
-                      <FormField
-                        control={form.control}
-                        name={form.watch('rentalStatus')==='rented'?"monthlyRent":"expectedRent"}
-                        render={({ field }) => (
-                          <FormItem>
-                          <FormLabel>{form.watch('rentalStatus')==='rented'?'Finalized monthly rent':'Asking monthly rent'} (₹) *</FormLabel>
-                            <FormControl>
-                              <Input
-                                placeholder="Enter monthly rent amount (e.g., 25000)"
-                                type="number"
-                                {...field}
-                              />
-                            </FormControl>
-                            <AmountInWords amount={field.value}/>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                    </>
-                  )}
-
-                  {form.watch("listingType") === "sell" && (
-                    <div className="space-y-6 lg:col-span-2">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <FormField
-                          control={form.control}
-                          name="sellingPrice"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Selling Price (₹) *</FormLabel>
-                              <FormControl>
-                                <Input
-                                  placeholder="Enter selling price (e.g., 5000000)"
-                                  type="number"
-                                  {...field}
-                                />
-                              </FormControl>
-                              <AmountInWords amount={field.value}/>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                      </div>
-                    </div>
-                  )}
-
-                </div>}
-
-
-
                 {/* Unit Condition & Maintenance */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-4 border rounded-lg">
                   <div className="lg:col-span-3">
@@ -1262,7 +1200,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                     )}
                   />
 
-                  {form.watch("listingType") !== "sell" && (
+                  {listingType !== "sell" && (
                     <FormField
                       control={form.control}
                       name="maintenanceToBePaidBy"
@@ -1287,7 +1225,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                     />
                   )}
 
-                  {form.watch("listingType") === "sell" && (
+                  {['sell','sell_rent'].includes(listingType||'') && (
                     <FormField
                       control={form.control}
                       name="projectCondition"
@@ -1312,7 +1250,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                     />
                   )}
 
-                  {((form.watch("listingType") === "rent" && form.watch("rentalStatus") === "available") || form.watch("listingType") === "sell") && (
+                  {((['rent','sell_rent'].includes(listingType||'') && form.watch("rentalStatus") === "available") || ['sell','sell_rent'].includes(listingType||'')) && (
                     <FormField
                       control={form.control}
                       name="possessionDate"

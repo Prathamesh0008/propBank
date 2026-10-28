@@ -4,6 +4,6 @@ export function listingApproved(property: Record<string, unknown>): boolean {
 }
 export function publicListing(property: Record<string, unknown>): boolean {
   return listingApproved(property) && property.createdAs !== 'tenant' && property.isActive === true &&
-    property.status !== 'inactive' && ['rent', 'sell'].includes(String(property.listingType)) &&
+    property.status !== 'inactive' && ['rent', 'sell', 'sell_rent'].includes(String(property.listingType)) &&
     !(property.listingType === 'rent' && property.rentalStatus === 'rented') && !property.isSold && !property.isRented;
 }

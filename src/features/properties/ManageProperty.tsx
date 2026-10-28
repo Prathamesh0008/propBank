@@ -831,7 +831,7 @@ const ManageProperty = () => {
                                             <h3 className="font-semibold text-sm sm:text-lg leading-tight text-gray-900 break-words">
                                               {property.title}
                                               {property.unitNumber ? ` (${property.unitNumber})` : ""}
-                                              {property.buildingName && <span className="block text-sm font-normal">{property.buildingName}</span>}
+                                              {property.buildingName && property.buildingName.trim()!==property.title?.trim() && <span className="block text-sm font-normal">{property.buildingName}</span>}
                                               <span className="block text-xs font-normal">Property ID: {property.id}{property.createdAs==="tenant" ? ` - Owner verification ${property.ownershipVerification||"pending"}` : ""}{property.agreementStatus ? ` · ${property.agreementStatus.replaceAll("_"," ")}` : ""}{property.agreementRequest?.status==="pending" ? ` · Pending ${property.agreementRequest.kind}` : ""}</span>
                                               {property.address ? `, ${property.address}` : ""}
                                             </h3>
@@ -1125,7 +1125,7 @@ const ManageProperty = () => {
                                             <h3 className="font-semibold text-sm sm:text-lg leading-tight text-gray-900 break-words">
                                               {property.title}
                                               {property.unitNumber ? ` (${property.unitNumber})` : ""}
-                                              {property.buildingName && <span className="block text-sm font-normal">{property.buildingName}</span>}
+                                              {property.buildingName && property.buildingName.trim()!==property.title?.trim() && <span className="block text-sm font-normal">{property.buildingName}</span>}
                                               <span className="block text-xs font-normal">Property ID: {property.id}{property.agreementStatus ? ` ? ${property.agreementStatus.replaceAll("_"," ")}` : ""}{property.agreementRequest?.status==="pending" ? ` ? Pending ${property.agreementRequest.kind}` : ""}</span>
                                               {property.address ? `, ${property.address}` : ""}
                                             </h3>

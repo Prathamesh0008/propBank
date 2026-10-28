@@ -656,7 +656,7 @@ const PropertyDetails = () => {
                   {[
                     { label: 'Unit Number', value: property.unitNumber || 'N/A' },
                     { label: 'Floor', value: property.floor || 'N/A' },
-                    { label: 'Building Name', value: property.buildingName },
+                    ...(property.buildingName?.trim()&&property.buildingName.trim()!==property.title.trim()?[{ label: 'Building / Society Name', value: property.buildingName }]:[]),
                     { label: 'Location', value: property.location || property.address || 'N/A', className: 'md:col-span-2' },
                   ].map((item, idx) => (
                     <DetailItem key={idx} {...item} />

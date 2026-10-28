@@ -5,6 +5,7 @@ import {Link} from '@/lib/navigation';
 import { apiFetch } from '@/lib/api-client';
 
 import React from "react";
+import SessionMediaImage from '@/components/SessionMediaImage';
 import ListingModeration from '@/features/properties/ListingModeration';
 import OwnerVerification from './OwnerVerification';
 import {
@@ -58,6 +59,10 @@ interface TenantInfo {
     spouse?: any;
     rentSchedule?: any[];
     isActive: boolean;
+    userUID?:string;
+    linkConfirmationRequired?:boolean;
+    securityDeposit?:string;
+    lockInPeriod?:string;
 }
 
 interface AdminPropertyDetailsDialogProps {
@@ -77,6 +82,8 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
     const [loadingReports, setLoadingReports] = useState(false);
     const [documents, setDocuments] = useState<any[]>([]);
     const [loadingDocs, setLoadingDocs] = useState(false);
+    const [documentsError,setDocumentsError]=useState('');
+    const [reportsError,setReportsError]=useState('');
 
     useEffect(() => {
         if (isOpen && property?.id) {
@@ -87,6 +94,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
 
     const fetchInspectionReports = async () => {
         setLoadingReports(true);
+        setReportsError('');
         try {
             const response = await apiFetch(`${API_BASE_URL}/inspection-reports/property/${property?.id}`);
             const data = await response.json();
@@ -94,6 +102,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                 setInspectionReports(data.reports || []);
             }
         } catch (error) {
+            setReportsError('Inspection reports could not be loaded.');
             console.error("Failed to fetch inspection reports:", error);
         } finally {
             setLoadingReports(false);
@@ -102,6 +111,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
 
     const fetchDocuments = async () => {
         setLoadingDocs(true);
+        setDocumentsError('');
         try {
             const response = await apiFetch(`${API_BASE_URL}/documents/property/${property?.id}`);
             const data = await response.json();
@@ -109,6 +119,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                 setDocuments(data.documents || []);
             }
         } catch (error) {
+            setDocumentsError('Documents could not be loaded.');
             console.error("Failed to fetch documents:", error);
         } finally {
             setLoadingDocs(false);
@@ -119,6 +130,8 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
 
     const formatDate = (dateString?: string) => {
         if (!dateString) return "N/A";
+        const dateOnly=/^(\d{4})-(\d{2})-(\d{2})$/.exec(dateString);
+        if(dateOnly)return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
         try {
             return new Date(dateString).toLocaleDateString('en-GB', {
                 day: '2-digit',
@@ -145,11 +158,18 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                 {Icon && <Icon className="w-4 h-4 flex-shrink-0 text-slate-400" />}
                 <span className="truncate">{label}</span>
             </div>
-            <div className="text-base font-semibold text-slate-900 break-words whitespace-pre-wrap capitalize">{value || "N/A"}</div>
+            <div className="text-base font-semibold text-slate-900 break-words whitespace-pre-wrap capitalize">{value===undefined||value===null||value==='' ? "Not provided" : value}</div>
         </div>
     );
 
     const hasImages = (property.images && property.images.length > 0) || (property.internalImages && property.internalImages.length > 0);
+    const propertyName=property.title?.trim()||property.buildingName?.trim()||`Property ${property.id}`;
+    const propertyLocation=[property.location||property.address,property.city,property.zipCode].filter(value=>String(value||'').trim()).join(', ')||'Location not provided';
+    const listingLabel=(property.listingType||'manage').replace('_',' and ');
+    const area=(value?:string,unit?:string)=>value?[value,unit].filter(Boolean).join(' '):undefined;
+    const money=(value?:string)=>value!==undefined&&value!==''?`₹${Number(value).toLocaleString('en-IN',{maximumFractionDigits:2})}`:undefined;
+    const rentalPurpose=['rent','sell_rent'].includes(property.listingType||'');
+    const salePurpose=['sell','sell_rent'].includes(property.listingType||'');
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -158,22 +178,22 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                     {property.createdAs==='tenant'&&<section className="max-w-6xl mx-auto mb-4 p-3 border rounded bg-amber-50"><p className="font-semibold">Tenant-submitted property · Owner verification {property.ownershipVerification}</p><p>Submitted by: {property.submittedByUID}</p><dl className="grid sm:grid-cols-2 gap-2 text-sm">{Object.entries(property.reportedOwner||{}).map(([key,value])=><div key={key} className="break-words"><dt className="font-medium">{({companyName:'Owner company',personName:'Owner person',phone:'Owner contact',alternatePhone:'Alternate contact',email:'Owner email',workingProfile:'Working profile'} as Record<string,string>)[key]||key}</dt><dd>{value||'Not supplied'}</dd></div>)}</dl></section>}
                     <div className="max-w-6xl mx-auto w-full flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pr-6">
                         <div>
-                            <DialogTitle className="text-3xl font-bold mb-2 text-slate-800 tracking-tight">{property.title}</DialogTitle>
+                            <DialogTitle className="text-3xl font-bold mb-2 text-slate-800 tracking-tight">{propertyName}</DialogTitle>
                             <DialogDescription className="flex items-center gap-1.5 text-base text-slate-500 font-medium">
                                 <MapPin className="w-4 h-4 text-blue-600" />
-                                {property.location || property.address}, {property.city} {property.zipCode ? `- ${property.zipCode}` : ''}
+                                {propertyLocation}
                             </DialogDescription>
                         </div>
                         <div className="flex flex-wrap gap-2 md:mr-12">
                             <Badge variant={property.listingType === 'sell' ? 'default' : 'secondary'} className="capitalize pointer-events-none px-3 py-1 text-sm font-medium">
-                                For {property.listingType}
+                                For {listingLabel}
                             </Badge>
-                            {property.listingType === 'rent' && (
+                            {rentalPurpose && (
                                 <Badge variant={property.rentalStatus === 'rented' || property.isRented ? 'destructive' : 'outline'} className="capitalize pointer-events-none px-3 py-1 text-sm font-medium">
                                     {property.rentalStatus === 'rented' || property.isRented ? 'Rented' : 'Available'}
                                 </Badge>
                             )}
-                            {property.listingType === 'sell' && (
+                            {salePurpose && (
                                 <Badge variant={property.isSold ? 'destructive' : 'outline'} className="capitalize pointer-events-none px-3 py-1 text-sm font-medium">
                                     {property.isSold ? 'Sold' : 'Available'}
                                 </Badge>
@@ -202,14 +222,18 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                         <div className="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">
                             <SectionTitle title="Core Details" icon={Info} />
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <DataRow label="Property Type" value={property.propertyType} icon={Home} />
-                                <DataRow label="Configuration" value={property.configuration} />
+                                <DataRow label="Property Name" value={propertyName} icon={Home} />
+                                <DataRow label="Property Category" value={property.propertyCategory||property.propertyType} />
+                                <DataRow label="Property Type / Structure" value={property.structure} />
+                                <DataRow label="Residential Layout" value={property.configuration} />
                                 <DataRow label="Unit Status" value={property.unitCondition} icon={CheckCircle2} />
                                 <DataRow label="Project Condition" value={property.projectCondition} />
                                 <DataRow label="Unit Number" value={property.unitNumber} />
                                 <DataRow label="Floor" value={property.floor} />
-                                <DataRow label="Configuration" value={property.configuration} />
                                 <DataRow label="Property ID" value={property.id} />
+                                <DataRow label="Record Origin" value={property.createdAs||'owner'} />
+                                <DataRow label="Moderation Status" value={property.moderationStatus||'not submitted'} />
+                                <DataRow label="Owner Verification" value={property.ownershipVerification||'not required'} />
                                 {property.possessionDate && (
                                     <DataRow label="Possession Date" value={formatDate(property.possessionDate)} icon={Calendar} />
                                 )}
@@ -231,7 +255,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                                                         className="rounded-xl overflow-hidden border border-gray-200 bg-gray-50 relative h-40 flex items-center justify-center group cursor-pointer shadow-sm hover:shadow-md transition-all" 
                                                         onClick={() => window.open(img, '_blank')}
                                                     >
-                                                        <img
+                                                        <SessionMediaImage
                                                             src={img}
                                                             alt={`Main ${index + 1}`}
                                                             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
@@ -256,7 +280,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                                                         className="rounded-xl overflow-hidden border border-gray-200 bg-gray-50 relative h-40 flex items-center justify-center group cursor-pointer shadow-sm hover:shadow-md transition-all" 
                                                         onClick={() => window.open(img, '_blank')}
                                                     >
-                                                        <img
+                                                        <SessionMediaImage
                                                             src={img}
                                                             alt={`Internal ${index + 1}`}
                                                             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
@@ -278,17 +302,16 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                         <div className="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">
                             <SectionTitle title="Area & Pricing" icon={Maximize} />
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <DataRow label="Carpet Area" value={property.carpetArea} className="bg-blue-50/50 border-blue-100" />
-                                <DataRow label="Constructed Area" value={property.constructedArea} className="bg-blue-50/50 border-blue-100" />
+                                <DataRow label="Carpet Area" value={area(property.carpetArea,property.carpetAreaUnit||property.areaUnit)} className="bg-blue-50/50 border-blue-100" />
+                                <DataRow label="Built-up / Constructed Area" value={area(property.constructedArea,property.constructedAreaUnit||property.areaUnit)} className="bg-blue-50/50 border-blue-100" />
                                 {property.plotArea && (
-                                    <DataRow label="Plot Area" value={property.plotArea} className="bg-blue-50/50 border-blue-100" />
+                                    <DataRow label="Plot Area" value={area(property.plotArea,property.plotAreaUnit||property.areaUnit)} className="bg-blue-50/50 border-blue-100" />
                                 )}
-                                <DataRow label="Listing Type" value={property.listingType} className="bg-blue-50/50 border-blue-100 capitalize" />
-                                {property.listingType === 'sell' ? (
-                                    <DataRow label="Selling Price" value={property.sellingPrice ? `₹${property.sellingPrice}` : "N/A"} icon={IndianRupee} className="bg-green-50/50 border-green-100" />
-                                ) : (
-                                    <DataRow label="Monthly Rent" value={property.monthlyRent ? `₹${property.monthlyRent}` : "N/A"} icon={IndianRupee} className="bg-green-50/50 border-green-100" />
-                                )}
+                                <DataRow label="Listing Purpose" value={property.listingType?.replace('_',' and ')} className="bg-blue-50/50 border-blue-100 capitalize" />
+                                {salePurpose&&<DataRow label="Expected Selling Price" value={money(property.sellingPrice)} icon={IndianRupee} className="bg-green-50/50 border-green-100" />}
+                                {rentalPurpose&&<DataRow label="Expected Monthly Rent" value={money(property.expectedRent)} icon={IndianRupee} className="bg-green-50/50 border-green-100" />}
+                                {rentalPurpose&&<DataRow label="Finalized Monthly Rent" value={money(property.monthlyRent)} icon={IndianRupee} className="bg-green-50/50 border-green-100" />}
+                                <DataRow label="Maintenance Charges" value={money(property.maintenanceCharges)} icon={IndianRupee} className="bg-green-50/50 border-green-100" />
                             </div>
                         </div>
 
@@ -300,6 +323,8 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                                 <DataRow label="Email" value={property.ownerEmail} icon={Mail} className="bg-amber-50/50 border-amber-100" />
                                 <DataRow label="Phone" value={property.ownerPhone || property.primaryNo} icon={Phone} className="bg-amber-50/50 border-amber-100" />
                                 <DataRow label={property.ownerRole === "agent" ? "Agent ID" : "Owner ID"} value={property.ownerUID} className="bg-amber-50/50 border-amber-100" />
+                                <DataRow label="Identity Status" value={property.ownerUID?property.ownershipVerification==='pending'?'Account assigned; verification pending':'Linked account':'Reported owner only — not linked'} className="bg-amber-50/50 border-amber-100" />
+                                <DataRow label="Submitted By UID" value={property.submittedByUID} className="bg-amber-50/50 border-amber-100" />
                             </div>
                         </div>
 
@@ -327,6 +352,10 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                                                 <DataRow label="Due Date" value={tenant.paymentDueDate} className="bg-white border-blue-50" />
                                                 <DataRow label="Start Date" value={formatDate(tenant.leaseStartDate)} className="bg-white border-blue-50" />
                                                 <DataRow label="End Date" value={formatDate(tenant.leaseEndDate)} className="bg-white border-blue-50" />
+                                                <DataRow label="Account UID" value={tenant.userUID} className="bg-white border-blue-50" />
+                                                <DataRow label="Relationship Status" value={tenant.userUID?'Linked':tenant.linkConfirmationRequired?'Pending confirmation':'Reported contact'} className="bg-white border-blue-50" />
+                                                <DataRow label="Security Deposit" value={money(tenant.securityDeposit)} className="bg-white border-blue-50" />
+                                                <DataRow label="Notice / Lock-in" value={[tenant.noticePeriod,tenant.lockInPeriod].filter(Boolean).join(' / ')} className="bg-white border-blue-50" />
                                             </div>
                                         </div>
                                     ))}
@@ -384,7 +413,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                         )}
 
                         {/* Agreement Details */}
-                        {property.listingType === 'rent' && (
+                        {rentalPurpose && (
                             <div className="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">
                                 <SectionTitle title="Agreement & Security" icon={Shield} />
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -399,7 +428,10 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                                     {property.maintenanceToBePaidBy && (
                                         <DataRow label="Maintenance Paid By" value={property.maintenanceToBePaidBy} className="bg-orange-50/50 border-orange-100 capitalize" />
                                     )}
+                                    <DataRow label="Agreement Status" value={property.agreementStatus||'Current terms recorded'} className="bg-orange-50/50 border-orange-100" />
                                 </div>
+
+                                {property.nextAgreementDraft&&<div className="mt-6 border-t pt-4"><h4 className="font-bold text-slate-800">Future Agreement Draft <Badge variant="outline">Draft — not active</Badge></h4><div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-4"><DataRow label="Duration" value={property.nextAgreementDraft.durationMonths?`${property.nextAgreementDraft.durationMonths} months`:undefined}/><DataRow label="Draft Start" value={formatDate(property.nextAgreementDraft.startDate)}/><DataRow label="Draft End" value={formatDate(property.nextAgreementDraft.endDate)}/><DataRow label="Draft Monthly Rent" value={money(property.nextAgreementDraft.monthlyRent)}/><DataRow label="Draft Security Deposit" value={money(property.nextAgreementDraft.securityDeposit)}/><DataRow label="Draft Notice Period" value={property.nextAgreementDraft.noticePeriod}/><DataRow label="Draft Lock-in Period" value={property.nextAgreementDraft.lockInPeriod}/></div></div>}
 
                                 {property.rentSchedule && property.rentSchedule.length > 0 && (
                                     <div className="mt-6 border-t pt-4">
@@ -458,6 +490,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                         </div>
 
                         {/* Attached Documents */}
+                        <div aria-live="polite">{loadingDocs&&<p>Loading property documents…</p>}{documentsError&&<p role="alert">{documentsError}</p>}{!loadingDocs&&!documentsError&&!documents.length&&<p>No property documents have been submitted.</p>}{loadingReports&&<p>Loading inspection reports…</p>}{reportsError&&<p role="alert">{reportsError}</p>}{!loadingReports&&!reportsError&&<p>{inspectionReports.length?`${inspectionReports.length} inspection report${inspectionReports.length===1?'':'s'} available.`:'No inspection reports have been submitted.'}</p>}</div>
                         {documents && documents.length > 0 && (
                             <div className="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">
                                 <SectionTitle title="Attached Documents" icon={FileText} />
@@ -476,6 +509,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                                             {doc.description && (
                                                 <p className="text-sm text-slate-600 mb-4 line-clamp-2">{doc.description}</p>
                                             )}
+                                            <p className="mb-2 text-xs text-slate-500">Status: {doc.status||'submitted'}</p>
                                             <p className="mb-2 text-xs text-slate-500">Evidence reference: {doc.id}</p>
                                             <div className="mt-auto flex justify-between items-center pt-3 border-t border-blue-100">
                                                 <span className="text-xs font-medium text-slate-500">{formatDate(doc.createdAt)}</span>

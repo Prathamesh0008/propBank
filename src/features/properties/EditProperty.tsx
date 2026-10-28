@@ -658,24 +658,6 @@ const EditProperty = () => {
                     <h3 className="text-lg font-semibold mb-6">Property Details</h3>
                   </div>
 
-                  <FormField
-                    control={form.control}
-                    name="propertyTitle"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Property Name</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Enter property name here"
-                            disabled={!isPropertyEditable()}
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
                   {editCategory==='residential'&&!editPlotStructure&&<FormField
                     control={form.control}
                     name="configuration"

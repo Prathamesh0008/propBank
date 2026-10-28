@@ -305,7 +305,7 @@ export default function PropertyHub() {
           Property 360: {p.title}
         </h1>
         <p className="break-words">
-          {p.id} · {p.buildingName} · {p.unitNumber} · {p.location || p.address}
+          {p.id} · {p.title || p.buildingName} · {p.unitNumber} · {p.location || p.address}
         </p>
         <div className="flex flex-wrap gap-2">
           {h.statuses.map((s: string) => (
