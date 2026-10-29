@@ -9,6 +9,7 @@ import { useSearch } from "@/contexts/SearchContext";
 import { API_BASE_URL } from "@/utils/config";
 
 import { filterProperties } from "./landingUtils";
+import {useDataRefresh} from '@/lib/data-refresh';
 
 const ITEMS_PER_PAGE = 12;
 
@@ -55,11 +56,14 @@ export const useLandingProperties = () => {
   } = useSearch();
 
   const hasLoadedRef = useRef(false);
+  const loadGeneration=useRef(0);
 
-  const loadAllProperties = async () => {
+  const loadAllProperties = useCallback(async () => {
+    const generation=++loadGeneration.current;
     try {
       setLoading(true);
       const response = await propertyService.getAllPropertiesWithSettings();
+      if(generation!==loadGeneration.current)return;
       const fetchedProperties = response.properties || [];
 
       const displayProperties = fetchedProperties.filter((property) => {
@@ -88,15 +92,17 @@ export const useLandingProperties = () => {
       setHasMore(displayProperties.length > ITEMS_PER_PAGE);
       setPage(1);
     } catch (error) {
+      if(generation!==loadGeneration.current)return;
       toast({
         title: "Error",
         description: "Failed to load properties. Please refresh the page.",
         variant: "destructive",
       });
     } finally {
-      setLoading(false);
+      if(generation===loadGeneration.current)setLoading(false);
     }
-  };
+  },[toast]);
+  useDataRefresh(['properties','settings'],()=>{void loadAllProperties();});
 
   const getFilteredProperties = useCallback(() => {
     return filterProperties(
@@ -176,7 +182,7 @@ export const useLandingProperties = () => {
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [loadAllProperties]);
 
   useEffect(() => {
     if (!hasLoadedRef.current) {

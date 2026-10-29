@@ -244,7 +244,7 @@ export const AdminSiteSettingsTab = ({
             <div className="pt-4 border-t">
               <Button
                 onClick={handleUpdateSiteSettings}
-                disabled={savingSettings || uploadingBanner}
+                disabled={savingSettings}
                 className="w-full sm:w-auto"
               >
                 {savingSettings ? (

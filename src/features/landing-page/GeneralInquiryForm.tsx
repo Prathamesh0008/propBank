@@ -2,7 +2,7 @@
 
 import { apiFetch } from '@/lib/api-client';
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 import { DatePicker } from "@/ui/date-picker";
@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/firebase";
 import { API_BASE_URL } from "@/utils/config";
 import { Loader2, Send } from "lucide-react";
+import { EMAIL_PATTERN, indiaCalendarDate, validateIndianContact } from '@/lib/form-validation';
 
 interface GeneralInquiryFormProps {
   onSuccess?: () => void;
@@ -23,6 +24,7 @@ interface GeneralInquiryFormProps {
 const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) => {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errors,setErrors]=useState<Record<string,string>>({});
 
   const [formData, setFormData] = useState({
     listingType: "", // buy, rent, or sell
@@ -35,38 +37,30 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
     visitTime: "",
   });
 
+  useEffect(()=>{
+    const current=auth.currentUser;
+    if(!current)return;
+    setFormData(previous=>({...previous,name:previous.name||current.displayName||'',email:previous.email||current.email||''}));
+  },[]);
+
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    setErrors(previous=>({...previous,[field]:''}));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validation
-    if (!formData.listingType) {
-      toast({ title: "Error", description: "Please select Buy, Rent or Sell", variant: "destructive" });
-      return;
-    }
-    if (!formData.propertyType) {
-      toast({ title: "Error", description: "Please select property type", variant: "destructive" });
-      return;
-    }
-    if (!formData.name.trim()) {
-      toast({ title: "Error", description: "Please enter your name", variant: "destructive" });
-      return;
-    }
-    if (!formData.email.trim()) {
-      toast({ title: "Error", description: "Please enter your email", variant: "destructive" });
-      return;
-    }
-    if (!formData.mobile.trim()) {
-      toast({ title: "Error", description: "Please enter your mobile number", variant: "destructive" });
-      return;
-    }
-    if (formData.requestVisit && (!formData.visitDate || !formData.visitTime)) {
-      toast({ title: "Error", description: "Please select date and time for visit", variant: "destructive" });
-      return;
-    }
+    const nextErrors:Record<string,string>={};
+    if(!formData.listingType)nextErrors.listingType='Choose whether you want to buy, rent or sell.';
+    if(!formData.propertyType)nextErrors.propertyType='Choose a property type.';
+    if(!formData.name.trim())nextErrors.name='Enter your name.';
+    else if(formData.name.trim().length>100)nextErrors.name='Name must be 100 characters or fewer.';
+    if(!EMAIL_PATTERN.test(formData.email.trim()))nextErrors.email='Enter a valid email address.';
+    const mobileError=validateIndianContact(formData.mobile);if(mobileError)nextErrors.mobile=mobileError;
+    if(formData.requestVisit&&(!formData.visitDate||formData.visitDate<indiaCalendarDate()))nextErrors.visitDate='Choose today or a future date in India.';
+    if(formData.requestVisit&&!formData.visitTime)nextErrors.visitTime='Choose a preferred time.';
+    setErrors(nextErrors);if(Object.keys(nextErrors).length)return;
 
     setIsSubmitting(true);
 
@@ -77,7 +71,7 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
       const notificationPayload = {
         type: "general_inquiry",
         title: "New General Inquiry",
-        message: `${formData.name} is interested in ${formData.listingType === 'buy' ? 'buying' : formData.listingType === 'sell' ? 'selling' : 'renting'} a ${formData.propertyType} property.${formData.requestVisit ? ` Requested visit on ${formData.visitDate} at ${formData.visitTime}.` : ''}`,
+        message: `${formData.name} is interested in ${formData.listingType === 'buy' ? 'buying' : formData.listingType === 'sell' ? 'selling' : 'renting'} a ${formData.propertyType} property.${formData.requestVisit ? ` Preferred visit or callback time: ${formData.visitDate} at ${formData.visitTime}.` : ''}`,
         // Inquiry details
         inquiryType: formData.listingType,
         propertyType: formData.propertyType,
@@ -184,6 +178,7 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
                 Sell
               </Button>
             </div>
+            {errors.listingType&&<p role="alert" className="text-sm text-destructive">{errors.listingType}</p>}
           </div>
 
           {/* Property Type Selection */}
@@ -218,6 +213,7 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
                 Industrial
               </Button>
             </div>
+            {errors.propertyType&&<p role="alert" className="text-sm text-destructive">{errors.propertyType}</p>}
           </div>
 
           {/* Name */}
@@ -230,7 +226,9 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
               value={formData.name}
               onChange={(e) => handleInputChange("name", e.target.value)}
               className="h-9"
+              maxLength={100}
             />
+            {errors.name&&<p role="alert" className="text-sm text-destructive">{errors.name}</p>}
           </div>
 
           {/* Email */}
@@ -244,6 +242,7 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
               onChange={(e) => handleInputChange("email", e.target.value)}
               className="h-9"
             />
+            {errors.email&&<p role="alert" className="text-sm text-destructive">{errors.email}</p>}
           </div>
 
           {/* Mobile */}
@@ -252,11 +251,13 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
             <Input
               id="mobile"
               type="tel"
-              placeholder="Enter your mobile number"
+              placeholder="10-digit mobile number"
               value={formData.mobile}
-              onChange={(e) => handleInputChange("mobile", e.target.value)}
+              inputMode="numeric" autoComplete="tel-national" maxLength={10}
+              onChange={(e) => handleInputChange("mobile", e.target.value.replace(/\D/g,'').slice(0,10))}
               className="h-9"
             />
+            {errors.mobile&&<p role="alert" className="text-sm text-destructive">{errors.mobile}</p>}
           </div>
 
           {/* Request Visit Checkbox */}
@@ -267,9 +268,10 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
               onCheckedChange={(checked) => handleInputChange("requestVisit", checked as boolean)}
             />
             <Label htmlFor="requestVisit" className="text-sm font-medium cursor-pointer">
-              Request a Visit (Optional)
+              Preferred Visit / Callback Time (Optional)
             </Label>
           </div>
+          {formData.requestVisit&&<p className="text-xs text-muted-foreground">This is a preference for our team to discuss with you; it does not schedule a confirmed visit.</p>}
 
           {/* Date & Time - Show only if request visit is checked */}
           {formData.requestVisit && (
@@ -279,9 +281,10 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
                 <DatePicker
                   value={formData.visitDate}
                   onChange={(value) => handleInputChange("visitDate", value)}
-                  min={new Date().toISOString().split('T')[0]}
+                  min={indiaCalendarDate()}
                   className="h-9"
                 />
+                {errors.visitDate&&<p role="alert" className="text-sm text-destructive">{errors.visitDate}</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="visitTime" className="text-sm font-medium">Time</Label>
@@ -302,6 +305,7 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
                     <SelectItem value="06:00 PM">06:00 PM</SelectItem>
                   </SelectContent>
                 </Select>
+                {errors.visitTime&&<p role="alert" className="text-sm text-destructive">{errors.visitTime}</p>}
               </div>
             </div>
           )}

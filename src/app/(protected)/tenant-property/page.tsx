@@ -1,7 +1,7 @@
-// src/app/(protected)/tenant-property/page.tsx
+import {redirect} from 'next/navigation';
+import {propertyCategory} from '@/lib/property-category';
 
-import Feature from '@/features/properties/TenantPropertyForm';
-
-export default function Page() {
-  return <Feature category="tenant" />;
+export default async function Page({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}) {
+  const params=await searchParams, category=propertyCategory(params.type);
+  redirect(category?`/add-property?${new URLSearchParams({as:'tenant',type:category})}`:'/select-property-type?as=tenant');
 }

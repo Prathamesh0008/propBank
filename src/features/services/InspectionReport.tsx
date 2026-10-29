@@ -15,6 +15,15 @@ import { useState, useEffect, useRef } from "react";
 import { auth } from "../../firebase";
 import { User, onAuthStateChanged } from "firebase/auth";
 import { API_BASE_URL } from "../../utils/config";
+import {
+  INSPECTION_FILE_LIMITS,
+  dataUrlBytes,
+  inspectionPayload,
+  inspectionType,
+  validateInspectionFiles,
+  type InspectionFileField,
+  type InspectionFiles,
+} from '@/lib/inspection-report-policy';
 
 const InspectionReport = () => {
   const { propertyId } = useParams();
@@ -42,6 +51,77 @@ const InspectionReport = () => {
   const [otherDetails, setOtherDetails] = useState<string>("");
 
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const filesSnapshot = (): InspectionFiles => ({
+    possessionLetterFile,
+    handoverLetterFile,
+    electricityBillMeterImage,
+    electricityBillReceipt,
+    apartmentConditionImages,
+    mglBillMeterImage,
+    mglBillReceipt,
+    internetImage,
+    internetReceipt,
+  });
+
+  const selectedBytes = (files: InspectionFiles) => Object.values(files)
+    .flatMap(value => Array.isArray(value) ? value : [value])
+    .reduce((total, value) => total + (typeof value === 'string' ? dataUrlBytes(value)?.bytes || 0 : 0), 0);
+
+  const fileError = (field: InspectionFileField, files: File[]) => {
+    const allowed = field === 'apartmentConditionImages'
+      ? ['image/jpeg', 'image/png', 'image/webp']
+      : ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+    if (files.some(file => !allowed.includes(file.type))) {
+      return field === 'apartmentConditionImages'
+        ? 'Choose JPEG, PNG or WebP condition images.'
+        : 'Choose a JPEG, PNG, WebP or PDF file.';
+    }
+    if (files.some(file => file.size < 1 || file.size > INSPECTION_FILE_LIMITS.individualBytes)) {
+      return 'Each inspection file must be 5 MB or smaller.';
+    }
+
+    const current = filesSnapshot();
+    const prior = field === 'apartmentConditionImages'
+      ? current.apartmentConditionImages || []
+      : [];
+    if (field === 'apartmentConditionImages' && prior.length + files.length > INSPECTION_FILE_LIMITS.conditionImages) {
+      return `Upload at most ${INSPECTION_FILE_LIMITS.conditionImages} condition images.`;
+    }
+    const withoutField = {
+      ...current,
+      [field]: field === 'apartmentConditionImages' ? prior : undefined,
+    };
+    if (selectedBytes(withoutField) + files.reduce((sum, file) => sum + file.size, 0) > INSPECTION_FILE_LIMITS.totalBytes) {
+      return 'Inspection attachments must total 25 MB or less.';
+    }
+    const existingCount = Object.values(withoutField)
+      .flatMap(value => Array.isArray(value) ? value : [value])
+      .filter(Boolean).length;
+    if (existingCount + files.length > INSPECTION_FILE_LIMITS.totalFiles) {
+      return `Attach at most ${INSPECTION_FILE_LIMITS.totalFiles} files.`;
+    }
+    return '';
+  };
+
+  const showFileError = (message: string) => toast({
+    title: 'Attachment not accepted',
+    description: message,
+    variant: 'destructive',
+  });
+
+  const changeReportType = (value: string) => {
+    const next = inspectionType(value);
+    if (!next) return;
+    if (next === 'on_possession') {
+      setHandoverLetterFile('');
+      if (fileInputRefs.current.handoverLetterFile) fileInputRefs.current.handoverLetterFile.value = '';
+    } else {
+      setPossessionLetterFile('');
+      if (fileInputRefs.current.possessionLetterFile) fileInputRefs.current.possessionLetterFile.value = '';
+    }
+    setReportType(next);
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -86,16 +166,13 @@ const InspectionReport = () => {
     }
   }, [propertyId]);
 
-  const handleFileUpload = (field: string, event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (field: InspectionFileField, event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
-    if (!file.type.startsWith('image/') && !file.type.includes('pdf')) {
-      toast({
-        title: "Invalid File",
-        description: "Please upload an image or PDF file",
-        variant: "destructive"
-      });
+    const selectionError = fileError(field, [file]);
+    if (selectionError) {
+      showFileError(selectionError);
+      event.target.value = '';
       return;
     }
 
@@ -132,7 +209,7 @@ const InspectionReport = () => {
     reader.readAsDataURL(file);
   };
 
-  const removeFile = (field: string) => {
+  const removeFile = (field: InspectionFileField) => {
     switch (field) {
       case 'possessionLetterFile':
         setPossessionLetterFile("");
@@ -197,6 +274,14 @@ const InspectionReport = () => {
 
     setSubmitting(true);
     try {
+      const type = inspectionType(reportType);
+      if (!type) throw new Error('Invalid report type');
+      const files = inspectionPayload(type, filesSnapshot());
+      const validationError = validateInspectionFiles(type, files);
+      if (validationError) {
+        showFileError(validationError);
+        return;
+      }
       const response = await apiFetch(`${API_BASE_URL}/inspection-reports`, {
         method: 'POST',
         headers: {
@@ -207,16 +292,8 @@ const InspectionReport = () => {
           propertyId: propertyId || '',
           reportType: reportType,
           report: report.trim(),
-          possessionLetterFile: possessionLetterFile,
-          handoverLetterFile: handoverLetterFile,
           keysDetails: keysDetails,
-          electricityBillMeterImage: electricityBillMeterImage,
-          electricityBillReceipt: electricityBillReceipt,
-          apartmentConditionImages: apartmentConditionImages,
-          mglBillMeterImage: mglBillMeterImage,
-          mglBillReceipt: mglBillReceipt,
-          internetImage: internetImage,
-          internetReceipt: internetReceipt,
+          ...files,
           otherDetails: otherDetails,
         }),
       });
@@ -269,11 +346,17 @@ const InspectionReport = () => {
     );
   }
 
-  const handleMultiFileUpload = (field: string, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleMultiFileUpload = (field: InspectionFileField, e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-
-    Array.from(files).forEach(file => {
+    const selected = Array.from(files);
+    const selectionError = fileError(field, selected);
+    if (selectionError) {
+      showFileError(selectionError);
+      e.target.value = '';
+      return;
+    }
+    selected.forEach(file => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const result = e.target?.result as string;
@@ -285,13 +368,13 @@ const InspectionReport = () => {
     });
   };
 
-  const removeMultiFile = (field: string, index: number) => {
+  const removeMultiFile = (field: InspectionFileField, index: number) => {
     if (field === 'apartmentConditionImages') {
       setApartmentConditionImages(prev => prev.filter((_, i) => i !== index));
     }
   };
 
-  const renderMultiFileUpload = (field: string, label: string, placeholder: string, values: string[]) => (
+  const renderMultiFileUpload = (field: InspectionFileField, label: string, placeholder: string, values: string[]) => (
     <div className="space-y-2">
       <Label>{label}</Label>
       {values.length > 0 && (
@@ -333,7 +416,7 @@ const InspectionReport = () => {
     </div>
   );
 
-  const renderFileUpload = (field: string, label: string, placeholder: string, value: string) => (
+  const renderFileUpload = (field: InspectionFileField, label: string, placeholder: string, value: string) => (
     <div className="space-y-2">
       <Label>{label}</Label>
       {value ? (
@@ -400,7 +483,7 @@ const InspectionReport = () => {
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="reportType">Report Type *</Label>
-                <Select value={reportType} onValueChange={setReportType}>
+                <Select value={reportType} onValueChange={changeReportType}>
                   <SelectTrigger id="reportType">
                     <SelectValue placeholder="Select report type" />
                   </SelectTrigger>

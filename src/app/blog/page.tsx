@@ -3,7 +3,6 @@ import FooterInfoPage from "@/features/footer/FooterInfoPage";
 export default function Page() {
   return (
     <FooterInfoPage
-      compact
       eyebrow="Blog"
       title="Property journal"
       description="Practical notes on rental records, property visits and everyday ownership."

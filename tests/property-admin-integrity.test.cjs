@@ -1,0 +1,34 @@
+const assert=require('node:assert/strict');
+const {test}=require('node:test');
+const fs=require('node:fs');
+const {isolated,users,request,route,context}=require('./fixtures/native-server.cjs');
+
+const draft={durationMonths:'12',startDate:'2027-01-01',endDate:'2027-12-31',monthlyRent:'36000',securityDeposit:'72000',noticePeriod:'2',lockInPeriod:'6'};
+const full={propertyTitle:'Complete Property',propertyType:'residential',propertyCategory:'residential',structure:'Apartment',configuration:'3 BHK',unitNumber:'A-904',floor:'9',location:'Baner, Pune',carpetArea:'980',carpetAreaUnit:'sq ft',constructedArea:'1200',constructedAreaUnit:'sq ft',plotArea:'',plotAreaUnit:'sq ft',ownerUID:'owner',listingType:'sell_rent',rentalStatus:'rented',sellingPrice:'12500000',expectedRent:'34000',monthlyRent:'33000',securityDeposit:'66000',paymentDueDate:'5',agreementPeriod:'12',agreementStartDate:'2026-01-01',agreementEndDate:'2026-12-31',noticePeriod:'2',lockInPeriod:'6',unitCondition:'furnished',maintenanceToBePaidBy:'tenant',projectCondition:'Ready Project',possessionDate:'2026-01-01',tenantFirstName:'Test',tenantLastName:'Tenant',tenantEmail:'tenant@test.invalid',mobileNumber:'9876543210',specificComments:'Admin integrity fixture',furnishedChecklist:[{id:'bed',name:'Bed',checked:true,quantity:1,category:'bedroom'}],rentSchedule:[{year:'1st Year',months:'12',amount:'33000',fromDate:'2026-01-01',toDate:'2026-12-31'}],nextAgreementDraft:draft};
+
+test('complete owner property fields survive create, Firestore storage, authorized admin read and a partial edit',async()=>{
+ const app=isolated({users}),created=await route(app,'properties').POST(request('/properties','owner','POST',full));assert.equal(created.status,200,await created.clone().text());const id=(await created.json()).property.id,stored=app.state.properties[id];
+ for(const key of ['title','buildingName','propertyType','propertyCategory','structure','configuration','unitNumber','floor','location','carpetArea','carpetAreaUnit','constructedArea','constructedAreaUnit','listingType','sellingPrice','expectedRent','monthlyRent','securityDeposit','agreementStartDate','agreementEndDate','noticePeriod','lockInPeriod','unitCondition','maintenanceToBePaidBy','specificComments'])assert.notEqual(stored[key],undefined,`stored ${key}`);
+ assert.equal(stored.title,'Complete Property');assert.equal(stored.buildingName,'Complete Property');assert.equal(stored.nextAgreementDraft.durationMonths,'12');assert.equal(stored.nextAgreementDraft.endDate,'2027-12-31');
+ const adminResponse=await route(app,'properties/[id]').GET(request(`/properties/${id}`,'admin'),context(id));assert.equal(adminResponse.status,200);const admin=(await adminResponse.json()).property;for(const key of ['title','buildingName','propertyCategory','structure','expectedRent','monthlyRent','sellingPrice','securityDeposit','nextAgreementDraft','ownerUID'])assert.deepEqual(admin[key],stored[key],`admin ${key}`);assert.equal(admin.tenants.length,1);for(const key of ['firstName','lastName','email','phone','monthlyRent','leaseStartDate','leaseEndDate','linkConfirmationRequired'])assert.deepEqual(admin.tenants[0][key],stored.tenants[0][key],`admin tenant ${key}`);
+ const edited=await route(app,'properties/[id]').PATCH(request(`/properties/${id}`,'owner','PATCH',{specificComments:'Edited only'}),context(id));assert.equal(edited.status,200,await edited.clone().text());assert.equal(app.state.properties[id].specificComments,'Edited only');assert.equal(app.state.properties[id].securityDeposit,'66000');assert.equal(app.state.properties[id].nextAgreementDraft.endDate,'2027-12-31');assert.equal(app.state.properties[id].title,'Complete Property');
+});
+
+test('admin property dossier labels every distinct property, price, relationship and agreement value',()=>{
+ const source=fs.readFileSync('src/features/admin/AdminPropertyDetailsDialog.tsx','utf8');
+ for(const label of ['Property Name','Property Category','Property Type / Structure','Residential Layout','Property ID','Moderation Status','Owner Verification','Carpet Area','Built-up / Constructed Area','Plot Area','Listing Purpose','Expected Selling Price','Expected Monthly Rent','Finalized Monthly Rent','Security Deposit','Agreement Period','Notice Period','Lock-in Period','Future Agreement Draft','Draft — not active','Relationship Status','Attached Documents'])assert.match(source,new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')),label);
+ assert.match(source,/property\.title\?\.trim\(\)\|\|property\.buildingName\?\.trim\(\)\|\|`Property \$\{property\.id\}`/);
+ assert.doesNotMatch(source,/<DataRow label="Configuration"[\s\S]*<DataRow label="Configuration"/);
+ assert.match(source,/value=\{area\(property\.carpetArea,property\.carpetAreaUnit\|\|property\.areaUnit\)\}/);
+ assert.match(source,/Draft — not active/);
+});
+
+test('public property response remains free of private agreement drafts and relationship identity data',async()=>{
+ const app=isolated({users,properties:{P:{...full,id:'P',title:'Public Complete Property',buildingName:'Public Complete Property',status:'active',isActive:true,isSold:false,isRented:false,moderationStatus:'approved',createdAs:'owner',images:[],tenants:[{firstName:'Private',email:'private@test.invalid',userUID:'tenant'}],reportedOwner:{email:'private-owner@test.invalid'}}}}),response=await route(app,'properties/[id]').GET(request('/properties/P','other'),context('P'));assert.equal(response.status,200);const property=(await response.json()).property;assert.equal(property.title,'Public Complete Property');for(const key of ['nextAgreementDraft','tenants','reportedOwner','ownerUID','ownerEmail','internalImages','agreementStartDate'])assert.ok(property[key]===undefined||property[key]===null||property[key]==='',`public ${key}`);
+});
+
+test('property form sources map every canonical name once and preserve future agreement and tenant payloads',()=>{
+ const owner=fs.readFileSync('src/features/properties/AddPropertyForm.tsx','utf8'),tenant=fs.readFileSync('src/features/properties/TenantPropertyForm.tsx','utf8'),addTenant=fs.readFileSync('src/features/services/AddTenant.tsx','utf8'),edit=fs.readFileSync('src/features/properties/EditProperty.tsx','utf8');
+ assert.match(owner,/buildingName: data\.propertyTitle/);assert.match(owner,/nextAgreementDraft:addNextAgreementManually\?nextAgreementDraft:undefined/);assert.match(tenant,/key==='propertyTitle'\?\{buildingName:value\}/);assert.match(tenant,/reportedOwner:owner/);assert.match(addTenant,/nextAgreementDraft: tenant\.addNextAgreementManually \? tenant\.nextAgreementDraft : null/);assert.match(edit,/title: propertyTitle/);
+ assert.equal((owner.match(/name="propertyTitle"/g)||[]).length,0);assert.equal((edit.match(/name="propertyTitle"/g)||[]).length,0);assert.equal((tenant.match(/Property Name \*/g)||[]).length,1);
+});

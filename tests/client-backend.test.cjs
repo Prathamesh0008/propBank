@@ -53,6 +53,8 @@ test('renewal keeps old terms until owner approval and persists snapshots and sy
  assert.equal((await req.POST(request('/agreements/request-renewal','tenant','POST',{...proposal,action:'approve',requestId:body.request.id}))).status,403);
  assert.equal((await owner.POST(request('/agreements/renew','admin','POST',{propertyId:'P',action:'approve',requestId:body.request.id}))).status,403);
  assert.equal((await owner.POST(request('/agreements/renew','owner','POST',{propertyId:'P',action:'approve',requestId:'stale'}))).status,409);
+ assert.equal((await owner.POST(request('/agreements/renew','owner','POST',{propertyId:'P',action:'approve',requestId:body.request.id,terms:{monthlyRent:'1',agreementStartDate:'2031-01-01',agreementEndDate:'2031-12-31'}}))).status,400);
+ assert.equal(app.state.properties.P.agreementRequest.status,'pending');assert.equal(app.state.properties.P.monthlyRent,'30000');
  assert.equal((await owner.POST(request('/agreements/renew','owner','POST',{propertyId:'P',action:'approve',requestId:body.request.id}))).status,200);
  rows=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='agreement.renewal_approve');assert.equal(rows.length,2);assert.deepEqual(new Set(rows.map(row=>row.recipientUID)),new Set(['owner','tenant']));assert.ok(rows.every(row=>row.html.includes('renewed')));
  assert.equal(app.state.properties.P.monthlyRent,'35000');assert.equal(app.state.tenants.T.monthlyRent,'35000');assert.equal(app.state.properties.P.agreementHistory.length,2);assert.equal(app.state.properties.P.agreementHistory[1].previousTerms.monthlyRent,'30000');

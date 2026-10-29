@@ -6,6 +6,7 @@ import { apiFetch } from '@/lib/api-client';
 import type { Negotiation, NegotiationAction } from '@/lib/negotiation';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
+import AmountInWords from '@/components/AmountInWords';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
 import { useToast } from '@/hooks/use-toast';
 
@@ -40,7 +41,7 @@ export default function NegotiationPanel({propertyId,canOffer=false,admin=false}
   if(!user)return null;
   return <Card className="my-6"><CardHeader><CardTitle>Offers and negotiations</CardTitle></CardHeader><CardContent className="space-y-5">
     {canOffer&&propertyId&&<form onSubmit={event=>{event.preventDefault();void mutate();}} className="flex flex-wrap gap-2">
-      <Input className="max-w-xs" type="number" min="0.01" step="0.01" required aria-label="Your offer in rupees" placeholder="Your offer in rupees" value={offer} onChange={event=>setOffer(event.target.value)} />
+      <div className="max-w-xs"><Input type="number" min="0.01" step="0.01" required aria-label="Your offer in rupees" placeholder="Your offer in rupees" value={offer} onChange={event=>setOffer(event.target.value)} /><AmountInWords amount={offer}/></div>
       <Button disabled={busy} type="submit">Submit offer</Button>
       <p className="w-full text-sm text-muted-foreground">The owner must approve the amount before it can be confirmed.</p>
     </form>}
@@ -63,7 +64,7 @@ export default function NegotiationPanel({propertyId,canOffer=false,admin=false}
           <div><dt>Final agreed amount</dt><dd>{money(n.finalAgreedAmount)}</dd></div>
         </dl>
         <div className="flex flex-wrap gap-2">
-          {pending&&(owner||broker)&&<Input className="max-w-xs" type="number" min="0.01" step="0.01" aria-label={`Amount for ${n.propertyTitle}`} placeholder="Amount in rupees" value={amounts[n.id]||''} onChange={event=>setAmounts({...amounts,[n.id]:event.target.value})} />}
+          {pending&&(owner||broker)&&<div className="max-w-xs"><Input type="number" min="0.01" step="0.01" aria-label={`Amount for ${n.propertyTitle}`} placeholder="Amount in rupees" value={amounts[n.id]||''} onChange={event=>setAmounts({...amounts,[n.id]:event.target.value})} /><AmountInWords amount={amounts[n.id]||''}/></div>}
           {pending&&broker&&<Button disabled={busy||!amounts[n.id]} onClick={()=>void mutate(n,'propose')}>Send proposal to owner</Button>}
           {owner&&['offered','proposed'].includes(n.status)&&<Button disabled={busy} onClick={()=>void mutate(n,'accept')}>Accept amount</Button>}
           {owner&&pending&&<Button disabled={busy||!amounts[n.id]} variant="outline" onClick={()=>void mutate(n,'counter')}>Counter offer</Button>}

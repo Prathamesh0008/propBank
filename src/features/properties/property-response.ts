@@ -1,4 +1,4 @@
-export async function readPropertyResponse(response:Response):Promise<{success:boolean;message?:string;property?:{moderationStatus?:string}}> {
+export async function readPropertyResponse(response:Response):Promise<{success:boolean;message?:string;property?:{id?:string;moderationStatus?:string}}> {
   const text=await response.text();
   let result:unknown;
   try {result=JSON.parse(text);}catch {
@@ -10,7 +10,11 @@ export async function readPropertyResponse(response:Response):Promise<{success:b
   const value=result as {success:boolean;message?:unknown;property?:unknown;fieldErrors?:unknown};
   const message=typeof value.message==='string'?value.message:undefined;
   if(!response.ok||!value.success){const fields=value.fieldErrors&&typeof value.fieldErrors==='object'?Object.fromEntries(Object.entries(value.fieldErrors).filter((entry):entry is [string,string]=>typeof entry[1]==='string')):{};throw new PropertySubmissionError(message||`Property submission failed (HTTP ${response.status}). Please try again.`,fields);}
-  const property=value.property&&typeof value.property==='object'&&'moderationStatus' in value.property&&typeof value.property.moderationStatus==='string'?{moderationStatus:value.property.moderationStatus}:undefined;
+  const rawProperty=value.property&&typeof value.property==='object'?value.property as Record<string,unknown>:undefined;
+  const property=rawProperty?{
+    ...(typeof rawProperty.id==='string'?{id:rawProperty.id}:{}),
+    ...(typeof rawProperty.moderationStatus==='string'?{moderationStatus:rawProperty.moderationStatus}:{}),
+  }:undefined;
   return {success:true,message,property};
 }
 export class PropertySubmissionError extends Error {

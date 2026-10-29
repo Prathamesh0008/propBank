@@ -107,7 +107,7 @@ export function propertyResponse(property: RecordData, projection = 'normal', us
   if (projection === 'normal') {
     result.price = property.price;
     if (property.price === 0) {
-      const fallback = property.listingType === 'rent' ? property.monthlyRent : property.listingType === 'sell' ? property.sellingPrice : '';
+      const fallback = property.listingType === 'rent' ? property.expectedRent||property.monthlyRent : ['sell','sell_rent'].includes(String(property.listingType)) ? property.sellingPrice : '';
       const price = parsePrice(fallback);
       if (Number.isFinite(price)) result.price = price;
     }
@@ -116,7 +116,7 @@ export function propertyResponse(property: RecordData, projection = 'normal', us
   const response=wireModel('PropertyResponse',result);
   if(userRole)for(const field of schemas.Property)if(field.name!=='price')response[field.name]=nestedModel(field.type,property[field.name],false);
   if(userRole)for(const key of ['createdAs','submittedByUID','ownershipVerification','reportedOwner','moderationStatus','moderationRevision','moderationSubmittedAt','moderationReviewedAt','moderationReviewerUID','moderationReason','moderationHistory'])if(key in property)response[key]=wireValue(property[key]);
-  for(const key of ['propertyCategory','buildingName','plotArea','areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit','expectedRent','structure','agreementStatus','anticipatedTerminationDate','noticeStartDate','terminationDate','agreementHistory','agreementRequest','isRented'])if(key in property)response[key]=wireValue(property[key]);
+  for(const key of ['propertyCategory','buildingName','plotArea','areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit','expectedRent','structure','agreementStatus','anticipatedTerminationDate','noticeStartDate','terminationDate','agreementHistory','agreementRequest','nextAgreementDraft','isRented'])if(key in property)response[key]=wireValue(property[key]);
   if(userRole==='admin'||userRole==='tenant')for(const key of ['ownershipVerificationReason','ownershipVerificationVersion'])if(key in property)response[key]=wireValue(property[key]);
   if(userRole==='admin')for(const key of ['ownershipVerificationReviewerUID','ownershipVerificationReviewedAt','ownershipVerificationHistory','ownershipVerificationAudit'])if(key in property)response[key]=wireValue(property[key]);
   if(Array.isArray(property.rentSchedule))response.rentSchedule=wireValue(property.rentSchedule);
@@ -125,7 +125,7 @@ export function propertyResponse(property: RecordData, projection = 'normal', us
 
 export function publicPropertyResponse(property:RecordData) {
   const full=propertyResponse(property);
-  const allowed=['id','title','description','price','address','city','state','zipCode','propertyType','propertyCategory','listingType','configuration','unitNumber','floor','location','carpetArea','constructedArea','plotArea','areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit','squareFeet','buildingName','structure','bedrooms','bathrooms','monthlyRent','sellingPrice','rentalStatus','status','isActive','isSold','projectCondition','createdAt','updatedAt'];
+  const allowed=['id','title','description','price','address','city','state','zipCode','propertyType','propertyCategory','listingType','configuration','unitNumber','floor','location','carpetArea','constructedArea','plotArea','areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit','squareFeet','buildingName','structure','bedrooms','bathrooms','monthlyRent','expectedRent','sellingPrice','rentalStatus','status','isActive','isSold','projectCondition','createdAt','updatedAt'];
   const result:RecordData=Object.fromEntries(allowed.filter(key=>key in full).map(key=>[key,full[key]]));
   // Retain empty legacy keys so existing screens can safely render their defaults.
   for(const key of ['ownerEmail','ownerPhone','tenantName','personName','mobileNumber','primaryNo','ultNo','tenantDetails','specificComments','agreementStartDate','agreementEndDate','agreementPeriod','securityDeposit','paymentDueDate'])result[key]='';

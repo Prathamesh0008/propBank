@@ -75,12 +75,9 @@ const Review = () => {
           const data = await response.json();
           if (data.success && data.property) {
             setProperty(data.property);
-            // Auto-detect reviewer type based on property owner
-            if (data.property.ownerUID === user?.uid) {
-              setReviewerType("owner");
-            } else {
-              setReviewerType("tenant");
-            }
+            setReviewerType(data.property.ownerUID === user?.uid
+              ? "owner"
+              : data.property.userRole === "tenant" ? "tenant" : "");
           }
         }
       } catch (error) { /* Preserve existing best-effort behavior. */ } finally {
@@ -118,8 +115,8 @@ const Review = () => {
 
     if (!reviewerType) {
       toast({
-        title: "Reviewer Type Required",
-        description: "Please select whether you are a tenant or owner",
+        title: "Property Relationship Required",
+        description: "Only the verified property owner or an active tenant can submit a review.",
         variant: "destructive"
       });
       return;
@@ -140,7 +137,6 @@ const Review = () => {
         },
         body: JSON.stringify({
           propertyId: propertyId || '',
-          reviewerType: reviewerType,
           tenantPart: tenantPart,
           ownerPart: ownerPart,
         }),
@@ -207,25 +203,10 @@ const Review = () => {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-8">
-              <div className="space-y-2">
-                <Label htmlFor="reviewer-type">Submitting review as</Label>
-                <select
-                  id="reviewer-type"
-                  value={reviewerType}
-                  onChange={(event) => setReviewerType(event.target.value)}
-                  disabled={submitting}
-                  required
-                  aria-describedby="reviewer-type-help"
-                  className="flex h-10 px-4 py-2 bg-gray-50 border border-input rounded-md w-full md:w-1/3 font-semibold text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-                >
-                  <option value="" disabled>Select your role</option>
-                  <option value="owner">Owner</option>
-                  <option value="tenant">Tenant</option>
-                </select>
-                <p id="reviewer-type-help" className="text-sm text-muted-foreground">
-                  Owners review tenants. Tenants review the property owner. Choose your role for this property.
-                </p>
-              </div>
+              {reviewerType&&<p className="text-sm text-muted-foreground">
+                {reviewerType==='owner'?'You are reviewing the active tenant as the property owner.':'You are reviewing the property owner as an active tenant.'}
+              </p>}
+              {!reviewerType&&<p role="alert" className="text-sm text-destructive">An active owner or tenant relationship is required to review this property.</p>}
 
               <div className="pt-4">
                 {reviewerType === "tenant" && (

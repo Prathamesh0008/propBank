@@ -2,9 +2,10 @@
 
 import { apiFetch } from '@/lib/api-client';
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { API_BASE_URL } from "../../utils/config";
 import { FileText } from "lucide-react";
+import {useDataRefresh} from '@/lib/data-refresh';
 
 interface InspectionReportListProps {
     propertyId: string;
@@ -15,13 +16,7 @@ const InspectionReportList: React.FC<InspectionReportListProps> = ({ propertyId 
     const [failure,setFailure]=useState("");
     const [loadingReports, setLoadingReports] = useState(false);
 
-    useEffect(() => {
-        if (propertyId) {
-            fetchInspectionReports();
-        }
-    }, [propertyId]);
-
-    const fetchInspectionReports = async () => {
+    const fetchInspectionReports = useCallback(async () => {
         setLoadingReports(true);setFailure("");
         try {
             const response = await apiFetch(`${API_BASE_URL}/inspection-reports/property/${propertyId}`);
@@ -38,7 +33,12 @@ const InspectionReportList: React.FC<InspectionReportListProps> = ({ propertyId 
         } finally {
             setLoadingReports(false);
         }
-    };
+    },[propertyId]);
+
+    useEffect(() => {
+        if (propertyId) void fetchInspectionReports();
+    }, [propertyId,fetchInspectionReports]);
+    useDataRefresh(['inspections'],()=>{if(propertyId)void fetchInspectionReports();});
 
     if (loadingReports) {
         return <p className="text-sm text-muted-foreground">Loading reports...</p>;

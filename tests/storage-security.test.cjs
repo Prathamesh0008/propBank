@@ -128,7 +128,7 @@ test('legacy galleries can be reordered without losing their guarded references'
 });
 
 test('new-user media session does not grant access before active profile registration',async()=>{
- const app=setup(),doc=await document(app),session=await route(app,'media/session').POST(request('/media/session','new-user','POST'));assert.equal(session.status,204);const cookie=session.headers.get('set-cookie');const response=await route(app,'media/[id]').GET(new Request('http://local'+doc.fileUrl,{headers:{cookie}}),context(doc.fileUrl.split('/').at(-1).split('#')[0]));assert.equal(response.status,403);
+ const app=setup(),doc=await document(app),session=await route(app,'media/session').POST(request('/media/session','new-user','POST'));assert.equal(session.status,403);assert.equal((await session.json()).code,'ACCOUNT_PROFILE_REQUIRED');assert.equal(app.sessions.size,0);const response=await route(app,'media/[id]').GET(new Request('http://local'+doc.fileUrl,{headers:{Authorization:'Bearer new-user'}}),context(doc.fileUrl.split('/').at(-1).split('#')[0]));assert.equal(response.status,403);
 });
 
 test('enquiry counters expire by window and replay protection expires without permanent deduplication',async()=>{

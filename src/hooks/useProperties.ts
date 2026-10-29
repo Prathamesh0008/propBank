@@ -58,7 +58,6 @@ export const useAllProperties = (active=true) => {
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: 'always',
-    refetchInterval: active?5000:false,
   });
 };
 

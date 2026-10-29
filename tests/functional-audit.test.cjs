@@ -36,7 +36,7 @@ test('property hub does not disclose a different tenant service request or its h
 
 test('duplicate and concurrent tenant assignment cannot create repeated active relationships',async()=>{
  const app=isolated({users,properties:{P:{...properties.P,tenants:[]}}}),api=route(app,'tenants');
- const body={propertyId:'P',ownerUID:'owner',tenants:[{firstName:'Tenant',lastName:'Name',email:'tenant@test.invalid',phone:'456'}]};
+ const body={propertyId:'P',ownerUID:'owner',tenants:[{firstName:'Tenant',lastName:'Name',email:'tenant@test.invalid',phone:'9876543210'}]};
  const results=await Promise.all([api.POST(request('/tenants','owner','POST',body)),api.POST(request('/tenants','owner','POST',body))]);assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);assert.equal(app.state.properties.P.tenants.length,1);assert.equal(Object.keys(app.state.tenants).length,1);
  const before=app.writes.length;assert.equal((await api.POST(request('/tenants','owner','POST',body))).status,409);assert.equal(app.writes.length,before);
 });
@@ -56,8 +56,8 @@ test('empty reviews and inspection reports are rejected without database or noti
 });
 
 
-test('phone lookup exposes onboarding identity but never another user rental relationships',async()=>{
- const app=isolated({users:{...users,tenant:{...users.tenant,phoneNumber:'456',rentedPropertyId:'PRIVATE_PROPERTY',rentedPropertyOwnerName:'PRIVATE_OWNER',rentedPropertyOwnerId:'PRIVATE_OWNER_ID'}}});
- const api=route(app,'users/search');const response=await api.GET(request('/users/search?phone=456','owner'));assert.equal(response.status,200);const data=await response.json();assert.equal(data.user.uid,'tenant');assert.equal(data.user.email,'tenant@test.invalid');assert.ok(!JSON.stringify(data).includes('PRIVATE_'));
- assert.equal((await api.GET(request('/users/search?phone=456','unregistered'))).status,403);
+test('phone lookup never discloses another account or rental relationships to a property owner',async()=>{
+ const app=isolated({users:{...users,tenant:{...users.tenant,phoneNumber:'+919876543210',rentedPropertyId:'PRIVATE_PROPERTY',rentedPropertyOwnerName:'PRIVATE_OWNER',rentedPropertyOwnerId:'PRIVATE_OWNER_ID'}}});
+ const api=route(app,'users/search');const response=await api.GET(request('/users/search?phone=%2B919876543210','owner'));assert.equal(response.status,200);const data=await response.json();assert.equal(data.verificationRequired,true);assert.equal(data.user,undefined);assert.ok(!JSON.stringify(data).includes('PRIVATE_'));
+ assert.equal((await api.GET(request('/users/search?phone=%2B919876543210','unregistered'))).status,403);
 });

@@ -11,6 +11,8 @@ import {mediaId} from '../file-projection';
 
 const imageTypes=['image/jpeg','image/png','image/gif','image/webp'];
 const documentTypes=['application/pdf','image/jpeg','image/png','image/gif','image/webp','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','text/plain'];
+const supportingDocumentTypes=['rental_agreement','rent_receipt','property_supporting_document'];
+const supportingMimeTypes=['application/pdf','image/jpeg','image/png','image/webp'];
 const response=(success:boolean,message:string,url?:string,urls?:string[]|null)=>jsonResponse({success,message,...(url?{url}:{}),...(urls?.length?{urls}:{})},success?200:400);
 function errorText(_error:unknown) {return 'Invalid data or storage operation failed';}
 function safePath(path:string) {
@@ -54,6 +56,7 @@ export async function multipartUpload(request:Request,document=false) {
   const types=document?documentTypes:imageTypes;
   if(!types.includes(file.type))return response(false,document?'Invalid file type. Only PDF, images, and common document formats are allowed.':'Invalid file type. Only images are allowed.');
   if(file.size>(20<<20))return response(false,'File exceeds 20 MiB');
+  if(document&&supportingDocumentTypes.includes(docType)&&(!supportingMimeTypes.includes(file.type)||file.size>5*1024*1024))return response(false,'Supporting documents must be PDF, JPG, PNG or WebP files no larger than 5 MB.');
   if(document)await existingPropertyUpload(user,propertyId,true);
   safePath(docType);
   const target=document?`documents/${propertyId}/${docType}`:await uploadFolder(user,folder);

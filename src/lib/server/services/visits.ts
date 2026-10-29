@@ -30,6 +30,8 @@ async function visitID() {
   return `VISIT${randomUUID()}`;
 }
 function validateVisit(req:RecordData) {
+  if(req.title!==undefined&&(!s(req.title).trim()||s(req.title).trim().length>120))throw new ApiError(400,'Visit title must be 1–120 characters');
+  if(req.description!==undefined&&s(req.description).length>1000)throw new ApiError(400,'Visit details must be 1000 characters or fewer');
   if(req.status&&!['scheduled','completed','cancelled'].includes(s(req.status)))throw new ApiError(400,'Invalid visit status');
   if(req.reminderType==='mobile')throw new ApiError(400,'Mobile notification delivery is not configured; choose email or none');
   if(req.reminderType&&!['email','none'].includes(s(req.reminderType)))throw new ApiError(400,'Invalid reminder type');

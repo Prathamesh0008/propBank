@@ -8,7 +8,7 @@ type PropertyType = "residential" | "commercial" | "industrial";
 interface PropertyTypeSelectorProps {
   onSelect: (type: PropertyType) => void;
   title: string;
-  description: string;
+  description?: string;
 }
 
 const propertyTypes = [
@@ -21,7 +21,7 @@ const PropertyTypeSelector = ({ onSelect, title, description }: PropertyTypeSele
   <div className={styles.wrapper}>
     <header className={styles.heading}>
       <h1>{title}</h1>
-      <p>{description}</p>
+      {description && <p>{description}</p>}
     </header>
     <div className={styles.list}>
       {propertyTypes.map(({ id, title: name, description: detail, icon: Icon }) => (

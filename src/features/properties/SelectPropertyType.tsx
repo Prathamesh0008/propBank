@@ -1,21 +1,25 @@
 "use client";
 
 import { useNavigate, useSearchParams } from "@/lib/navigation";
-import { useState } from "react";
 import { ArrowLeft, ArrowRight, KeyRound, Building2 } from "lucide-react";
 import PropertyTypeSelector from "./PropertyTypeSelector";
 import styles from "./SelectPropertyType.module.css";
 
 const SelectPropertyType = () => {
   const navigate = useNavigate();
-  const [params] = useSearchParams();
-  const [relationship, setRelationship] = useState<"owner" | "tenant" | null>(() => {
-    const choice = params.get("as");
-    return choice === "owner" || choice === "tenant" ? choice : null;
-  });
+  const [params, setParams] = useSearchParams();
+  const mode = params.get("as");
+  const relationship = mode === "owner" || mode === "tenant" ? mode : null;
+
+  const chooseRelationship = (choice: "owner" | "tenant") => {
+    const next = new URLSearchParams(params.toString());
+    next.set("as", choice);
+    setParams(next);
+  };
 
   const handlePropertyTypeSelect = (propertyType: string) => {
-    const next = new URLSearchParams({type:propertyType,as:relationship||'owner'});
+    if (!relationship) return;
+    const next = new URLSearchParams({type:propertyType,as:relationship});
     const adminOwnerUID=params.get('adminOwnerUID');
     if(adminOwnerUID)next.set('adminOwnerUID',adminOwnerUID);
     navigate(`/add-property?${next.toString()}`);
@@ -29,12 +33,12 @@ const SelectPropertyType = () => {
           <h1 id="add-property-heading" className={styles.heading}>First, tell us your connection to the property.</h1>
           <p className={styles.intro}>We'll tailor the next steps to the information you need to share.</p>
           <div className={styles.choices}>
-            <button type="button" className={styles.choice} onClick={() => setRelationship("owner")}>
+            <button type="button" className={styles.choice} onClick={() => chooseRelationship("owner")}>
               <Building2 aria-hidden="true" className={styles.icon} />
               <span className={styles.choiceText}><strong>I'm the owner</strong><span>Add a property you own or manage.</span></span>
               <ArrowRight aria-hidden="true" className={styles.arrow} />
             </button>
-            <button type="button" className={styles.choice} onClick={() => setRelationship("tenant")}>
+            <button type="button" className={styles.choice} onClick={() => chooseRelationship("tenant")}>
               <KeyRound aria-hidden="true" className={styles.icon} />
               <span className={styles.choiceText}><strong>I'm a tenant</strong><span>Record the home or space you're renting.</span></span>
               <ArrowRight aria-hidden="true" className={styles.arrow} />
@@ -44,14 +48,12 @@ const SelectPropertyType = () => {
         </section>
       ) : (
         <section className={styles.inner} aria-label="Select the property category">
-          <button type="button" className={styles.back} onClick={() => setRelationship(null)}>
-            <ArrowLeft size={16} aria-hidden="true" /> Change owner / tenant choice
+          <button type="button" className={styles.back} onClick={() => navigate(-1)}>
+            <ArrowLeft size={16} aria-hidden="true" /> Back
           </button>
-          <p className={styles.kicker}>Adding as {relationship === "owner" ? "an owner" : "a tenant"}</p>
           <PropertyTypeSelector
             onSelect={handlePropertyTypeSelect}
-            title="What type of property is this?"
-            description="Choose the category that best describes the property to continue."
+            title="Select property category"
           />
         </section>
       )}

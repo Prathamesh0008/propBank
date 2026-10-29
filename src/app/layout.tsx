@@ -1,13 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense, type ReactNode } from "react";
 import Providers from "./providers";
-import SiteHeader from "@/features/navbar/SiteHeader";
-import PublicMain from "@/features/brand/PublicMain";
-import SiteFooter from "@/features/footer/SiteFooter";
+import ApplicationShell from '@/components/ApplicationShell';
 import "@/index.css";
 import "@/styles/brand-tokens.css";
 import {brandUI,brandEditorial} from "@/styles/brand-fonts";
-import DemoFormAutofill from "@/components/DemoFormAutofill";
 
 export const metadata: Metadata = {
   title: "PropBank — Real Estate Platform",
@@ -21,7 +18,6 @@ export const viewport: Viewport = { themeColor: "#242B28" };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return <html lang="en" className={`${brandUI.variable} ${brandEditorial.variable}`}><body><Suspense fallback={<p>Loading...</p>}><Providers>
-    <div className="flex flex-col min-h-screen"><SiteHeader /><PublicMain>{children}</PublicMain><SiteFooter /></div>
-    {process.env.NODE_ENV==='development'&&<DemoFormAutofill />}
+    <ApplicationShell>{children}</ApplicationShell>
   </Providers></Suspense></body></html>;
 }

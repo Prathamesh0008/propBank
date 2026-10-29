@@ -3,7 +3,6 @@ import FooterInfoPage from "@/features/footer/FooterInfoPage";
 export default function Page() {
   return (
     <FooterInfoPage
-      compact
       eyebrow="Services"
       title="Property Services"
       description="Support for every stage of ownership, from everyday management to your next sale or tenancy."

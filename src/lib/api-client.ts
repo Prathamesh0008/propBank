@@ -1,9 +1,17 @@
 import { auth } from '@/firebase';
+import {mutationDomains,publishDataRefresh} from '@/lib/data-refresh';
 
 export async function firebaseAuthorizationHeaders(initial?: HeadersInit): Promise<Headers> {
   const headers=new Headers(initial);
+  const startingUID=auth.currentUser?.uid;
   await auth.authStateReady();
-  if (auth.currentUser) headers.set('Authorization',`Bearer ${await auth.currentUser.getIdToken()}`);
+  const user=auth.currentUser;
+  if(startingUID&&user?.uid!==startingUID){const error=new Error('Account changed before the request could start');error.name='AbortError';throw error;}
+  if (user) {
+    const token=await user.getIdToken();
+    if(auth.currentUser?.uid!==user.uid){const error=new Error('Account changed before the request could start');error.name='AbortError';throw error;}
+    headers.set('Authorization',`Bearer ${token}`);
+  }
   else headers.delete('Authorization');
   return headers;
 }
@@ -18,5 +26,9 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   const original=new Headers(input instanceof Request?input.headers:undefined);
   new Headers(init?.headers).forEach((value,key)=>original.set(key,value));
   const headers=await firebaseAuthorizationHeaders(original);
-  return fetch(input,{...init,headers});
+  const response=await fetch(input,{...init,headers});
+  const method=(init?.method||(input instanceof Request?input.method:'GET')).toUpperCase();
+  const domains=response.ok?mutationDomains(target.pathname,method):[];
+  if(domains.length)publishDataRefresh(domains);
+  return response;
 }

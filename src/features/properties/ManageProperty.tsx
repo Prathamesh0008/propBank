@@ -7,6 +7,7 @@ import ListingModeration from './ListingModeration';
 import {ProductDashboard} from './PropertyHub';
 import { propertyCategoryMatches } from '@/lib/client-workflows';
 import { apiFetch } from '@/lib/api-client';
+import SessionMediaImage from '@/components/SessionMediaImage';
 
 import { Building2, Plus, Edit3, MessageSquare, MoreVertical, Users, UserPlus, Eye, Edit, Archive, Wrench, Filter, Home, X, FileText, Star, Scale, Paperclip, RefreshCw, XCircle, Key } from "lucide-react";
 import { Button } from "@/ui/button";
@@ -353,8 +354,15 @@ const ManageProperty = () => {
     navigate(`/property/${propertyId}`);
   };
 
+  const hidePropertyOptimistically=(propertyId:string)=>{
+    if(!user)return()=>{};const key=['userProperties',user.uid] as const,previous=queryClient.getQueryData(key);
+    queryClient.setQueryData(key,(current:any)=>current?{...current,owned:(current.owned||[]).filter((property:any)=>property.id!==propertyId),tenant:(current.tenant||[]).filter((property:any)=>property.id!==propertyId)}:current);
+    return()=>queryClient.setQueryData(key,previous);
+  };
+
   const handleToggleStatus = async (propertyId: string, isInactive: boolean) => {
     if (!user) return;
+    const rollback=isInactive?hidePropertyOptimistically(propertyId):()=>{};
 
     try {
 
@@ -386,6 +394,7 @@ const ManageProperty = () => {
         // Refresh properties list (this will filter out inactive properties)
         queryClient.invalidateQueries({ queryKey: ['userProperties'] });
       } else {
+        rollback();
         toast({
           title: "Error",
           description: data.message || "Failed to update property status",
@@ -393,6 +402,7 @@ const ManageProperty = () => {
         });
       }
     } catch (error) {
+      rollback();
 
       toast({
         title: "Error",
@@ -404,6 +414,7 @@ const ManageProperty = () => {
 
   const handleArchive = async (propertyId: string) => {
     if (!user) return;
+    const rollback=hidePropertyOptimistically(propertyId);
 
     try {
       const response = await apiFetch(`${API_BASE_URL}/properties/${propertyId}`, {
@@ -428,6 +439,7 @@ const ManageProperty = () => {
         // Refresh properties list
         queryClient.invalidateQueries({ queryKey: ['userProperties'] });
       } else {
+        rollback();
         toast({
           title: "Error",
           description: data.message || "Failed to archive property",
@@ -435,6 +447,7 @@ const ManageProperty = () => {
         });
       }
     } catch (error) {
+      rollback();
 
       toast({
         title: "Error",
@@ -807,7 +820,7 @@ const ManageProperty = () => {
                                 {/* Property Image Thumbnail - Always show with fallback */}
                                 <div className="w-full sm:w-40 h-32 sm:h-auto flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 relative overflow-hidden flex items-center justify-center">
                                   {property.images && property.images.length > 0 && property.images[0] ? (
-                                    <img
+                                    <SessionMediaImage
                                       src={property.images[0]}
                                       alt={property.title}
                                       className="w-full h-full object-cover absolute inset-0"
@@ -830,7 +843,7 @@ const ManageProperty = () => {
                                             <h3 className="font-semibold text-sm sm:text-lg leading-tight text-gray-900 break-words">
                                               {property.title}
                                               {property.unitNumber ? ` (${property.unitNumber})` : ""}
-                                              {property.buildingName && <span className="block text-sm font-normal">{property.buildingName}</span>}
+                                              {property.buildingName && property.buildingName.trim()!==property.title?.trim() && <span className="block text-sm font-normal">{property.buildingName}</span>}
                                               <span className="block text-xs font-normal">Property ID: {property.id}{property.createdAs==="tenant" ? ` - Owner verification ${property.ownershipVerification||"pending"}` : ""}{property.agreementStatus ? ` · ${property.agreementStatus.replaceAll("_"," ")}` : ""}{property.agreementRequest?.status==="pending" ? ` · Pending ${property.agreementRequest.kind}` : ""}</span>
                                               {property.address ? `, ${property.address}` : ""}
                                             </h3>
@@ -1101,7 +1114,7 @@ const ManageProperty = () => {
                                 {/* Property Image Thumbnail - Always show with fallback */}
                                 <div className="w-full sm:w-40 h-32 sm:h-auto flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 relative overflow-hidden flex items-center justify-center">
                                   {property.images && property.images.length > 0 && property.images[0] ? (
-                                    <img
+                                    <SessionMediaImage
                                       src={property.images[0]}
                                       alt={property.title}
                                       className="w-full h-full object-cover absolute inset-0"
@@ -1124,7 +1137,7 @@ const ManageProperty = () => {
                                             <h3 className="font-semibold text-sm sm:text-lg leading-tight text-gray-900 break-words">
                                               {property.title}
                                               {property.unitNumber ? ` (${property.unitNumber})` : ""}
-                                              {property.buildingName && <span className="block text-sm font-normal">{property.buildingName}</span>}
+                                              {property.buildingName && property.buildingName.trim()!==property.title?.trim() && <span className="block text-sm font-normal">{property.buildingName}</span>}
                                               <span className="block text-xs font-normal">Property ID: {property.id}{property.agreementStatus ? ` ? ${property.agreementStatus.replaceAll("_"," ")}` : ""}{property.agreementRequest?.status==="pending" ? ` ? Pending ${property.agreementRequest.kind}` : ""}</span>
                                               {property.address ? `, ${property.address}` : ""}
                                             </h3>
@@ -1166,6 +1179,12 @@ const ManageProperty = () => {
                                             <FileText className="h-4 w-4 mr-2" />
                                             Inspection Report
                                           </DropdownMenuItem>
+                                          {property.createdAs==='tenant'&&(!property.ownershipVerification||property.ownershipVerification==='pending')&&(
+                                            <DropdownMenuItem onClick={()=>navigate(`/attach-documents/${property.id}?supporting=1`)}>
+                                              <Paperclip className="h-4 w-4 mr-2" />
+                                              Upload Supporting Documents
+                                            </DropdownMenuItem>
+                                          )}
                                           <DropdownMenuItem onClick={() => navigate(`/attach-documents/${property.id}?type=tds_report`)}>
                                             <FileText className="h-4 w-4 mr-2" />TDS Updation Report
                                           </DropdownMenuItem>

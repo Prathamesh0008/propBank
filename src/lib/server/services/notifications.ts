@@ -15,6 +15,8 @@ import { getUser } from './users';
 import { bestEffort, escapeHtml } from './property-effects';
 import {persistUserEvent} from './transactional-email';
 import { inquiryMail } from './group2-mail';
+import { indianMobile } from '../../indian-phone';
+import { indiaCalendarDate } from '../../form-validation';
 const collection=()=>getDatabase().collection(COLLECTIONS.adminNotifications);
 export async function createNotification(input:RecordData,actor?:AuthenticatedUser) {
   const req=model('CreateAdminNotificationRequest',input);const now=new Date();
@@ -44,11 +46,12 @@ export async function postNotification(request:Request) {
   }
   if(req.type==='property_enquiry'&&req.propertyId) {const property=await getProperty(s(req.propertyId));if(!property)throw new ApiError(404,'Available property not found');if(!publicListing(property)&&actor)await propertyMember(actor,s(req.propertyId));}
   if(req.type==='general_inquiry') {
-    req.userName=s(req.userName).trim();req.userEmail=s(req.userEmail).trim().toLowerCase();req.userPhone=s(req.userPhone).replace(/[\s()-]/g,'');
+    req.userName=s(req.userName).trim();req.userEmail=s(req.userEmail).trim().toLowerCase();
+    const normalizedPhone=indianMobile(s(req.userPhone));if(!normalizedPhone)throw new ApiError(400,'Enter a valid Indian mobile number');req.userPhone=normalizedPhone;
     req.propertyId='';req.serviceImage='';req.adminImage='';
-    if(s(req.message).length>4000||s(req.title).length>200||!/^\+?\d{3,20}$/.test(s(req.userPhone)))throw new ApiError(400,'Enquiry details exceed the allowed size or phone format');
-    if(!['buy','rent','sell'].includes(s(req.inquiryType))||!['residential','commercial','industrial'].includes(s(req.propertyType))||!s(req.userName).trim()||s(req.userName).length>200||! /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s(req.userEmail))||s(req.userEmail).length>320||! /^[+\d\s()-]{3,30}$/.test(s(req.userPhone)))throw new ApiError(400,'Valid inquiry type, property type, name, email and phone are required');
-    if(req.requestVisit&&(!parseRFC3339(`${s(req.visitDate)}T00:00:00Z`)||! /^(?:0[1-9]|1[0-2]):[0-5]\d (?:AM|PM)$/.test(s(req.visitTime))))throw new ApiError(400,'Valid visit date and time are required');
+    if(s(req.message).length>4000||s(req.title).length>200)throw new ApiError(400,'Enquiry details exceed the allowed size');
+    if(!['buy','rent','sell'].includes(s(req.inquiryType))||!['residential','commercial','industrial'].includes(s(req.propertyType))||!s(req.userName).trim()||s(req.userName).length>100||! /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s(req.userEmail))||s(req.userEmail).length>320)throw new ApiError(400,'Valid inquiry type, property type, name, email and phone are required');
+    if(req.requestVisit&&(!/^\d{4}-\d{2}-\d{2}$/.test(s(req.visitDate))||!parseRFC3339(`${s(req.visitDate)}T00:00:00Z`)||s(req.visitDate)<indiaCalendarDate()||! /^(?:0[1-9]|1[0-2]):[0-5]\d (?:AM|PM)$/.test(s(req.visitTime))))throw new ApiError(400,'Valid future preferred date and time are required');
   }
   for(const key of ['ownerId','ownerName','ownerEmail','ownerPhone','ownerRole','tenantName','tenantEmail','tenantPhone','buyers','adminRemarks'])req[key]='';
   req.isRead=false;req.priority='medium';req.timestamp=new Date().toISOString();

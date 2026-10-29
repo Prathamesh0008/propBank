@@ -2,7 +2,7 @@
 
 import { apiFetch } from '@/lib/api-client';
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams, Link, useNavigate } from "@/lib/navigation";
 import { Search, MapPin, BedDouble, Bath, Maximize, Loader2, ArrowUpRight, SlidersHorizontal, X, ArrowRight } from "lucide-react";
 import styles from "./SearchResults.module.css";
@@ -10,6 +10,7 @@ import { propertyService, Property } from "@/services/propertyService";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "../../firebase";
 import { API_BASE_URL } from "../../utils/config";
+import {useDataRefresh} from '@/lib/data-refresh';
 
 // Utility function to get placeholder image URL
 const getPlaceholderImage = (propertyType?: string): string => {
@@ -48,9 +49,11 @@ const SearchResults = () => {
   const [sendingEnquiry, setSendingEnquiry] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [sortBy, setSortBy] = useState("recommended");
+  const searchGeneration=useRef(0);
 
   // Load search results with filters
   const performSearch = async (overrides: {type?: 'buy' | 'rent'; condition?: string; query?: string} = {}) => {
+    const generation=++searchGeneration.current;
     const type = overrides.type ?? searchType;
     const condition = overrides.condition ?? selectedProjectCondition;
     const query = overrides.query ?? searchQuery;
@@ -96,6 +99,7 @@ const SearchResults = () => {
         );
       }
 
+      if(generation!==searchGeneration.current)return;
       setProperties(results);
       
       // Update URL params
@@ -108,6 +112,7 @@ const SearchResults = () => {
       setSearchParams(newParams);
       
     } catch (error) {
+      if(generation!==searchGeneration.current)return;
       
       toast({
         title: "Search Error",
@@ -116,9 +121,10 @@ const SearchResults = () => {
       });
       setProperties([]);
     } finally {
-      setLoading(false);
+      if(generation===searchGeneration.current)setLoading(false);
     }
   };
+  useDataRefresh(['properties'],()=>{void performSearch();});
 
   // Initial search on component mount
   useEffect(() => {

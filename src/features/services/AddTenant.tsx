@@ -21,6 +21,9 @@ import { auth } from "../../firebase";
 import { onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
 import { API_BASE_URL } from "../../utils/config";
 import { addMonths, format, subDays, parseISO } from "date-fns";
+import AmountInWords from '@/components/AmountInWords';
+import NextAgreementFields from '@/components/NextAgreementFields';
+import {emptyNextAgreementDraft,validateNextAgreementDraft,type NextAgreementDraft} from '@/lib/next-agreement-draft';
 
 interface SpouseData {
   firstName: string;
@@ -64,6 +67,8 @@ interface TenantData {
   escalationAmount: string;
   noticePeriod: string;
   lockInPeriod: string;
+  addNextAgreementManually: boolean;
+  nextAgreementDraft: NextAgreementDraft;
   notes: string;
   searchError?: string; // Error message if user not found
   searchingUser?: boolean; // Loading state for user search
@@ -92,6 +97,8 @@ const AddTenant = () => {
   const [existingTenants, setExistingTenants] = useState<TenantData[]>([]);
   const [propertyTitle, setPropertyTitle] = useState<string>('');
   const [propertyRentSchedule, setPropertyRentSchedule] = useState<any[]>([]);
+  const [propertyUpdatedAt,setPropertyUpdatedAt]=useState('');
+  const [editingTenantId,setEditingTenantId]=useState('');
   const [tenancyRevision,setTenancyRevision]=useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -121,6 +128,8 @@ const AddTenant = () => {
       escalationAmount: '',
       noticePeriod: '',
       lockInPeriod: '',
+      addNextAgreementManually: false,
+      nextAgreementDraft: emptyNextAgreementDraft(),
       notes: '',
       searchError: undefined,
       searchingUser: false,
@@ -148,12 +157,13 @@ const AddTenant = () => {
           setPropertyTitle(property.title);
           setPropertyOwner(property.ownerUID);
           setTenancyRevision(Number(property.tenancyRevision||0));
+          setPropertyUpdatedAt(String(property.updatedAt||''));
           if (property.rentSchedule) {
             setPropertyRentSchedule(property.rentSchedule);
           }
 
           if (property.tenants && property.tenants.length > 0) {
-            setExistingTenants(property.tenants.filter((tenant: any)=>tenant.isActive===true).map((tenant: any) => ({
+            const activeTenants=property.tenants.filter((tenant: any)=>tenant.isActive===true).map((tenant: any) => ({
               id: tenant.id,
               firstName: tenant.firstName,
               lastName: tenant.lastName,
@@ -163,22 +173,29 @@ const AddTenant = () => {
               userUID: tenant.userUID,
               isMarried: tenant.isMarried || false,
               spouse: tenant.spouse || null,
-              leaseStartDate: tenant.leaseStartDate,
-              leaseEndDate: tenant.leaseEndDate,
-              monthlyRent: tenant.monthlyRent,
-              securityDeposit: tenant.securityDeposit,
+              leaseStartDate: tenant.leaseStartDate || property.agreementStartDate || '',
+              leaseEndDate: tenant.leaseEndDate || property.agreementEndDate || '',
+              monthlyRent: tenant.monthlyRent || property.monthlyRent || '',
+              securityDeposit: tenant.securityDeposit || property.securityDeposit || '',
               previousAddress: tenant.previousAddress,
               employmentStatus: tenant.employmentStatus,
               employer: tenant.employer || '',
               monthlyIncome: tenant.monthlyIncome || '',
-              paymentDueDate: tenant.paymentDueDate || '',
-              escalationPercentage: tenant.escalationPercentage || '',
-              escalationAmount: tenant.escalationAmount || '',
-              noticePeriod: tenant.noticePeriod || '',
-              lockInPeriod: tenant.lockInPeriod || '',
+              paymentDueDate: tenant.paymentDueDate || property.paymentDueDate || '',
+              escalationPercentage: tenant.escalationPercentage || property.escalationPercentage || '',
+              escalationAmount: tenant.escalationAmount || property.escalationAmount || '',
+              noticePeriod: tenant.noticePeriod || property.noticePeriod || '',
+              lockInPeriod: tenant.lockInPeriod || property.lockInPeriod || '',
+              addNextAgreementManually: !!(tenant.nextAgreementDraft||property.nextAgreementDraft),
+              nextAgreementDraft: tenant.nextAgreementDraft||property.nextAgreementDraft||emptyNextAgreementDraft(),
               notes: tenant.notes || '',
-              rentSchedule: tenant.rentSchedule || []
-            })));
+              rentSchedule: tenant.rentSchedule?.length ? tenant.rentSchedule : property.rentSchedule || []
+            }));
+            setExistingTenants(activeTenants);
+            if(!adminMode&&!readOnly&&activeTenants.length===1&&activeTenants[0].id){
+              setTenants([activeTenants[0]]);
+              setEditingTenantId(activeTenants[0].id);
+            }
           }
         }
       } catch (error) { /* Preserve existing best-effort behavior. */ }
@@ -371,6 +388,8 @@ const AddTenant = () => {
       escalationAmount: '',
       noticePeriod: '',
       lockInPeriod: '',
+      addNextAgreementManually: false,
+      nextAgreementDraft: emptyNextAgreementDraft(),
       notes: '',
       searchError: undefined,
       searchingUser: false,
@@ -433,6 +452,8 @@ const AddTenant = () => {
       });
       return;
     }
+    const invalidNextAgreement=tenants.map(tenant=>tenant.addNextAgreementManually?validateNextAgreementDraft(tenant.nextAgreementDraft,tenant.leaseEndDate):'').find(Boolean);
+    if(invalidNextAgreement){toast({title:'Check next agreement details',description:invalidNextAgreement,variant:'destructive'});return;}
 
     setIsSubmitting(true);
     try {
@@ -446,7 +467,7 @@ const AddTenant = () => {
       const property = propertyData.property;
 
       const newTenantInfos = tenants.map(({ id, userInfo, searchError, searchingUser, searchTimeoutId, ...tenant }) => ({
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+        id: editingTenantId&&tenants.length===1 ? editingTenantId : Date.now().toString() + Math.random().toString(36).substr(2, 9),
         firstName: tenant.firstName,
         lastName: tenant.lastName,
         email: tenant.email,
@@ -462,32 +483,40 @@ const AddTenant = () => {
         previousAddress: tenant.previousAddress,
         employmentStatus: tenant.employmentStatus,
         employer: tenant.employer,
+        monthlyIncome: tenant.monthlyIncome,
         paymentDueDate: tenant.paymentDueDate,
         escalationPercentage: tenant.escalationPercentage,
         escalationAmount: tenant.escalationAmount,
         noticePeriod: tenant.noticePeriod,
         lockInPeriod: tenant.lockInPeriod,
+        nextAgreementDraft: tenant.addNextAgreementManually ? tenant.nextAgreementDraft : null,
         notes: tenant.notes,
         rentSchedule: tenant.rentSchedule,
         isActive: true
       }));
 
       if(adminMode&&(newTenantInfos.length!==1||!newTenantInfos[0].userUID))throw new Error('Select one registered tenant before saving');
-      const response = await apiFetch(adminMode?`${API_BASE_URL}/admin/properties/${propertyId}/tenancy`:`${API_BASE_URL}/tenants`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(adminMode?{
+      const editingExisting=!adminMode&&!!editingTenantId&&newTenantInfos.length===1;
+      const editableTenant={...(newTenantInfos[0]||{})};
+      delete editableTenant.id;
+      delete editableTenant.userUID;
+      const headers={'Content-Type':'application/json'};
+      const response = adminMode
+        ? await apiFetch(`${API_BASE_URL}/admin/properties/${propertyId}/tenancy`,{method:'POST',headers,body:JSON.stringify({
           action:existingTenants.length?'replace':'assign',
           expectedRevision:tenancyRevision,
           tenant:newTenantInfos[0]
-        }:{
+        })})
+        : editingExisting
+        ? await apiFetch(`${API_BASE_URL}/tenants/${encodeURIComponent(editingTenantId)}`,{method:'PUT',headers,body:JSON.stringify({
+          ...editableTenant,
+          expectedPropertyUpdatedAt:propertyUpdatedAt
+        })})
+        : await apiFetch(`${API_BASE_URL}/tenants`,{method:'POST',headers,body:JSON.stringify({
           propertyId: propertyId,
           ownerUID: property.ownerUID,
           tenants: newTenantInfos
-        }),
-      });
+        })});
 
       const data = await response.json();
 
@@ -497,7 +526,7 @@ const AddTenant = () => {
         setIsSuccess(true);
         toast({
           title: "Success",
-          description: adminMode ? 'Tenancy saved. The property owner must authorize the invitation in Pending Connections.' : 'Tenancy saved. The tenant must accept the connection before the property appears in their account.'
+          description: adminMode ? 'Tenancy saved. The property owner must authorize the invitation in Pending Connections.' : editingExisting ? 'Tenant and agreement details updated.' : 'Tenancy saved. The tenant must accept the connection before the property appears in their account.'
         });
 
         setTimeout(() => {
@@ -516,7 +545,7 @@ const AddTenant = () => {
       setIsSubmitting(false);
       toast({
         title: "Error",
-        description: "Failed to add tenants. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to save tenant details. Please try again.",
         variant: "destructive"
       });
     }
@@ -830,7 +859,7 @@ const AddTenant = () => {
                       </div>
                       <div>
                         <Label htmlFor={`phone - ${tenant.id} `}>Phone *</Label>
-                        <p className="text-xs text-muted-foreground">A pending invitation is created when saved. Mobile verification and tenant confirmation are required before account access.</p>
+                        <p className="text-xs text-muted-foreground">This number is saved as contact information. Account discovery uses the tenant&apos;s verified email, followed by tenant confirmation.</p>
                         <div className="relative">
                           <Input
                             id={`phone - ${tenant.id} `}
@@ -992,20 +1021,6 @@ const AddTenant = () => {
                     </h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <Label htmlFor={`leaseStartDate - ${tenant.id} `}>Lease Start Date</Label>
-                        <DatePicker
-                          value={tenant.leaseStartDate}
-                          onChange={(value) => handleInputChange(tenant.id, 'leaseStartDate', value)}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor={`leaseEndDate - ${tenant.id} `}>Lease End Date</Label>
-                        <DatePicker
-                          value={tenant.leaseEndDate}
-                          onChange={(value) => handleInputChange(tenant.id, 'leaseEndDate', value)}
-                        />
-                      </div>
-                      <div>
                         <Label htmlFor={`monthlyRent - ${tenant.id} `}>Monthly Rent</Label>
                         <Input
                           id={`monthlyRent - ${tenant.id} `}
@@ -1013,6 +1028,7 @@ const AddTenant = () => {
                           onChange={(e) => handleInputChange(tenant.id, 'monthlyRent', e.target.value)}
                           placeholder="2500"
                         />
+                        <AmountInWords amount={tenant.monthlyRent}/>
                       </div>
                       <div>
                         <Label htmlFor={`securityDeposit - ${tenant.id} `}>Security Deposit</Label>
@@ -1022,6 +1038,7 @@ const AddTenant = () => {
                           onChange={(e) => handleInputChange(tenant.id, 'securityDeposit', e.target.value)}
                           placeholder="5000"
                         />
+                        <AmountInWords amount={tenant.securityDeposit}/>
                       </div>
 
                       <div className="md:col-span-2 mt-2 space-y-4 pt-4 border-t">
@@ -1067,6 +1084,7 @@ const AddTenant = () => {
                                   placeholder="Amount"
                                   className="bg-white shadow-sm"
                                 />
+                                <AmountInWords amount={item.amount}/>
                               </div>
                               <div className="w-full md:flex-1 min-w-[150px]">
                                 <Label className="text-xs font-medium text-slate-500 mb-1.5 block">From</Label>
@@ -1118,6 +1136,15 @@ const AddTenant = () => {
                           placeholder="e.g., 5 (for 5th of each month)"
                         />
                       </div>
+                      <div className="md:col-span-2 mt-2 border-t pt-4"><h5 className="font-medium">Agreement Details</h5></div>
+                      <div>
+                        <Label htmlFor={`leaseStartDate - ${tenant.id} `}>Agreement Start Date</Label>
+                        <DatePicker value={tenant.leaseStartDate} onChange={(value) => handleInputChange(tenant.id, 'leaseStartDate', value)}/>
+                      </div>
+                      <div>
+                        <Label htmlFor={`leaseEndDate - ${tenant.id} `}>Agreement End Date</Label>
+                        <DatePicker value={tenant.leaseEndDate} onChange={(value) => handleInputChange(tenant.id, 'leaseEndDate', value)}/>
+                      </div>
                       <div>
                         <Label htmlFor={`noticePeriod - ${tenant.id} `}>Notice Period / Early Termination Notice *</Label>
                         <Select
@@ -1147,6 +1174,7 @@ const AddTenant = () => {
                           className="mt-1.5"
                         />
                       </div>
+                      <NextAgreementFields idPrefix={`tenant-${tenant.id}-next-agreement`} enabled={tenant.addNextAgreementManually} currentAgreementEndDate={tenant.leaseEndDate} value={tenant.nextAgreementDraft} onEnabledChange={enabled=>setTenants(current=>current.map(item=>item.id===tenant.id?{...item,addNextAgreementManually:enabled}:item))} onChange={draft=>setTenants(current=>current.map(item=>item.id===tenant.id?{...item,nextAgreementDraft:draft}:item))}/>
                     </div>
                   </div>
 
@@ -1223,7 +1251,7 @@ const AddTenant = () => {
                 ) : (
                   <>
                     <UserPlus className="h-4 w-4 mr-2" />
-                    {adminMode?(existingTenants.length?'Replace Tenant':'Assign Tenant'):`Add Tenant${tenants.length > 1 ? 's' : ''}`}
+                    {adminMode?(existingTenants.length?'Replace Tenant':'Assign Tenant'):editingTenantId?'Save Tenant Details':`Add Tenant${tenants.length > 1 ? 's' : ''}`}
                   </>
                 )}
               </Button>

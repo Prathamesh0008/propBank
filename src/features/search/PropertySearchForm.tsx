@@ -9,6 +9,7 @@ import { Input } from "@/ui/input";
 import { Textarea } from "@/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
+import AmountInWords from "@/components/AmountInWords";
 
 const formSchema = z.object({
   location: z.string().min(1, "Location is required"),
@@ -90,6 +91,7 @@ const PropertySearchForm = ({ propertyType, onSubmit, onBack }: PropertySearchFo
                       <FormControl>
                         <Input placeholder="₹50,00,000" {...field} />
                       </FormControl>
+                    <AmountInWords amount={field.value} />
                       <FormMessage />
                     </FormItem>
                   )}
@@ -104,6 +106,7 @@ const PropertySearchForm = ({ propertyType, onSubmit, onBack }: PropertySearchFo
                       <FormControl>
                         <Input placeholder="₹1,00,00,000" {...field} />
                       </FormControl>
+                    <AmountInWords amount={field.value} />
                       <FormMessage />
                     </FormItem>
                   )}

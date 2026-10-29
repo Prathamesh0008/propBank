@@ -72,9 +72,10 @@ async function agreement(request:Request,renew:boolean,tenantRequest:boolean) {
       if(property.rentalStatus!=='rented')throw new ApiError(409,'Active rental required for renewal');
       if(['approve','complete','reject'].includes(action)) {
         if(!current||current.kind!=='renewal'||current.status!=='pending'||!req.requestId)throw new ApiError(409,'Pending renewal request ID required');
+        if(action!=='reject'&&Object.keys(proposed).length)throw new ApiError(400,'Approval must not include edited renewal terms');
         if(action==='reject')updates.agreementRequest={...current,status:'rejected',resolvedAt:now,resolvedBy:user.uid};
         else {
-          const values=readTerms({...current.terms as RecordData,...proposed});
+          const values=readTerms(current.proposedTerms||current.terms);
           if(!values.agreementStartDate||!values.agreementEndDate)throw new ApiError(400,'Renewal start and end dates required');
           Object.assign(updates,values,{agreementStatus:'renewed',agreementRequest:{...current,status:'completed',terms:values,resolvedAt:now,resolvedBy:user.uid}});
           updates.tenants=entries(property.tenants).map(t=>t.isActive===true?{...t,monthlyRent:values.monthlyRent??t.monthlyRent,leaseStartDate:values.agreementStartDate,leaseEndDate:values.agreementEndDate,updatedAt:now}:t);
