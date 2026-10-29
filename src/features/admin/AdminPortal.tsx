@@ -28,6 +28,7 @@ import { AdminServiceRequestsTab } from "./AdminServiceRequestsTab";
 import { AdminPropertiesTab } from "./AdminPropertiesTab";
 import { AdminAgentsTab } from "./AdminAgentsTab";
 import { AdminSiteSettingsTab } from "./AdminSiteSettingsTab";
+import {useDataRefresh} from '@/lib/data-refresh';
 
 const AdminPortal = () => {
   const { toast } = useToast();
@@ -181,6 +182,10 @@ const AdminPortal = () => {
       }
     } catch (error) { /* Preserve existing best-effort behavior. */ }
   };
+  useDataRefresh(['notifications','settings','properties','users'],()=>{
+    void fetchData();
+    if(isPropertyDialogOpen&&selectedProperty?.id)void handleViewPropertyDetails(selectedProperty.id);
+  });
 
   const handleUpdateSiteSettings = async () => {
     setSavingSettings(true);

@@ -9,7 +9,7 @@ import { API_BASE_URL } from "@/utils/config";
 import { useToast } from "@/hooks/use-toast";
 
 export default function RouteGuard({ children, admin = false }: { children: ReactNode; admin?: boolean }) {
-  const { user, loading, fileAccess } = useAuth();
+  const { user, loading, profileStatus, fileAccess } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
   const [verifiedUid, setVerifiedUid] = useState<string | null>(null);
@@ -17,8 +17,8 @@ export default function RouteGuard({ children, admin = false }: { children: Reac
     if (loading) return;
     if (!user) {
       setVerifiedUid(null);
-      const pendingEntry = window.location.pathname === '/manage-property' && window.location.hash === '#pending-connections';
-      router.replace(pendingEntry ? '/auth?next=%2Fmanage-property%23pending-connections' : '/auth');
+      const intended=`${window.location.pathname}${window.location.search}${window.location.hash}`;
+      router.replace(profileStatus==='incomplete'?`/auth?mode=complete&next=${encodeURIComponent(intended)}`:`/auth?next=${encodeURIComponent(intended)}`);
       return;
     }
     if (!admin) return;
@@ -36,7 +36,7 @@ export default function RouteGuard({ children, admin = false }: { children: Reac
         router.replace("/");
       });
     return () => controller.abort();
-  }, [user, loading, admin, router, toast]);
+  }, [user, loading, profileStatus, admin, router, toast]);
   if (loading || !user || (admin && verifiedUid !== user.uid)) return (
     <div className="flex items-center justify-center min-h-screen"><div className="text-center">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4" />

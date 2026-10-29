@@ -20,6 +20,7 @@ import styles from "./ArchivedProperties.module.css";
 import { useToast } from "@/hooks/use-toast";
 import { API_BASE_URL } from "../../utils/config";
 import { useArchivedProperties } from "../../hooks/useProperties";
+import {useQueryClient} from '@tanstack/react-query';
 
 interface Property {
   id: string;
@@ -50,6 +51,7 @@ interface Property {
 const ArchivedProperties = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const queryClient=useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   
   const { data: propertiesData, isLoading: loading, refetch } = useArchivedProperties(user?.uid);
@@ -75,6 +77,9 @@ const ArchivedProperties = () => {
 
   const handleUnarchive = async (propertyId: string) => {
     if (!user) return;
+    const key=['archivedProperties',user.uid] as const,previous=queryClient.getQueryData(key);
+    queryClient.setQueryData(key,(current:Property[]|undefined)=>current?.filter(property=>property.id!==propertyId));
+    const rollback=()=>queryClient.setQueryData(key,previous);
     
     try {
       const response = await apiFetch(`${API_BASE_URL}/properties/${propertyId}`, {
@@ -99,6 +104,7 @@ const ArchivedProperties = () => {
         // Refresh properties list
         await refetch();
       } else {
+        rollback();
         toast({
           title: "Error",
           description: data.message || "Failed to unarchive property",
@@ -106,6 +112,7 @@ const ArchivedProperties = () => {
         });
       }
     } catch (error) {
+      rollback();
       
       toast({
         title: "Error",

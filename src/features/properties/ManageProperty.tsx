@@ -354,8 +354,15 @@ const ManageProperty = () => {
     navigate(`/property/${propertyId}`);
   };
 
+  const hidePropertyOptimistically=(propertyId:string)=>{
+    if(!user)return()=>{};const key=['userProperties',user.uid] as const,previous=queryClient.getQueryData(key);
+    queryClient.setQueryData(key,(current:any)=>current?{...current,owned:(current.owned||[]).filter((property:any)=>property.id!==propertyId),tenant:(current.tenant||[]).filter((property:any)=>property.id!==propertyId)}:current);
+    return()=>queryClient.setQueryData(key,previous);
+  };
+
   const handleToggleStatus = async (propertyId: string, isInactive: boolean) => {
     if (!user) return;
+    const rollback=isInactive?hidePropertyOptimistically(propertyId):()=>{};
 
     try {
 
@@ -387,6 +394,7 @@ const ManageProperty = () => {
         // Refresh properties list (this will filter out inactive properties)
         queryClient.invalidateQueries({ queryKey: ['userProperties'] });
       } else {
+        rollback();
         toast({
           title: "Error",
           description: data.message || "Failed to update property status",
@@ -394,6 +402,7 @@ const ManageProperty = () => {
         });
       }
     } catch (error) {
+      rollback();
 
       toast({
         title: "Error",
@@ -405,6 +414,7 @@ const ManageProperty = () => {
 
   const handleArchive = async (propertyId: string) => {
     if (!user) return;
+    const rollback=hidePropertyOptimistically(propertyId);
 
     try {
       const response = await apiFetch(`${API_BASE_URL}/properties/${propertyId}`, {
@@ -429,6 +439,7 @@ const ManageProperty = () => {
         // Refresh properties list
         queryClient.invalidateQueries({ queryKey: ['userProperties'] });
       } else {
+        rollback();
         toast({
           title: "Error",
           description: data.message || "Failed to archive property",
@@ -436,6 +447,7 @@ const ManageProperty = () => {
         });
       }
     } catch (error) {
+      rollback();
 
       toast({
         title: "Error",

@@ -1,4 +1,5 @@
 import { auth } from '@/firebase';
+import {mutationDomains,publishDataRefresh} from '@/lib/data-refresh';
 
 export async function firebaseAuthorizationHeaders(initial?: HeadersInit): Promise<Headers> {
   const headers=new Headers(initial);
@@ -25,5 +26,9 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   const original=new Headers(input instanceof Request?input.headers:undefined);
   new Headers(init?.headers).forEach((value,key)=>original.set(key,value));
   const headers=await firebaseAuthorizationHeaders(original);
-  return fetch(input,{...init,headers});
+  const response=await fetch(input,{...init,headers});
+  const method=(init?.method||(input instanceof Request?input.method:'GET')).toUpperCase();
+  const domains=response.ok?mutationDomains(target.pathname,method):[];
+  if(domains.length)publishDataRefresh(domains);
+  return response;
 }

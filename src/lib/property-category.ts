@@ -8,7 +8,7 @@ export function propertyCategory(value: unknown): PropertyCategory | null {
 export const PROPERTY_STRUCTURES: Record<PropertyCategory, readonly string[]> = {
   residential: ['Flat', 'Bungalow'],
   commercial: ['Office', 'Shop', 'Showroom', 'Commercial Plot'],
-  industrial: ['Warehouse', 'Factory', 'Industrial Shed', 'Industrial Plot'],
+  industrial: ['Unit', 'RCC Shed', 'Land'],
 };
 // Existing records keep their original structure values. Creation accepts both
 // vocabularies, while the new forms present only the clearer canonical terms.

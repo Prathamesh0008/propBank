@@ -3,7 +3,6 @@
 import { Link } from "@/lib/navigation";
 import { useState, useEffect } from "react";
 import { auth, signOutUser } from "@/firebase";
-import { User, onIdTokenChanged } from "firebase/auth";
 import { API_BASE_URL } from "@/utils/config";
 import axios from "axios";
 import { firebaseAuthorizationHeaders } from '@/lib/api-client';
@@ -13,6 +12,7 @@ import { LogIn, LogOut, Menu, X } from "lucide-react";
 import { UserMenu } from "./UserMenu";
 import BrandLogo from "@/features/brand/BrandLogo";
 import styles from "./SiteHeader.module.css";
+import { useAuth } from '@/contexts/AuthContext';
 
 const navigation = [
   { to: "/manage-property", label: "Manage Property", access: "user" },
@@ -23,33 +23,28 @@ const navigation = [
 
 const SiteHeader = () => {
   const pathname = usePathname();
+  const {user,profileStatus}=useAuth();
   const [isOpen, setIsOpen] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
   const [userPhone, setUserPhone] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string>("");
   const [userName, setUserName] = useState<string>("");
   const [userRole, setUserRole] = useState<string>("");
 
   useEffect(() => {
-    const unsubscribe = onIdTokenChanged(auth, (identity) => {
-      const firebaseUser=identity?.emailVerified===true?identity:null;
-      setUser(firebaseUser);
-      if (firebaseUser) {
+      if (user) {
         // Avoid showing the previous account’s privileged navigation during user changes.
         setUserRole("");
         setUserName("");
         setUserEmail("");
         setUserPhone("");
-        getUserData(firebaseUser.uid);
+        void getUserData(user.uid);
       } else {
         setUserPhone("");
         setUserEmail("");
         setUserName("");
         setUserRole("");
       }
-    });
-    return () => unsubscribe();
-  }, []);
+  }, [user]);
 
   const getUserData = async (uid: string) => {
     try {
@@ -107,7 +102,7 @@ const SiteHeader = () => {
             <UserMenu user={user} userName={userName} userEmail={userEmail} userPhone={userPhone} handleLogout={handleLogout} />
           ) : (
             <Link to="/auth" className="hidden min-h-11 shrink-0 items-center gap-2 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white transition-colors duration-150 hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-slate-500 motion-reduce:transition-none lg:inline-flex">
-              <LogIn size={17} aria-hidden="true" />Login
+              <LogIn size={17} aria-hidden="true" />{profileStatus==='incomplete'?'Complete account':'Login'}
             </Link>
           )}
           <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
@@ -135,7 +130,7 @@ const SiteHeader = () => {
                     {userPhone && <p className="break-words text-xs leading-6 text-slate-500">{userPhone}</p>}
                     <button type="button" onClick={handleLogout} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-md px-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-500"><LogOut size={17} aria-hidden="true" />Log out</button>
                   </> : (
-                    <Link to="/auth" onClick={() => setIsOpen(false)} className="inline-flex min-h-11 items-center gap-2 rounded-md px-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-500"><LogIn size={17} aria-hidden="true" />Login</Link>
+                    <Link to="/auth" onClick={() => setIsOpen(false)} className="inline-flex min-h-11 items-center gap-2 rounded-md px-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-500"><LogIn size={17} aria-hidden="true" />{profileStatus==='incomplete'?'Complete account':'Login'}</Link>
                   )}
                 </div>
               </Dialog.Content>

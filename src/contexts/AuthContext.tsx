@@ -8,41 +8,51 @@ import {auth} from '@/firebase';
 import {onIdTokenChanged,type User} from 'firebase/auth';
 import {privateFileSession,claimFileSessionNotice} from '@/lib/private-file-client';
 import {INITIAL_FILE_SESSION,type FileSessionState} from '@/lib/private-file-session';
+import {queryKeysByDomain,subscribeDataRefresh} from '@/lib/data-refresh';
 
-interface AuthContextType {user:User|null;loading:boolean;fileAccess:FileSessionState;retryFileAccess:()=>Promise<void>}
-const AuthContext=createContext<AuthContextType>({user:null,loading:true,fileAccess:INITIAL_FILE_SESSION,retryFileAccess:async()=>{}});
+export type ProfileStatus='checking'|'anonymous'|'incomplete'|'complete';
+interface AuthContextType {user:User|null;loading:boolean;profileStatus:ProfileStatus;fileAccess:FileSessionState;retryFileAccess:()=>Promise<void>;refreshProfile:()=>Promise<void>}
+const AuthContext=createContext<AuthContextType>({user:null,loading:true,profileStatus:'checking',fileAccess:INITIAL_FILE_SESSION,retryFileAccess:async()=>{},refreshProfile:async()=>{}});
 export const useAuth=()=>useContext(AuthContext);
 
 export const AuthProvider=({children}:{children:ReactNode})=>{
   const queryClient=useQueryClient(),{toast,dismiss}=useToast();
   const previousUID=useRef<string|undefined>(undefined),publishedUID=useRef<string|undefined>(undefined);
-  const [user,setUser]=useState<User|null>(null),[loading,setLoading]=useState(true);
+  const [user,setUser]=useState<User|null>(null),[loading,setLoading]=useState(true),[profileStatus,setProfileStatus]=useState<ProfileStatus>('checking'),[profileRevision,setProfileRevision]=useState(0);
   const [fileAccess,setFileAccess]=useState(privateFileSession.snapshot);
   const notice=useRef<string|undefined>(undefined),readyRevision=useRef(-1);
   const retryFileAccess=useCallback(()=>privateFileSession.retry(),[]);
+  const refreshProfile=useCallback(async()=>{setProfileRevision(value=>value+1);},[]);
 
   useEffect(()=>privateFileSession.subscribe(setFileAccess),[]);
+  useEffect(()=>subscribeDataRefresh(event=>{const keys=[...new Set(event.domains.flatMap(domain=>queryKeysByDomain[domain]))];void Promise.all(keys.map(key=>queryClient.invalidateQueries({queryKey:[key]})));}),[queryClient]);
+  useEffect(()=>{const refresh=()=>setProfileRevision(value=>value+1);window.addEventListener('propbank:profile-completed',refresh);return()=>window.removeEventListener('propbank:profile-completed',refresh);},[]);
   useEffect(()=>{
     let generation=0;
     // Do not hold the Firebase observer open while acquiring tokens or cookies.
     const unsubscribe=onIdTokenChanged(auth,identity=>{
       const firebaseUser=identity?.emailVerified===true?identity:null,current=++generation;
-      if(previousUID.current!==firebaseUser?.uid)queryClient.clear();
+      const identityChanged=previousUID.current!==firebaseUser?.uid;
+      if(identityChanged)queryClient.clear();
       previousUID.current=firebaseUser?.uid;
-      const session=privateFileSession.setUser(firebaseUser);
-      if(!firebaseUser){publishedUID.current=undefined;setUser(null);setLoading(false);return;}
+      if(!firebaseUser){void privateFileSession.setUser(null);publishedUID.current=undefined;setUser(null);setProfileStatus(identity?'incomplete':'anonymous');setLoading(false);return;}
       if(publishedUID.current!==firebaseUser.uid)setLoading(true);
-      void session.then(()=>{
-        if(current!==generation||auth.currentUser?.uid!==firebaseUser.uid||!auth.currentUser.emailVerified)return;
-        publishedUID.current=firebaseUser.uid;setUser(firebaseUser);setLoading(false);
+      setProfileStatus('checking');setUser(null);if(identityChanged)void privateFileSession.setUser(null);
+      void apiFetch('/api/auth/user',{cache:'no-store'}).then(async response=>{
+        const data=await response.json().catch(()=>({}));
+        if(current!==generation||auth.currentUser?.uid!==firebaseUser.uid)return;
+        if(!response.ok||data.profileComplete!==true){publishedUID.current=undefined;setProfileStatus('incomplete');setLoading(false);return;}
+        await privateFileSession.setUser(firebaseUser);
+        if(current!==generation||auth.currentUser?.uid!==firebaseUser.uid)return;
+        publishedUID.current=firebaseUser.uid;setUser(firebaseUser);setProfileStatus('complete');setLoading(false);
         void apiFetch('/api/relationship-links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'discover'})}).catch(()=>{});
-      });
+      }).catch(()=>{if(current===generation){publishedUID.current=undefined;setUser(null);setProfileStatus('incomplete');setLoading(false);}});
     });
     const renew=()=>{void privateFileSession.renew();};
     const interval=window.setInterval(renew,10*60*1000);
     window.addEventListener('online',renew);window.addEventListener('focus',renew);
     return ()=>{generation++;unsubscribe();window.clearInterval(interval);window.removeEventListener('online',renew);window.removeEventListener('focus',renew);};
-  },[queryClient]);
+  },[queryClient,profileRevision]);
 
   useEffect(()=>{
     if(fileAccess.phase==='ready'&&fileAccess.revision!==readyRevision.current){
@@ -54,5 +64,5 @@ export const AuthProvider=({children}:{children:ReactNode})=>{
     notice.current=toast({title:'Secure file access',description:fileAccess.message,variant:'destructive',action:<ToastAction altText="Retry secure file access" onClick={()=>void retryFileAccess()}>Retry</ToastAction>}).id;
   },[fileAccess,user,queryClient,toast,dismiss,retryFileAccess]);
 
-  return <AuthContext.Provider value={{user,loading,fileAccess,retryFileAccess}}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{user,loading,profileStatus,fileAccess,retryFileAccess,refreshProfile}}>{children}</AuthContext.Provider>;
 };

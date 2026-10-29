@@ -17,6 +17,7 @@ import { TimePicker } from "@/ui/time-picker";
 import styles from "./VisitPlanner.module.css";
 import {useAuth} from '@/contexts/AuthContext';
 import { indiaCalendarDate, indiaDateTimeParts, indiaLocalDateTime } from '@/lib/form-validation';
+import {useDataRefresh} from '@/lib/data-refresh';
 
 
 const VisitPlanner = () => {
@@ -71,6 +72,8 @@ const VisitPlanner = () => {
       if(generation===requestGeneration.current)setLoading(false);
     }
   },[toast]);
+  useDataRefresh(['visits'],()=>{if(user)void loadVisits();});
+  useDataRefresh(['properties'],()=>{void propertyService.getAllProperties().then(setProperties).catch(()=>{});});
 
   useEffect(()=>{
     if(authLoading)return;

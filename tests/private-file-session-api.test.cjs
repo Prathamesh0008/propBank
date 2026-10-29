@@ -1,7 +1,7 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {isolated,users,request,route}=require('./fixtures/native-server.cjs');
-const setup=()=>isolated({users:structuredClone(users),properties:{},storage_objects:{}});
+const setup=()=>{const profiles=structuredClone(users);Object.assign(profiles.owner,{phoneNumber:'+919876543210'});Object.assign(profiles.tenant,{phoneNumber:'+919123456789'});Object.assign(profiles.other,{phoneNumber:'+918765432109'});Object.assign(profiles.admin,{phoneNumber:'+917654321098'});return isolated({users:profiles,properties:{},storage_objects:{}});};
 const cookieOf=response=>response.headers.get('set-cookie').split(';')[0];
 const probe=(app,uid,cookie)=>route(app,'media/session').GET(new Request('http://local/api/media/session',{headers:{Authorization:'Bearer '+uid,...(cookie?{cookie}:{})}}));
 test('verified Firebase user without platform profile gets an onboarding denial, not an R2 outage',async()=>{

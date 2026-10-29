@@ -1,5 +1,5 @@
 import 'server-only';
-import { AccessError, requireUser, verifyFirebaseIdentity } from '../auth';
+import { AccessError, completedProfile, requireUser, verifyFirebaseIdentity } from '../auth';
 import { COLLECTIONS, getDatabase } from '../firestore';
 import { getFirebaseAdminAuth } from '../firebase-admin';
 import { ApiError, jsonResponse } from '../http';
@@ -75,7 +75,7 @@ async function checkPhone(uid:string,phone:string) {
   return !!other && other.uid !== uid;
 }
 function checkRole(admin:boolean,requested:unknown,existing:RecordData|null,initialRegistration=false) {
-  if (!admin && requested === 'agent' && existing?.role !== 'agent' && !(initialRegistration&&!existing)) throw new AccessError(403,'Agent role may only be selected during initial registration');
+  if (!admin && requested === 'agent' && existing?.role !== 'agent' && !initialRegistration) throw new AccessError(403,'Agent role may only be selected during initial registration');
   if (!admin && requested === 'admin' && existing?.role !== 'admin') throw new AccessError(403,'Administrator access required to assign admin role');
   if (!admin && existing?.role === 'admin' && requested && requested !== existing.role) throw new AccessError(403,'Administrator access required to change admin role');
 }
@@ -135,8 +135,9 @@ export async function searchUser(request:Request) {
 
 /** Only the signed-in UID's onboarding state; accepts no lookup identifiers. */
 export async function registrationProfile(request:Request){
-  const {existing}=await userIdentity(request,undefined,true);
-  return jsonResponse({success:true,profileExists:!!existing});
+  const {existing,token}=await userIdentity(request,undefined,true);
+  const profileExists=!!existing,profileComplete=completedProfile(existing||undefined,token);
+  return jsonResponse({success:true,profileExists,profileComplete,status:profileComplete?'complete':'incomplete'});
 }
 export async function createUser(request:Request,authRegistration=false) {
   const identity=await userIdentity(request,undefined,authRegistration);
@@ -150,12 +151,12 @@ export async function createUser(request:Request,authRegistration=false) {
   const existing=await getUser(uid);
   if(!existing&&stringValue(req.name).trim().length<2)return fail('Enter your full name',400);
   if(authRegistration&&existing?.role)req.role=existing.role;
-  checkRole(identity.admin,req.role,existing,authRegistration);
+  checkRole(identity.admin,req.role,existing,authRegistration&&!existing?.role);
   if(identity.admin&&uid===identity.token.uid&&(req.role&&req.role!==existing?.role||'isActive' in req&&req.isActive!==existing?.isActive))throw new AccessError(403,'Use another administrator to change your own role or account status');
   if(uid===identity.token.uid && stringValue(req.email).toLowerCase()!==identity.token.email?.toLowerCase())return fail('Email must match Firebase identity',400);
-  const phone=existing?stringValue(existing.phoneNumber):indianMobile(req.phoneNumber);
-  if(!existing&&!phone&&(req.role!=='admin'||req.phoneNumber))return jsonResponse({success:false,message:'Enter a valid 10-digit Indian mobile number starting with 6, 7, 8 or 9',fieldErrors:{phoneNumber:'Mobile number is required and must contain 10 digits starting with 6, 7, 8 or 9'}},400);
-  if (!existing && phone && await checkPhone(uid,phone)) return fail(duplicateMessage,409);
+  const phone=indianMobile(stringValue(existing?.phoneNumber))||indianMobile(req.phoneNumber);
+  if(!phone&&(req.role!=='admin'||req.phoneNumber))return jsonResponse({success:false,message:'Enter a valid 10-digit Indian mobile number starting with 6, 7, 8 or 9',fieldErrors:{phoneNumber:'Mobile number is required and must contain 10 digits starting with 6, 7, 8 or 9'}},400);
+  if (phone && await checkPhone(uid,phone)) return fail(duplicateMessage,409);
   const now=new Date();
   let metadata:RecordData={};try{metadata=authMetadata(await getFirebaseAdminAuth().getUser(uid));}catch{/* Identity token validation remains authoritative. */}
   const user={...existing,...metadata,...model('User',{...req,phoneNumber:phone,isActive:existing?.isActive!==false,createdAt:existing?.createdAt||now,updatedAt:now})};

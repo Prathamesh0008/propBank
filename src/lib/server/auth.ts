@@ -3,6 +3,7 @@ import 'server-only';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { getFirebaseAdminAuth } from './firebase-admin';
 import { COLLECTIONS, getDatabase } from './firestore';
+import { indianMobile } from '@/lib/indian-phone';
 
 export type UserRole = 'admin' | 'agent' | 'individual';
 
@@ -12,6 +13,17 @@ export interface AuthenticatedUser {
   email: string;
   phoneNumber: string;
   token: DecodedIdToken;
+}
+
+export const PROFILE_ROLES:readonly UserRole[]=['admin','agent','individual'];
+
+export function completedProfile(data:FirebaseFirestore.DocumentData|undefined,token:DecodedIdToken):boolean {
+  if(!data||data.isActive===false||!PROFILE_ROLES.includes(data.role))return false;
+  if(typeof data.name!=='string'||data.name.trim().length<2)return false;
+  if(!indianMobile(typeof data.phoneNumber==='string'?data.phoneNumber:''))return false;
+  const firebaseEmail=typeof token.email==='string'?token.email.trim().toLowerCase():'';
+  const profileEmail=typeof data.email==='string'?data.email.trim().toLowerCase():'';
+  return token.email_verified===true&&!!firebaseEmail&&profileEmail===firebaseEmail;
 }
 
 export class AccessError extends Error {
@@ -44,18 +56,23 @@ export async function requireUser(request: Request): Promise<AuthenticatedUser> 
 }
 export async function userFromToken(token:DecodedIdToken):Promise<AuthenticatedUser> {
   if(token.email_verified!==true)throw new AccessError(403,'Verify your email before accessing PropBank','EMAIL_VERIFICATION_REQUIRED');
+  let currentToken=token;
+  try{
+    const account=await getFirebaseAdminAuth().getUser(token.uid);
+    if(account.disabled)throw new AccessError(403,'Active user profile required','ACCOUNT_DISABLED');
+    if(!account.emailVerified)throw new AccessError(403,'Verify your email before accessing PropBank','EMAIL_VERIFICATION_REQUIRED');
+    currentToken={...token,email:account.email||'',email_verified:account.emailVerified} as DecodedIdToken;
+  }catch(error){if(error instanceof AccessError)throw error;const code=(error as {code?:string}).code;if(code==='auth/user-not-found')throw new AccessError(403,'Active user profile required','ACCOUNT_DISABLED');throw error;}
   const profile = await getDatabase().collection(COLLECTIONS.users).doc(token.uid).get();
   const data = profile.data();
   if (!data) throw new AccessError(403, 'Active user profile required','ACCOUNT_PROFILE_REQUIRED');
   if (data.isActive === false) throw new AccessError(403, 'Active user profile required','ACCOUNT_DISABLED');
-  if (!['admin', 'agent', 'individual'].includes(data.role)) {
-    throw new AccessError(403, 'Valid persisted user role required');
-  }
+  if(!completedProfile(data,currentToken))throw new AccessError(403,'Complete your account profile before accessing PropBank','ACCOUNT_PROFILE_REQUIRED');
   return {
     uid: token.uid,
     role: data.role,
     email: data.email || token.email || '',
     phoneNumber: data.phoneNumber || '',
-    token,
+    token:currentToken,
   };
 }

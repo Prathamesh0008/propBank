@@ -15,6 +15,7 @@ import { Textarea } from "@/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useRef } from "react";
 import AmountInWords from '@/components/AmountInWords';
+import {useDataRefresh} from '@/lib/data-refresh';
 import {SUPPORTING_DOCUMENT_MIME_TYPES,SUPPORTING_DOCUMENT_TYPES,uploadSupportingDocument,type SupportingDocumentType} from '@/lib/supporting-documents';
 import { auth } from "../../firebase";
 import { User, onAuthStateChanged } from "firebase/auth";
@@ -90,6 +91,7 @@ const AttachDocuments = () => {
   const visibleDocuments=documents.filter(doc=>supportingMode?SUPPORTING_TYPES.includes(doc.documentType):!reportType||doc.documentType===reportType);
   const availableDocumentTypes=supportingMode?SUPPORTING_TYPES:DOCUMENT_TYPES;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  useDataRefresh(['documents'],()=>{if(!propertyId||!user)return;void apiFetch(`${API_BASE_URL}/documents/property/${propertyId}`).then(async response=>{if(!response.ok)return;const data=await response.json();if(data.success)setDocuments(data.documents||[]);}).catch(()=>{});});
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {

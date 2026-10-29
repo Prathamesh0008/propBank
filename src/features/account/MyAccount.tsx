@@ -8,6 +8,7 @@ import {useAuth} from '@/contexts/AuthContext';
 import {useNavigate} from '@/lib/navigation';
 import styles from './MyAccount.module.css';
 import RelationshipLinks from './RelationshipLinks';
+import {useDataRefresh} from '@/lib/data-refresh';
 
 type Tab='profile'|'security'|'activity';
 type Activity={id:string;eventType:string;createdAt:string};
@@ -21,6 +22,7 @@ export default function MyAccount(){
  const passwordProvider=account.providerIds.includes('password'),googleOnly=account.providerIds.length>0&&!passwordProvider;
  const initials=useMemo(()=>account.name.split(/\s+/).filter(Boolean).slice(0,2).map(value=>value[0]).join('').toUpperCase()||'PB',[account.name]);
  const load=async()=>{setLoading(true);setError('');try{const response=await apiFetch('/api/account');const data=await response.json();if(!response.ok)throw new Error(data.message||'Account details could not be loaded.');const value={...empty,...data.account,notificationPreferences:{...empty.notificationPreferences,...data.account.notificationPreferences}};setAccount(value);setDraft(value);}catch(caught){setError(caught instanceof Error?caught.message:'Account details could not be loaded.');}finally{setLoading(false);}};
+ useDataRefresh(['account'],()=>{void load();});
  useEffect(()=>{void load();},[]);
  const message=(caught:unknown)=>{const code=typeof caught==='object'&&caught&&'code' in caught?String(caught.code):'';if(code==='auth/wrong-password'||code==='auth/invalid-credential')return 'Your current password is incorrect.';if(code==='auth/requires-recent-login')return 'Please sign out, sign in again, and retry this security change.';if(code==='auth/email-already-in-use')return 'That email address is already in use.';if(code==='auth/weak-password')return 'Choose a stronger password with at least six characters.';return caught instanceof Error?caught.message:'The account change could not be completed.';};
  const saveProfile=async(event:React.FormEvent)=>{event.preventDefault();if(!user||saving)return;setSaving(true);setError('');setNotice('');try{const response=await apiFetch('/api/account',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:draft.name,phoneNumber:draft.phoneNumber,photoURL:draft.photoURL,bio:draft.bio,agencyName:draft.agencyName,agencyPhone:draft.agencyPhone,agencyWebsite:draft.agencyWebsite,notificationPreferences:draft.notificationPreferences})});const data=await response.json();if(!response.ok)throw new Error(data.message||'Profile could not be updated.');setNotice(data.message||'Profile updated.');await user.reload();await load();}catch(caught){setError(message(caught));}finally{setSaving(false);}};

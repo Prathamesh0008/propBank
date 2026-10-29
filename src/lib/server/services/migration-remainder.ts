@@ -1,6 +1,6 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
-import { AccessError, verifyFirebaseIdentity } from '../auth';
+import { AccessError, requireUser } from '../auth';
 import { COLLECTIONS, getDatabase, SITE_SETTINGS_DOCUMENT } from '../firestore';
 import { requireAdmin, requireSelfOrAdmin, isPropertyTenant } from '../permissions';
 import { ApiError, jsonResponse, plainError } from '../http';
@@ -32,7 +32,7 @@ async function strings(request:Request,fields:string[]) {
 export async function login(request:Request) {
   let req:RecordData;try{req=await strings(request,['uid']);}catch{return fail('Invalid request body',400);}
   if(!req.uid)return fail('UID is required',400);
-  const tokenIdentity=await verifyFirebaseIdentity(request);
+  const registered=await requireUser(request),tokenIdentity=registered.token;
   if(tokenIdentity.uid!==req.uid)throw new AccessError(403,'Access denied');
   if(tokenIdentity.email_verified!==true)throw new AccessError(403,'Verify your email before signing in','EMAIL_VERIFICATION_REQUIRED');
   const profile=await getUser(s(req.uid));if(!profile)return fail('User not found',401);
