@@ -32,6 +32,17 @@ function render(result={},reviewId='') {
 const connection=overrides=>({id:'a'.repeat(64),reference:'aaaaaaaa',relationship:'tenant',status:'pending_tenant_acceptance',viewer:'candidate',version:1,expiresAt:'2099-01-01T00:00:00Z',...overrides});
 const data=connections=>({emailVerified:true,connections,truncated:false});
 
+test('count includes actual pending records and excludes linked, rejected and expired history',()=>{
+ const html=render({data:data([
+  connection({status:'pending_tenant_acceptance'}),
+  connection({id:'b'.repeat(64),relationship:'owner',status:'pending_admin_verification'}),
+  connection({id:'c'.repeat(64),status:'linked'}),
+  connection({id:'d'.repeat(64),status:'rejected'}),
+  connection({id:'e'.repeat(64),status:'expired'}),
+ ])});
+ assert.match(html,/Pending Connections <span>2<\/span>/);
+});
+
 test('pending section renders loading without claiming there are no connections',()=>{const html=render({isLoading:true});assert.match(html,/Pending Connections/);assert.match(html,/role="status"/);assert.match(html,/Loading pending connections/);assert.doesNotMatch(html,/No pending connections/);});
 
 test('verified empty state is compact and contains no illustrative connections',()=>{const html=render({data:data([])});assert.match(html,/No pending connections/);assert.doesNotMatch(html,/Accept Tenancy|Property example|Rental invitation/);});

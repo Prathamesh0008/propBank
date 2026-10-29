@@ -1,19 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 import { Label } from "@/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { Clock } from "lucide-react";
 
-interface TimePickerProps {
+interface TimePickerProps extends Pick<ComponentProps<'button'>, 'id' | 'aria-invalid' | 'aria-describedby'> {
   value: string;
   onChange: (time: string) => void;
   required?: boolean;
 }
 
-export const TimePicker = ({ value, onChange, required }: TimePickerProps) => {
+export const TimePicker = ({ value, onChange, required, id, ...accessibility }: TimePickerProps) => {
   const [isOpen, setIsOpen] = useState(false);
   
   // Parse current time or set defaults
@@ -43,10 +43,13 @@ export const TimePicker = ({ value, onChange, required }: TimePickerProps) => {
 
   return (
     <div className="space-y-2">
-      <Label>Time *</Label>
+      <Label htmlFor={id}>Time *</Label>
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
           <Button
+            {...accessibility}
+            id={id}
+            aria-required={required}
             variant="outline"
             className="w-full justify-start text-left font-normal"
             type="button"

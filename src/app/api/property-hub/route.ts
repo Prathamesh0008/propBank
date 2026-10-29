@@ -1,10 +1,11 @@
-import {handle,OPTIONS as corsOptions,unsupported} from '@/lib/server/http';
+import {handle,OPTIONS as corsOptions,jsonResponse} from '@/lib/server/http';
 import {propertyHub,updatePropertyHub} from '@/lib/server/services/property-hub';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const GET=handle(propertyHub,'Could not load property hub',true);
 export const PATCH=handle(updatePropertyHub,'Could not update property tracking',true);
 export const OPTIONS=corsOptions;
+const unsupported=()=>jsonResponse({success:false,message:'Method not allowed'},405);
 export const POST=unsupported;
 export const PUT=unsupported;
 export const DELETE=unsupported;

@@ -15,8 +15,8 @@ import BrandLogo from "@/features/brand/BrandLogo";
 import styles from "./SiteHeader.module.css";
 
 const navigation = [
-  { to: "/manage-property", label: "Manage Property", access: "user" },
-  { to: "/visit-planner", label: "Visit Planner", access: "user" },
+  { to: "/manage-property", label: "Manage Property", access: "public" },
+  { to: "/visit-planner", label: "Visit Planner", access: "public" },
   { to: "/admin", label: "Admin Portal", access: "admin" },
   { to: "/contact", label: "Contact Us", access: "public" },
 ] as const;
@@ -80,7 +80,7 @@ const SiteHeader = () => {
   };
 
   const visibleLinks = navigation.filter(({ access }) =>
-    access === "public" || (user && (access === "user" || userRole === "admin"))
+    access === "public" || (user && userRole === "admin")
   );
   const renderLinks = (mobile = false) => visibleLinks.map(({ to, label }) => (
     <Link

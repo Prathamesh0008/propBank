@@ -6,6 +6,22 @@ function setup(){const app=isolated({users:structuredClone(users),properties:{P:
 function prove(app,uid,phone=PHONE){app.claims[uid]={auth_time:Math.floor(Date.now()/1000),phoneNumber:phone,phone_number:phone,emailVerified:true};}
 const post=(app,uid,action,claim,version)=>route(app,'relationship-links').POST(request('/relationship-links',uid,'POST',{action,...(claim?{claimId:claim.id}:{}),...(version===undefined?{}:{expectedVersion:version})}));
 const get=async(app,uid)=>{const response=await route(app,'relationship-links').GET(request('/relationship-links',uid));assert.equal(response.status,200);return response.json();};
+test('relationship API returns JSON for backend failures, authentication failures and unsupported methods',async()=>{
+ const app=setup(),api=route(app,'relationship-links');
+ const unauthenticated=await api.GET(request('/relationship-links',null));
+ assert.equal(unauthenticated.status,401);assert.equal((await unauthenticated.json()).success,false);
+ app.outage();
+ for(const [method,body] of [['GET',undefined],['POST',{action:'discover'}]]){
+  const response=await api[method](request('/relationship-links','tenant',method,body));
+  assert.equal(response.status,500);assert.match(response.headers.get('content-type'),/application\/json/);
+  const data=await response.json();assert.equal(data.success,false);assert.ok(data.message);assert.ok(!data.message.includes('isolated database'));
+ }
+ const unsupported=await api.PATCH();assert.equal(unsupported.status,405);assert.equal((await unsupported.json()).success,false);
+ const hub=route(app,'property-hub');
+ const hubFailure=await hub.GET(request('/property-hub','tenant'));
+ assert.equal(hubFailure.status,500);assert.equal((await hubFailure.json()).success,false);
+ const hubUnsupported=await hub.POST();assert.equal(hubUnsupported.status,405);assert.equal((await hubUnsupported.json()).success,false);
+});
 async function invite(app,registered=true){if(registered)prove(app,'tenant');else app.claims.tenant={emailVerified:false};const response=await route(app,'tenants').POST(request('/tenants','owner','POST',{propertyId:'P',ownerUID:'owner',tenants:[{firstName:'Tenant',lastName:'Name',email:'tenant@test.invalid',phone:'9123456789',monthlyRent:'25000',securityDeposit:'50000'}]}));assert.equal(response.status,200,await response.clone().text());return Object.values(app.state.relationship_links)[0];}
 
 test('new invitations have canonical state, bounded expiry, version and minimal audit data',async()=>{const app=setup(),claim=await invite(app);assert.equal(claim.status,'verification_required');assert.equal(claim.version,0);assert.ok(claim.expiresAt.getTime()>Date.now()+29*86400000);assert.equal(claim.authorizedByUID,'owner');assert.equal(claim.candidateUID,'tenant');for(const field of ['title','address','tenantName','candidateEmail','documents','rent','agreement'])assert.equal(claim[field],undefined);});

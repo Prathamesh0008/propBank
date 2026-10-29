@@ -16,6 +16,7 @@ import { propertyService, type Property } from "@/services/propertyService";
 import { TimePicker } from "@/ui/time-picker";
 import styles from "./VisitPlanner.module.css";
 import {useAuth} from '@/contexts/AuthContext';
+import {localDateValue, validateVisitForm, type VisitForm, type VisitFormErrors} from './visit-form';
 
 
 const VisitPlanner = () => {
@@ -36,9 +37,8 @@ const VisitPlanner = () => {
   const requestRef=useRef<AbortController|null>(null);
   const requestGeneration=useRef(0);
   const {user,loading:authLoading}=useAuth();
-  const [formData, setFormData] = useState<{
-    title:string;description:string;date:string;time:string;propertyId:string;
-  }>({
+  const [fieldErrors, setFieldErrors] = useState<VisitFormErrors>({});
+  const [formData, setFormData] = useState<VisitForm>({
     title: '',
     description: '',
     date: '',
@@ -85,21 +85,19 @@ const VisitPlanner = () => {
     return()=>{active=false;};
   },[]);
 
-  const handleInputChange = (field: string, value: string | number) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const handleInputChange = (field: keyof VisitForm, value: string) => {
+    const next = {...formData, [field]: value};
+    setFormData(next);
+    const errors = validateVisitForm(next);
+    setFieldErrors(previous => Object.fromEntries(Object.keys(previous).filter(key => errors[key as keyof VisitFormErrors]).map(key => [key, errors[key as keyof VisitFormErrors]])));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.title || !formData.date || !formData.time) {
-      toast({
-        title: "Error",
-        description: "Please fill in all required fields",
-        variant: "destructive",
-      });
-      return;
-    }
+    const errors = validateVisitForm(formData);
+    setFieldErrors(errors);
+    if (Object.keys(errors).length) return;
 
     if (!user) {
       toast({
@@ -115,12 +113,9 @@ const VisitPlanner = () => {
       
       // Combine date and time into ISO string
       const visitDateTime = new Date(`${formData.date}T${formData.time}`);
-      if(!Number.isFinite(visitDateTime.getTime())||visitDateTime.getTime()<=Date.now()){
-        toast({title:'Choose a future time',description:'Visits must be scheduled for a future date and time.',variant:'destructive'});return;
-      }
       
       const visitRequest: CreateVisitRequest = {
-        title: formData.title,
+        title: formData.title.trim(),
         ...(formData.propertyId?{propertyId:formData.propertyId}:{}),
         description: formData.description,
         visitDate: visitDateTime.toISOString(),
@@ -178,7 +173,7 @@ const VisitPlanner = () => {
 
   const beginReschedule=(visit:Visit)=>{
     const date=new Date(visit.visitDate),local=new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString();
-    setEditingVisit(visit);setFormData({title:visit.title,description:visit.description||'',date:local.slice(0,10),time:local.slice(11,16),propertyId:visit.propertyId||''});setIsAddingVisit(true);
+    setFieldErrors({});setEditingVisit(visit);setFormData({title:visit.title,description:visit.description||'',date:local.slice(0,10),time:local.slice(11,16),propertyId:visit.propertyId||''});setIsAddingVisit(true);
   };
 
   const formatDate = (dateString: string) => {
@@ -354,7 +349,7 @@ const VisitPlanner = () => {
           </div>
 
           <aside className={styles.scheduler}>
-            <Button onClick={() => {setEditingVisit(null);setIsAddingVisit(true);}}  size="lg" className="gap-2 w-full text-sm sm:text-base">
+            <Button onClick={() => {setFieldErrors({});setEditingVisit(null);setIsAddingVisit(true);}}  size="lg" className="gap-2 w-full text-sm sm:text-base">
               <Plus className="h-3 w-3 sm:h-4 sm:w-4" /> Schedule New Visit
             </Button>
 
@@ -370,11 +365,13 @@ const VisitPlanner = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="pt-0">
-                  <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
+                  <form onSubmit={handleSubmit} noValidate className="space-y-3 sm:space-y-4">
                     <div className="space-y-1 sm:space-y-2">
                       <Label htmlFor="title" className="text-xs sm:text-sm">Visit Title *</Label>
                       <Input id="title" value={formData.title} className="text-sm" required
+                        aria-invalid={!!fieldErrors.title} aria-describedby={fieldErrors.title ? 'title-error' : undefined}
                         onChange={(e) => handleInputChange('title', e.target.value)}placeholder="E.g., Visit Apartment in Downtown"/>
+                      {fieldErrors.title && <p id="title-error" className={styles.fieldNotice} role="alert">{fieldErrors.title}</p>}
                     </div>
 
                     <div className={styles.propertySelector}>
@@ -394,12 +391,18 @@ const VisitPlanner = () => {
 
                     <div className="space-y-1 sm:space-y-2">
                       <Label htmlFor="date" className="text-xs sm:text-sm">Visit Date *</Label>
-                      <DatePicker value={formData.date} className="text-sm"
-                        onChange={(value) => handleInputChange('date', value)} min={new Date().toISOString().split('T')[0]}
+                      <DatePicker id="date" value={formData.date} className="text-sm" aria-required="true"
+                        aria-invalid={!!fieldErrors.date} aria-describedby={fieldErrors.date ? 'date-error' : undefined}
+                        onChange={(value) => handleInputChange('date', value)} min={localDateValue(new Date())}
                       />
+                      {fieldErrors.date && <p id="date-error" className={styles.fieldNotice} role="alert">{fieldErrors.date}</p>}
                     </div>
 
-                    <TimePicker value={formData.time} onChange={(time) => handleInputChange('time', time)} required />
+                    <div>
+                      <TimePicker id="time" value={formData.time} onChange={(time) => handleInputChange('time', time)} required
+                        aria-invalid={!!fieldErrors.time} aria-describedby={fieldErrors.time ? 'time-error' : undefined} />
+                      {fieldErrors.time && <p id="time-error" className={styles.fieldNotice} role="alert">{fieldErrors.time}</p>}
+                    </div>
 
                     <div className="space-y-1 sm:space-y-2">
                       <Label htmlFor="description" className="text-xs sm:text-sm">Visit Details</Label>

@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Check, CheckCircle2, ChevronDown, Clock3, KeyRound, RefreshCw, ShieldCheck, MailCheck, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiFetch } from '@/lib/api-client';
+import { readApiResponse } from '@/lib/api-response';
 import { Link } from '@/lib/navigation';
 import { CONNECTION_LABELS, connectionPending, type ConnectionState } from '@/lib/relationship-link-state';
 import styles from './PropertyHub.module.css';
@@ -21,9 +22,7 @@ async function connectionRequest(action: string, connection?: Connection) {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({action, ...(connection ? {claimId: connection.id, expectedVersion: connection.version} : {})}),
   });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.message || 'The connection could not be updated.');
-  return data;
+  return readApiResponse<{truncated?: boolean; status?: ConnectionState}>(response, 'The connection could not be updated.');
 }
 
 export default function PendingConnections() {
@@ -38,9 +37,7 @@ export default function PendingConnections() {
     queryFn: async () => {
       for (let page = 0; page < 5; page++) if (!(await connectionRequest('discover')).truncated) break;
       const response = await apiFetch('/api/relationship-links');
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Pending connections could not be loaded.');
-      return data;
+      return readApiResponse<ConnectionsResponse>(response, 'Pending connections could not be loaded.');
     },
   });
   const data = query.data;
