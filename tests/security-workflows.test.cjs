@@ -29,7 +29,7 @@ test('private records reject IDOR; owner also tenant has both relationships with
  assert.equal((await route(app,'inspection-reports/property/[propertyId]').GET(request('/inspection-reports/property/P','other'),context('P','propertyId'))).status,403);
 });
 test('editable profile contacts and unverified email cannot grant tenant access; explicit UID takes precedence',async()=>{
- const app=isolated({users:{...users,other:{...users.other,email:'tenant@test.invalid',phoneNumber:'456'}},properties});
+ const app=isolated({users:{...users,other:{...users.other,email:'tenant@test.invalid',phoneNumber:'+919123456783'}},properties});
  const documents=route(app,'documents/property/[propertyId]');
  assert.equal((await documents.GET(request('/documents/property/P','other'),context('P','propertyId'))).status,403);
  app.claims.other={email:'tenant@test.invalid',email_verified:false};
@@ -62,7 +62,7 @@ test('upload reserved namespaces require property membership and administrator p
  assert.equal((await r.POST(request('/upload/image','tenant','POST',{folder:'documents/P',image}))).status,200);
 });
 test('notification intake prevents internal event spoofing, private response leakage and HTML injection',async()=>{
- const app=isolated({users,properties}),r=route(app,'admin/notifications');app.state.properties.P.rentalStatus='available';app.state.properties.P.tenants=[];
+ const app=isolated({users,properties}),r=route(app,'admin/notifications');app.state.properties.P.rentalStatus='available';app.state.properties.P.moderationStatus='approved';app.state.properties.P.status='active';app.state.properties.P.tenants=[];
  assert.equal((await r.POST(request('/admin/notifications','other','POST',{type:'agreement_renewal',propertyId:'P'}))).status,403);
  const response=await r.POST(request('/admin/notifications','other','POST',{type:'property_enquiry',propertyId:'P',userId:'other',ownerEmail:'forged@test.invalid',isRead:true}));assert.equal(response.status,201);
  const body=await response.json();assert.equal(body.notification.ownerEmail,'');

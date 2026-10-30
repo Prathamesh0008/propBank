@@ -328,8 +328,8 @@ export const useLandingProperties = () => {
 
       if (notificationData.success) {
         toast({
-          title: "Enquiry Sent",
-          description: "Your enquiry has been sent to the admin. They will contact you soon.",
+          title: "Enquiry submitted",
+          description: "Our team will review it.",
         });
       } else {
         throw new Error(notificationData.message || "Failed to send enquiry");

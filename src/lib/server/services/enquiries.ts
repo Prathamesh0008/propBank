@@ -17,22 +17,24 @@ const assignments=()=>getDatabase().collection(ENQUIRY_ASSIGNMENTS);
 function requireInboxRole(user:AuthenticatedUser) {
   if(!['admin','agent'].includes(user.role))throw new AccessError(403,'Administrator or assigned agent access required');
 }
-function project(id:string,notification:RecordData,tracking:RecordData={}) {
+function project(id:string,notification:RecordData,tracking:RecordData={},delivery:RecordData={}) {
   // Explicit allowlist: no owner contacts, adminRemarks, attachments or other
   // confidential property records are granted by enquiry assignment.
   const result:RecordData={id};
   for(const key of ['title','message','propertyId','propertyTitle','propertyAddress','userName','userEmail','userPhone'])result[key]=s(notification[key]);
   return wireValue({...result,timestamp:notification.timestamp||notification.createdAt||null,isRead:notification.isRead===true,
     brokerUID:s(tracking.brokerUID),brokerName:s(tracking.brokerName),status:tracking.status||'new',
-    version:tracking.version||0,history:tracking.history||[]});
+    version:tracking.version||0,history:tracking.history||[],emailDeliveryStatus:s(delivery.status)||'not_queued',emailDeliveryFailure:s(delivery.errorSummary)});
 }
 export async function listEnquiries(request:Request) {
   const user=await requireUser(request);requireInboxRole(user);
   const result:RecordData[]=[];
   if(user.role==='admin') {
     // No timestamp orderBy: historical enquiries missing that field must remain visible.
-    const snapshot=await notifications().where('type','==','property_enquiry').get();
-    for(const doc of snapshot.docs){const tracking=await assignments().doc(doc.id).get();result.push(project(doc.id,doc.data(),tracking.data()) as RecordData);}
+    const [snapshot,deliverySnapshot]=await Promise.all([notifications().where('type','==','property_enquiry').get(),getDatabase().collection(COLLECTIONS.emailDeliveries||'email_deliveries').get()]);
+    const deliveriesByEnquiry=new Map<string,RecordData>();
+    for(const doc of deliverySnapshot.docs){const row=doc.data();if(row.eventType!=='enquiry.property_created'||!s(row.recordId))continue;const current=deliveriesByEnquiry.get(s(row.recordId));if(!current||epoch(row.updatedAt)>epoch(current.updatedAt))deliveriesByEnquiry.set(s(row.recordId),row);}
+    for(const doc of snapshot.docs){const tracking=await assignments().doc(doc.id).get();result.push(project(doc.id,doc.data(),tracking.data(),deliveriesByEnquiry.get(doc.id)) as RecordData);}
   }else {
     // Caller-supplied UIDs/filters cannot widen this query.
     const snapshot=await assignments().where('brokerUID','==',user.uid).get();

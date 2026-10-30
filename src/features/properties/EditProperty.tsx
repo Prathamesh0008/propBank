@@ -28,6 +28,7 @@ import { uploadBase64Image } from "../../services/uploadService";
 import { usePropertyDetails } from "../../hooks/useProperties";
 import { useQueryClient } from "@tanstack/react-query";
 import {PROPERTY_CONFIGURATIONS,propertyCategory,structureUsesPlotArea} from '@/lib/property-category';
+import {activeFurnishedItems,supportsFurnishedChecklist} from '@/lib/property-furnishing';
 
 
 
@@ -162,6 +163,7 @@ const EditProperty = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showFurnishedModal, setShowFurnishedModal] = useState(false);
   const [furnishedChecklist, setFurnishedChecklist] = useState<any[]>([]);
+  const [furnishingSelectionChanged,setFurnishingSelectionChanged]=useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
 
@@ -275,6 +277,7 @@ const EditProperty = () => {
       };
 
       setFurnishedChecklist(propertyData.furnishedChecklist || []);
+      setFurnishingSelectionChanged(false);
 
       form.reset(formData);
     }
@@ -374,6 +377,16 @@ const EditProperty = () => {
 
   const editCategory=propertyCategory(form.watch('propertyCategory')||form.watch('propertyType'));
   const editPlotStructure=structureUsesPlotArea(form.watch('structure'));
+  const editStructure=form.watch('structure');
+  const editUnitCondition=form.watch('unitCondition');
+  const showFurnishedChecklist=supportsFurnishedChecklist(editUnitCondition,editStructure);
+  const clearFurnishedChecklist=()=>{setFurnishedChecklist([]);setShowFurnishedModal(false);form.setValue('furnishedChecklist',[],{shouldDirty:true});setFurnishingSelectionChanged(true);};
+
+  useEffect(()=>{
+    if(form.formState.dirtyFields.structure&&!supportsFurnishedChecklist(form.getValues('unitCondition'),editStructure))clearFurnishedChecklist();
+  // Do not treat loading a legacy plot record as an explicit furnishing edit.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[editStructure,form.formState.dirtyFields.structure]);
 
   const getUnitLabel = () => {
     switch (form.watch("propertyType")) {
@@ -450,7 +463,8 @@ const EditProperty = () => {
       }
 
       // Filter furnished checklist to only include checked items (saves DB space)
-      const checkedFurnishedItems = furnishedChecklist.filter(item => item.checked);
+      const checklistApplicable=supportsFurnishedChecklist(data.unitCondition,data.structure);
+      const checkedFurnishedItems = activeFurnishedItems(furnishedChecklist,data.unitCondition,data.structure);
 
       // Prepare update data - map propertyTitle to title for backend consistency
       const { propertyTitle, ...restData } = data;
@@ -506,7 +520,7 @@ const EditProperty = () => {
         ...Object.fromEntries(Object.entries(safeRestData).filter(([key])=>!["saleStatus","buyerFirstName","buyerLastName","buyerPhone"].includes(key))),
         title: propertyTitle,
         images: uploadedImages,
-        furnishedChecklist: checkedFurnishedItems,
+        ...(checklistApplicable||furnishingSelectionChanged?{furnishedChecklist:checkedFurnishedItems}:{}),
         ownerUID: property?.ownerUID || currentUser.uid,
         tenants: updatedTenants,
         isSold: data.listingType === "sell" && data.saleStatus === "sold",
@@ -664,7 +678,7 @@ const EditProperty = () => {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Residential layout</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value} disabled={!isPropertyEditable()}>
+                        <Select onValueChange={field.onChange} value={field.value||''} disabled={!isPropertyEditable()}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Select configuration" />
@@ -988,7 +1002,7 @@ const EditProperty = () => {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Unit Condition</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value} disabled={!isPropertyEditable()}>
+                        <Select onValueChange={value=>{field.onChange(value);setFurnishingSelectionChanged(true);if(!supportsFurnishedChecklist(value,editStructure))clearFurnishedChecklist();}} value={field.value||''} disabled={!isPropertyEditable()}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Select condition" />
@@ -1006,7 +1020,7 @@ const EditProperty = () => {
                   />
 
                   {/* Furnished Checklist Button - Aligned with Unit Condition */}
-                  <FormField
+                  {showFurnishedChecklist&&<FormField
                     control={form.control}
                     name="furnishedChecklist"
                     render={() => (
@@ -1028,11 +1042,11 @@ const EditProperty = () => {
                           )}
                         </Button>
                         <FormDescription className="text-xs text-muted-foreground">
-                          Add items included with this property (available for all unit conditions)
+                          Add items included with this furnished property
                         </FormDescription>
                       </FormItem>
                     )}
-                  />
+                  />}
 
                   {form.watch("listingType") !== "sell" && (
                     <FormField

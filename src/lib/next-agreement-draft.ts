@@ -3,12 +3,13 @@ export interface NextAgreementDraft {
   startDate:string;
   endDate:string;
   monthlyRent:string;
-  securityDeposit:string;
-  noticePeriod:string;
-  lockInPeriod:string;
+  /** Legacy fields remain readable when an existing saved draft contains them. */
+  securityDeposit?:string;
+  noticePeriod?:string;
+  lockInPeriod?:string;
 }
 
-export const emptyNextAgreementDraft=():NextAgreementDraft=>({durationMonths:'',startDate:'',endDate:'',monthlyRent:'',securityDeposit:'',noticePeriod:'',lockInPeriod:''});
+export const emptyNextAgreementDraft=():NextAgreementDraft=>({durationMonths:'',startDate:'',endDate:'',monthlyRent:''});
 interface CivilDate {year:number;month:number;day:number}
 const leap=(year:number)=>year%4===0&&(year%100!==0||year%400===0);
 const monthDays=(year:number,month:number)=>[31,leap(year)?29:28,31,30,31,30,31,31,30,31,30,31][month-1]||0;
@@ -25,9 +26,9 @@ export function sameNextAgreementDraft(left:unknown,right:unknown):boolean {if(!
 
 export function validateNextAgreementDraft(value:unknown,currentEndDate='',allowUnchangedLegacy=false):string {
   if(!value||typeof value!=='object'||Array.isArray(value))return 'Complete the next agreement details.';
-  const draft=value as Record<string,unknown>,keys=['durationMonths','startDate','endDate','monthlyRent','securityDeposit','noticePeriod','lockInPeriod'];
-  if(Object.keys(draft).some(key=>!keys.includes(key))||keys.filter(key=>key!=='durationMonths').some(key=>typeof draft[key]!=='string'))return 'Next agreement details are invalid.';
-  if(keys.filter(key=>key!=='durationMonths').some(key=>!String(draft[key]).trim()))return 'Complete every next agreement field.';
+  const draft=value as Record<string,unknown>,requiredKeys=['startDate','endDate','monthlyRent'],legacyKeys=['securityDeposit','noticePeriod','lockInPeriod'],keys=['durationMonths',...requiredKeys,...legacyKeys];
+  if(Object.keys(draft).some(key=>!keys.includes(key))||requiredKeys.some(key=>typeof draft[key]!=='string')||legacyKeys.some(key=>draft[key]!==undefined&&typeof draft[key]!=='string'))return 'Next agreement details are invalid.';
+  if(requiredKeys.some(key=>!String(draft[key]).trim()))return 'Complete every next agreement field.';
   if(!parseDateOnly(currentEndDate))return 'Complete the current agreement end date first.';
   const suppliedDuration=String(draft.durationMonths??'').trim();
   const duration=validNextAgreementDuration(draft.durationMonths)?String(draft.durationMonths):suppliedDuration?'':deriveNextAgreementDuration(currentEndDate,String(draft.startDate),String(draft.endDate));
@@ -35,7 +36,7 @@ export function validateNextAgreementDraft(value:unknown,currentEndDate='',allow
   if(duration){const calculated=calculateNextAgreementDates(currentEndDate,duration);if(calculated.startDate!==draft.startDate||calculated.endDate!==draft.endDate)return 'Next agreement dates do not match the current agreement end date and duration.';}
   else if(!parseDateOnly(String(draft.startDate))||!parseDateOnly(String(draft.endDate))||String(draft.endDate)<=String(draft.startDate))return 'Legacy next agreement dates are invalid.';
   if(!/^\d+(?:\.\d{1,2})?$/.test(String(draft.monthlyRent))||Number(draft.monthlyRent)<=0)return 'Enter a valid next agreement monthly rent.';
-  if(!/^\d+(?:\.\d{1,2})?$/.test(String(draft.securityDeposit))||Number(draft.securityDeposit)<0)return 'Enter a valid next agreement security deposit.';
-  for(const key of ['noticePeriod','lockInPeriod'])if(!/^\d+$/.test(String(draft[key]))||Number(draft[key])<0||Number(draft[key])>120)return `Enter a valid next agreement ${key==='noticePeriod'?'notice':'lock-in'} period.`;
+  if(draft.securityDeposit!==undefined&&draft.securityDeposit!==''&&(!/^\d+(?:\.\d{1,2})?$/.test(String(draft.securityDeposit))||Number(draft.securityDeposit)<0))return 'Enter a valid next agreement security deposit.';
+  for(const key of ['noticePeriod','lockInPeriod'])if(draft[key]!==undefined&&draft[key]!==''&&(!/^\d+$/.test(String(draft[key]))||Number(draft[key])<0||Number(draft[key])>120))return `Enter a valid next agreement ${key==='noticePeriod'?'notice':'lock-in'} period.`;
   return '';
 }
