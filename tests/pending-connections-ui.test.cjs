@@ -34,7 +34,7 @@ const data=connections=>({emailVerified:true,connections,truncated:false});
 
 test('pending section renders loading without claiming there are no connections',()=>{const html=render({isLoading:true});assert.match(html,/Pending Connections/);assert.match(html,/role="status"/);assert.match(html,/Loading pending connections/);assert.doesNotMatch(html,/No pending connections/);});
 
-test('verified empty state is compact and contains no illustrative connections',()=>{const html=render({data:data([])});assert.match(html,/No pending connections/);assert.doesNotMatch(html,/Accept Tenancy|Property example|Rental invitation/);});
+test('verified empty state reserves no dashboard space and contains no illustrative connections',()=>{const html=render({data:data([])});assert.equal(html,'');assert.doesNotMatch(html,/Accept Tenancy|Property example|Rental invitation/);});
 
 test('email verification requirement links to existing authentication without phone OTP controls',()=>{const html=render({data:{...data([]),emailVerified:false}});assert.match(html,/Verification Required/);assert.match(html,/verified email that received your invitation/);assert.match(html,/Verify Email<\/a>/);assert.doesNotMatch(html,/No pending connections|Enter OTP|Send OTP/);});
 

@@ -29,14 +29,17 @@ async function connectionRequest(action: string, connection?: Connection) {
 export default function PendingConnections() {
   const {user} = useAuth(), cache = useQueryClient(), id = useId();
   const observedLinked = useRef(new Set<string>());
+  const discoveredIdentity = useRef('');
   const [busy, setBusy] = useState(false), [review, setReview] = useState('');
   const [feedback, setFeedback] = useState(''), [failure, setFailure] = useState('');
+  const identityKey=`${user?.uid||''}:${user?.email||''}:${user?.emailVerified===true}`;
+  async function discover() {for (let page = 0; page < 5; page++) if (!(await connectionRequest('discover')).truncated) break;discoveredIdentity.current=identityKey;}
   const query = useQuery<ConnectionsResponse>({
     queryKey: ['relationshipLinks', user?.uid, user?.email, user?.emailVerified], enabled: !!user,
     staleTime: 0, retry: false, refetchOnWindowFocus: 'always',
     refetchInterval: query => query.state.data?.connections.some(item => connectionPending(item.status)) ? 30000 : false,
     queryFn: async () => {
-      for (let page = 0; page < 5; page++) if (!(await connectionRequest('discover')).truncated) break;
+      if(discoveredIdentity.current!==identityKey)await discover();
       const response = await apiFetch('/api/relationship-links');
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Pending connections could not be loaded.');
@@ -54,7 +57,10 @@ export default function PendingConnections() {
   const history = (data?.connections || []).filter(item => ['rejected', 'expired'].includes(item.status));
   const disabled = busy || query.isFetching || query.isError;
 
+  if (data?.emailVerified && !query.isError && !pending.length && !history.length) return null;
+
   async function refresh() {
+    try{await discover();}catch(error){setFailure(error instanceof Error?error.message:'Pending connections could not be refreshed.');return;}
     const result = await query.refetch();
     if (!result.isError) await Promise.all(['userProperties', 'productHub'].map(key => cache.invalidateQueries({queryKey: [key]})));
   }
@@ -75,7 +81,7 @@ export default function PendingConnections() {
 
   return <section id="pending-connections" className={styles.connections} aria-labelledby={`${id}-heading`}>
     <div className={styles.connectionsHeading}>
-      <div><h2 id={`${id}-heading`}>Pending Connections <span>{pending.length}</span></h2><p>Ownership requests and rental invitations awaiting confirmation.</p></div>
+      <div><h2 id={`${id}-heading`}>Pending Connections <span>{pending.length}</span></h2><p>Review relationship requests.</p></div>
       <button type="button" className={styles.connectionRefresh} disabled={busy || query.isFetching} onClick={() => void refresh()}><RefreshCw size={15} aria-hidden="true"/> Refresh</button>
     </div>
     {query.isLoading && <p className={styles.connectionFeedback} role="status"><Clock3 size={17} aria-hidden="true"/> Loading pending connections…</p>}
@@ -84,7 +90,7 @@ export default function PendingConnections() {
       <MailCheck size={21} strokeWidth={1.5} aria-hidden="true"/>
       <div><h3>Verification Required</h3><p id={`${id}-email-help`}>Use the Firebase account with the verified email that received your invitation. Profile contact details cannot unlock a connection.</p><Link to="/auth?next=%2Fmanage-property%23pending-connections" aria-describedby={`${id}-email-help`}>Verify Email</Link><Link to="/support">Contact support</Link></div>
     </div>}
-    {data?.emailVerified && !query.isError && !pending.length && <p className={styles.connectionEmpty}><CheckCircle2 size={20} strokeWidth={1.5} aria-hidden="true"/> No pending connections</p>}
+    {data?.emailVerified && !query.isError && !pending.length && !!history.length && <p className={styles.connectionEmpty}><CheckCircle2 size={20} strokeWidth={1.5} aria-hidden="true"/> No pending connections</p>}
     {data?.truncated && <p className={styles.connectionHint}>Showing a limited set. Review these requests, then refresh for more.</p>}
     <div className={styles.connectionList}>
       {pending.map(item => {

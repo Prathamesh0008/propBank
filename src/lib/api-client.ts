@@ -32,3 +32,24 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   if(domains.length)publishDataRefresh(domains);
   return response;
 }
+
+export type AuthProfileResult={response:Response;data:{profileExists?:boolean;profileComplete?:boolean;status?:string;message?:string;code?:string}};
+const authProfileRequests=new Map<string,Promise<AuthProfileResult>>();
+export function loadAuthProfile(uid:string):Promise<AuthProfileResult>{
+  const existing=authProfileRequests.get(uid);if(existing)return existing;
+  const request=(async()=>{
+    let result:AuthProfileResult|undefined;
+    for(let attempt=0;attempt<2;attempt++){
+      const response=await apiFetch('/api/auth/user',{cache:'no-store'});
+      const data=await response.json().catch(()=>({})) as AuthProfileResult['data'];
+      result={response,data};
+      if(![500,503].includes(response.status)||data.code==='FIRESTORE_RESOURCE_EXHAUSTED'||attempt===1)return result;
+      await new Promise(resolve=>setTimeout(resolve,350));
+    }
+    return result!;
+  })();
+  authProfileRequests.set(uid,request);
+  const clear=()=>{if(authProfileRequests.get(uid)===request)authProfileRequests.delete(uid);};
+  void request.then(clear,clear);
+  return request;
+}

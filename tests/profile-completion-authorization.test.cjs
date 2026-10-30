@@ -29,6 +29,12 @@ test('complete active profile authorizes the shared protected boundary',async()=
   assert.equal(response.status,204);assert.equal(app.sessions.size,1);
 });
 
+test('self user details reuse the authoritative authorization profile read',async()=>{
+  const app=appWith(complete(),{member:{email:'member@test.invalid',email_verified:true,emailVerified:true}});
+  const response=await route(app,'users/[id]').GET(request('/users/member','member'),{params:Promise.resolve({id:'member'})});
+  assert.equal(response.status,200);assert.equal(app.reads.filter(read=>read.collection==='users'&&read.id==='member').length,1);
+});
+
 test('profile completion repairs a partially persisted Google profile with the submitted mobile and role',async()=>{
   const partial=complete('member',{phoneNumber:'',role:''}),app=appWith(partial,{member:{email:'member@test.invalid',email_verified:true,emailVerified:true,providerData:[{providerId:'google.com'}]}});
   const response=await route(app,'auth/user').POST(request('/auth/user','member','POST',{uid:'member',email:'member@test.invalid',name:'Google Member',phoneNumber:'+919123456789',role:'agent'}));

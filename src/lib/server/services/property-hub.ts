@@ -12,16 +12,26 @@ import {persistUserEvent} from './transactional-email';
 import {bestEffort,escapeHtml} from './property-effects';
 
 async function records(collection:string,id?:string){const base=getDatabase().collection(collection);const snapshot=await (id?base.where('propertyId','==',id):base).get();return snapshot.docs.map(doc=>({...doc.data(),id:doc.id})) as RecordData[];}
+async function relatedRecords(collection:string,propertyIds:string[]){
+ const grouped=new Map<string,RecordData[]>();for(const id of propertyIds)grouped.set(id,[]);
+ for(let offset=0;offset<propertyIds.length;offset+=30){
+  const ids=propertyIds.slice(offset,offset+30),snapshot=await getDatabase().collection(collection).where('propertyId','in',ids).get();
+  for(const doc of snapshot.docs){const value={...doc.data(),id:doc.id} as RecordData,key=String(value.propertyId||'');if(grouped.has(key))grouped.get(key)!.push(value);}
+ }
+ return grouped;
+}
 export async function propertyHub(request:Request){
  const user=await requireUser(request),id=new URL(request.url).searchParams.get('propertyId');
  let properties:RecordData[]=[];
  if(id){const p=await propertyMember(user,id);if(!p)throw new ApiError(404,'Property not found');properties=[{...p,id}];}
  else {const all=await records(COLLECTIONS.properties);properties=all.filter(p=>user.role==='admin'||p.ownerUID===user.uid||isPropertyTenant(user,{ownerUID:p.ownerUID,tenants:(p.tenants||[]).length?p.tenants:[{email:p.tenantEmail,isActive:p.rentalStatus==='rented'}]}));}
  const truncated=properties.length>250;properties=properties.slice(0,250);
+ const propertyIds=properties.map(property=>String(property.id));
+ const related=id?null:await Promise.all([COLLECTIONS.documents,COLLECTIONS.inspectionReports,COLLECTIONS.serviceRequests,COLLECTIONS.visits,COLLECTIONS.negotiations].map(collection=>relatedRecords(collection,propertyIds)));
  const hubs:RecordData[]=[],actions:RecordData[]=[];const today=todayIST();
  for(const p of properties){
   const role=user.role==='admin'?'admin':p.ownerUID===user.uid?'owner':'tenant';
-  const [documents,inspections,allRequests,allVisits,allOffers]=await Promise.all([records(COLLECTIONS.documents,p.id),records(COLLECTIONS.inspectionReports,p.id),records(COLLECTIONS.serviceRequests,p.id),records(COLLECTIONS.visits,p.id),records(COLLECTIONS.negotiations,p.id)]);
+  const [documents,inspections,allRequests,allVisits,allOffers]=id?await Promise.all([records(COLLECTIONS.documents,p.id),records(COLLECTIONS.inspectionReports,p.id),records(COLLECTIONS.serviceRequests,p.id),records(COLLECTIONS.visits,p.id),records(COLLECTIONS.negotiations,p.id)]):related!.map(group=>group.get(String(p.id))||[]);
   const requests=allRequests.filter(r=>role!=='tenant'||r.userUID===user.uid);
   const visits=allVisits.filter(v=>role!=='tenant'||v.userId===user.uid);
   const offers=allOffers.filter(n=>user.role==='admin'||[n.ownerUID,n.customerUID,n.brokerUID].includes(user.uid));

@@ -1,7 +1,7 @@
 import 'server-only';
 import { normalizeEmailAddress } from '@/lib/email-address';
 import {normalizeNextAgreementDraft,sameNextAgreementDraft,validateNextAgreementDraft} from '@/lib/next-agreement-draft';
-import {propertyCategory as parsePropertyCategory,PROPERTY_STRUCTURES,LEGACY_PROPERTY_STRUCTURES} from '@/lib/property-category';
+import {propertyCategory as parsePropertyCategory,PROPERTY_CONFIGURATIONS,PROPERTY_STRUCTURES,LEGACY_PROPERTY_STRUCTURES,structureUsesPlotArea} from '@/lib/property-category';
 import { createHash, randomInt, randomUUID } from 'node:crypto';
 import type { Query, DocumentSnapshot } from 'firebase-admin/firestore';
 import {publicListing} from '../../listing-policy';
@@ -199,6 +199,7 @@ async function createPropertyRecord(request:Request) {
       if(!structure)throw new Error('Property type / Structure does not match the selected category');
       raw.structure=structure;
     }
+    if(category==='residential'&&!structureUsesPlotArea(raw.structure)&&!PROPERTY_CONFIGURATIONS.includes(s(raw.configuration) as typeof PROPERTY_CONFIGURATIONS[number]))throw new Error('Select a valid residential BHK layout');
     const unitValues=['sq ft','sq m','sq yd','acre','hectare'];
     for(const key of ['areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit'])if(raw[key]&&!unitValues.includes(s(raw[key]).toLowerCase()))throw new Error(`Invalid ${key}`);
     for(const [record,key] of [[raw,'tenantEmail'],[isRecord(raw.reportedOwner)?raw.reportedOwner:{},'email']] as const) {

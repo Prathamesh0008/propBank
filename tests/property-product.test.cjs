@@ -1,6 +1,12 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {isolated,users,properties,defaults,request,route}=require('./fixtures/native-server.cjs');
 const seed=()=>isolated({users,properties:{P:{...properties.P,monthlyRent:'30000',paymentDueDate:'5',agreementStartDate:'2026-01-01',agreementEndDate:'2030-01-01'},R:{...properties.P,id:'R',ownerUID:'other',tenants:[{userUID:'owner',isActive:true,email:'owner@test.invalid'}]}}});
+test('portfolio hub batches related collection reads instead of querying once per property',async()=>{
+ const app=seed();const response=await route(app,'property-hub').GET(request('/property-hub','owner'));assert.equal(response.status,200);
+ const related=new Set(['documents','inspection_reports','service_requests','visits','negotiations']);
+ const reads=app.reads.filter(read=>related.has(read.collection));
+ for(const collection of related)assert.equal(reads.filter(read=>read.collection===collection&&read.filters.some(([,value,operator])=>operator==='in'&&value.length===2)).length,1,collection);
+});
 test('property hub is relationship scoped, preserves owner also tenant, and hides internal notes from members/public',async()=>{
  const app=seed();app.state.properties.P.internalNotes=[{id:'N',text:'Secret admin note',at:'2026-01-01'}];const api=route(app,'property-hub');
  assert.equal((await api.GET(request('/property-hub',null))).status,401);

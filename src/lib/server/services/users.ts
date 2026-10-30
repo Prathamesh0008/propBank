@@ -1,8 +1,9 @@
 import 'server-only';
+import {randomUUID} from 'node:crypto';
 import { AccessError, completedProfile, requireUser, verifyFirebaseIdentity } from '../auth';
 import { COLLECTIONS, getDatabase } from '../firestore';
 import { getFirebaseAdminAuth } from '../firebase-admin';
-import { ApiError, jsonResponse } from '../http';
+import { ApiError, dependencyDiagnostic, jsonResponse } from '../http';
 import {indianMobile} from '@/lib/indian-phone';
 import { persistUserEvent } from './transactional-email';
 import { authMetadata, recordAuthActivity } from './auth-activity';
@@ -44,8 +45,9 @@ export async function resolveTenantIdentity(email:string,uid=''):Promise<string>
   }
 }
 export async function userIdentity(request: Request, target?: string,allowUnverifiedOnboarding=false) {
-  const token = allowUnverifiedOnboarding?await verifyFirebaseIdentity(request):(await requireUser(request)).token;
-  const existing = await getUser(token.uid);
+  const authenticated=allowUnverifiedOnboarding?null:await requireUser(request);
+  const token = authenticated?.token||await verifyFirebaseIdentity(request);
+  const existing = authenticated?.profile?{...authenticated.profile,uid:token.uid}:await getUser(token.uid);
   if (existing?.isActive === false) throw new AccessError(403,'Active user profile required');
   const admin = !allowUnverifiedOnboarding&&existing?.role === 'admin';
   if (target && target !== token.uid && !admin) throw new AccessError(403,'Access denied');
@@ -111,7 +113,7 @@ export async function searchUsersForAdmin(request:Request) {
 }
 export async function readUser(request:Request,uid:string) {
   const identity=await userIdentity(request);
-  const user=await getUser(uid);
+  const user=uid===identity.token.uid?identity.existing:await getUser(uid);
   if(user && !identity.admin && uid!==identity.token.uid)return jsonResponse({success:true,message:'User fetched successfully',user:{uid:user.uid,name:user.name,photoURL:user.photoURL,role:user.role}});
   if(!user)return jsonResponse({success:false,message:'User not registered'});
   if(identity.admin){let authentication:RecordData={};try{authentication=authMetadata(await getFirebaseAdminAuth().getUser(uid));}catch{authentication={accountStatus:'missing_auth_account',providerIds:[],emailVerified:false};}const properties=await getDatabase().collection(COLLECTIONS.properties).get(),owned:string[]=[],rented:string[]=[];for(const doc of properties.docs){const property=doc.data();if(property.ownerUID===uid)owned.push(doc.id);if(Array.isArray(property.tenants)&&property.tenants.some((tenant:RecordData)=>tenant.isActive===true&&tenant.userUID===uid))rented.push(doc.id);}const activity=await getDatabase().collection('auth_activity').where('targetUID','==',uid).get();const authActivity=activity.docs.map(doc=>wireValue({...doc.data(),id:doc.id})).sort((a,b)=>+new Date((b as RecordData).createdAt as string)-+new Date((a as RecordData).createdAt as string)).slice(0,100);return jsonResponse({success:true,message:'User fetched successfully',user:{...wireModel('User',user),...authentication,relationships:{ownedPropertyIds:owned,rentedPropertyIds:rented},authActivity}});}
@@ -135,9 +137,22 @@ export async function searchUser(request:Request) {
 
 /** Only the signed-in UID's onboarding state; accepts no lookup identifiers. */
 export async function registrationProfile(request:Request){
-  const {existing,token}=await userIdentity(request,undefined,true);
-  const profileExists=!!existing,profileComplete=completedProfile(existing||undefined,token);
-  return jsonResponse({success:true,profileExists,profileComplete,status:profileComplete?'complete':'incomplete'});
+  const reference=randomUUID(),started=Date.now();let stage='firebase_identity',identityMs=0;
+  try{
+    const token=await verifyFirebaseIdentity(request);identityMs=Date.now()-started;stage='firestore_profile';
+    const existing=await getUser(token.uid),profileMs=Date.now()-started-identityMs;
+    if(existing?.isActive===false)throw new AccessError(403,'Active user profile required','ACCOUNT_DISABLED');
+    const profileExists=!!existing,profileComplete=completedProfile(existing||undefined,token);
+    if(Date.now()-started>2000)console.warn('auth_profile_slow',JSON.stringify({reference,identityMs,profileMs,totalMs:Date.now()-started}));
+    return jsonResponse({success:true,profileExists,profileComplete,status:profileComplete?'complete':'incomplete'});
+  }catch(error){
+    if(error instanceof AccessError||error instanceof ApiError)throw error;
+    const code=String((error as {code?:unknown}).code||(error instanceof Error?error.name:'UNKNOWN'));
+    console.error('auth_profile_failed',JSON.stringify({reference,stage,code,identityMs,totalMs:Date.now()-started,...dependencyDiagnostic(error)}));
+    if(['8','RESOURCE_EXHAUSTED'].includes(code))return jsonResponse({success:false,code:'FIRESTORE_RESOURCE_EXHAUSTED',message:'Account data is temporarily unavailable because the database has reached a service limit. Please try again later.',reference},503);
+    if(['4','13','14','DEADLINE_EXCEEDED','INTERNAL','UNAVAILABLE','ETIMEDOUT','ECONNRESET','auth/internal-error'].includes(code))throw new ApiError(503,`Account service is temporarily unavailable. Retry using reference ${reference}.`);
+    throw error;
+  }
 }
 export async function createUser(request:Request,authRegistration=false) {
   const identity=await userIdentity(request,undefined,authRegistration);

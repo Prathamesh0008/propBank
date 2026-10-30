@@ -4,7 +4,7 @@ import {FirebaseError} from 'firebase/app';
 import {GoogleAuthProvider,createUserWithEmailAndPassword,linkWithCredential,sendEmailVerification,sendPasswordResetEmail,signInWithEmailAndPassword,updateProfile,type AuthCredential,type User} from 'firebase/auth';
 import {Eye,EyeOff} from 'lucide-react';
 import {auth,signInWithGoogle,signOutUser} from '@/firebase';
-import {apiFetch} from '@/lib/api-client';
+import {apiFetch,loadAuthProfile} from '@/lib/api-client';
 import {useNavigate} from '@/lib/navigation';
 import styles from './AuthAccount.module.css';
 import RegistrationMobileField from './RegistrationMobileField';
@@ -18,12 +18,12 @@ export default function GoogleAuth(){
  const [mobile,setMobile]=useState(''),[mobileTouched,setMobileTouched]=useState(false),[completionUser,setCompletionUser]=useState<User|null>(null);
  const destination=useMemo(()=>{if(typeof window==='undefined')return '';const value=new URLSearchParams(window.location.search).get('next')||'';return value.startsWith('/')&&!value.startsWith('//')?value:'';},[]);
  useEffect(()=>{if(auth.currentUser&&!verificationUser&&!completionUser&&!auth.currentUser.emailVerified)setVerificationUser(auth.currentUser);},[verificationUser,completionUser]);
- useEffect(()=>{const current=auth.currentUser;if(!current?.emailVerified||completionUser||verificationUser)return;let active=true;void apiFetch('/api/auth/user',{cache:'no-store'}).then(async response=>{const data=await response.json().catch(()=>({}));if(active&&response.ok&&data.profileComplete!==true)beginCompletion(current);}).catch(()=>{});return()=>{active=false;};},[completionUser,verificationUser]);
+ useEffect(()=>{const current=auth.currentUser;if(!current?.emailVerified||completionUser||verificationUser)return;let active=true;void loadAuthProfile(current.uid).then(({response,data})=>{if(active&&response.ok&&data.profileComplete!==true)beginCompletion(current);}).catch(()=>{});return()=>{active=false;};},[completionUser,verificationUser]);
  const registerProfile=async(user:User,displayName:string,role:RegistrationRole,phone:string)=>{const response=await apiFetch('/api/auth/user',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:user.uid,email:user.email||'',name:displayName||user.displayName||user.email?.split('@')[0]||'User',photoURL:user.photoURL||'',role,phoneNumber:`+91${phone}`})});const data=await response.json();if(!response.ok)throw new Error(data.message||'Account profile could not be created.');};
  const establish=async(user:User,linked=false)=>{await user.getIdToken(true);const response=await apiFetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:user.uid})});const data=await response.json().catch(()=>({}));if(!response.ok){const message=typeof data.message==='string'?data.message:'';if(response.status===403&&/verify/i.test(message))throw new Error('Verify your email before accessing PropBank.');if(response.status===403&&/active user profile/i.test(message))throw new Error('This account is disabled. Contact support if you believe this is an error.');throw new Error('Your Firebase sign-in succeeded, but the PropBank server session could not be established. Please try again.');}if(linked)await apiFetch('/api/auth/activity',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'account_linked'})});navigate(destination||(data.user?.role==='admin'?'/admin':'/manage-property'));};
  const beginCompletion=(user:User)=>{setCompletionUser(user);setVerificationUser(null);setMode('register');setEmail(user.email||'');setName(current=>current||user.displayName||'');setPassword('');setNotice('Complete your account details to continue. Your mobile number is contact information only.');};
  const completeOrSignIn=async(user:User,linked=false)=>{
-   const response=await apiFetch('/api/auth/user');const data=await response.json();
+   const {response,data}=await loadAuthProfile(user.uid);
    if(!response.ok||typeof data.profileExists!=='boolean')throw new Error(data.message||'Account profile could not be checked.');
    if(data.profileComplete!==true){beginCompletion(user);return;}
    if(!user.emailVerified){setVerificationUser(user);setNotice('Verify your email before accessing your account.');return;}

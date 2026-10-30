@@ -19,7 +19,7 @@ function harness(options={}){
   if(name==='@/firebase')return {auth};if(name==='firebase/auth')return {onIdTokenChanged:(_,fn)=>{observers.add(fn);assert.equal(fn(auth.currentUser),undefined);return ()=>observers.delete(fn);}};
   if(name==='@/lib/private-file-session')return core;if(name==='@/lib/private-file-client')return {privateFileSession:manager,claimFileSessionNotice:revision=>{if(lastNotice===revision)return false;lastNotice=revision;return true;}};
   if(name==='@/lib/data-refresh')return {queryKeysByDomain:{properties:[],documents:[]},subscribeDataRefresh:()=>()=>{}};
-  if(name==='@/hooks/use-toast')return {useToast:()=>({toast,dismiss})};if(name==='@/ui/toast')return {ToastAction:()=>null};if(name==='@/lib/api-client')return {apiFetch:async url=>new Response(url==='/api/auth/user'?JSON.stringify({success:true,profileComplete}):'{"success":true}')};return require(name);
+  if(name==='@/hooks/use-toast')return {useToast:()=>({toast,dismiss})};if(name==='@/ui/toast')return {ToastAction:()=>null};if(name==='@/lib/api-client'){const apiFetch=async url=>new Response(url==='/api/auth/user'?JSON.stringify({success:true,profileComplete}):'{"success":true}');return {apiFetch,loadAuthProfile:async()=>{const response=await apiFetch('/api/auth/user');return {response,data:await response.clone().json()};}};}return require(name);
  };
  const output={};new Function('exports','require','window',compile('src/contexts/AuthContext.tsx'))(output,scoped,window);
  const render=()=>{cursor=0;dirty=false;tree=output.AuthProvider({children:null});for(const effect of effects)if(effect?.pending){const fn=effect.pending;effect.pending=null;effect.cleanup=fn();}return tree.props.value;};

@@ -13,7 +13,7 @@ function harness({existing=false,googleName='Google User',failOnce=false}={}){
   if(name==='react')return fakeReact;if(name==='firebase/app')return {FirebaseError};
   if(name==='firebase/auth')return {GoogleAuthProvider:{},createUserWithEmailAndPassword:async()=>{created++;auth.currentUser=user;return {user};},signInWithEmailAndPassword:async()=>({user}),updateProfile:async()=>{},sendEmailVerification:async()=>{},sendPasswordResetEmail:async()=>{},linkWithCredential:async()=>{}};
   if(name==='@/firebase')return {auth,signInWithGoogle:async()=>{auth.currentUser=user;return {user};},signOutUser:async()=>{auth.currentUser=null;}};
-  if(name==='@/lib/api-client')return {apiFetch};if(name==='@/lib/navigation')return {useNavigate:()=>value=>navigation.push(value)};
+  if(name==='@/lib/api-client')return {apiFetch,loadAuthProfile:async()=>{const response=await apiFetch('/api/auth/user');return {response,data:await response.clone().json()};}};if(name==='@/lib/navigation')return {useNavigate:()=>value=>navigation.push(value)};
   if(name==='lucide-react')return {Eye:()=>null,EyeOff:()=>null};if(name.endsWith('.module.css'))return new Proxy({},{get:(_,key)=>key==='__esModule'?false:String(key)});
   if(name.startsWith('./'))return load(path.resolve(path.dirname(file),name)+'.tsx');return require(name);
  };new Function('require','exports',code)(scoped,output);return output;};

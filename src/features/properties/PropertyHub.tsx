@@ -47,18 +47,12 @@ function CompactActions({
   actions: ProductRecord[];
   propertyTitles?: boolean;
 }) {
-  if (!actions.length)
-    return (
-      <div className={hubStyles.statusBar}>
-        <strong>Action required</strong>
-        <span>No pending actions</span>
-      </div>
-    );
+  if (!actions.length) return null;
   return (
     <details className={hubStyles.compactDisclosure}>
       <summary>
         <span>
-          <strong>Action required</strong>
+          <strong>Actions required</strong>
           <span className={hubStyles.summaryText}>
             {actions.length} pending
           </span>
@@ -111,6 +105,21 @@ export function ProductDashboard({ admin = false }: { admin?: boolean }) {
     );
   const data = query.data;
   if (!data) return <>{pending}</>;
+  if (!admin) return (
+    <div className={hubStyles.actionStrip} aria-label="Portfolio actions">
+      {!!data.actions.length && <section className={hubStyles.compactAttention} aria-label="Actions required">
+        {data.truncated && <p className={hubStyles.notice}>Showing actions from the first 250 authorized properties.</p>}
+        <CompactActions actions={data.actions} propertyTitles />
+        {data.actions.some((a) => ["broker", "customer"].includes(a.role)) && (
+          <details className={hubStyles.compactDisclosure} id="assigned-offers">
+            <summary><span><strong>Assigned negotiations</strong><span className={hubStyles.summaryText}>Review offers and customer activity</span></span><span className={hubStyles.expandLabel}>View details</span></summary>
+            <NegotiationPanel />
+          </details>
+        )}
+      </section>}
+      {pending}
+    </div>
+  );
   return (
     <>
       {pending}

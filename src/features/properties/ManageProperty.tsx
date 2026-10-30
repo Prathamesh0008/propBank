@@ -9,7 +9,7 @@ import { propertyCategoryMatches } from '@/lib/client-workflows';
 import { apiFetch } from '@/lib/api-client';
 import SessionMediaImage from '@/components/SessionMediaImage';
 
-import { Building2, Plus, Edit3, MessageSquare, MoreVertical, Users, UserPlus, Eye, Edit, Archive, Wrench, Filter, Home, X, FileText, Star, Scale, Paperclip, RefreshCw, XCircle, Key } from "lucide-react";
+import { Building2, Plus, MoreVertical, Users, UserPlus, Eye, Edit, Archive, Wrench, Filter, Home, FileText, Star, Scale, Paperclip, RefreshCw, XCircle, Key, Search } from "lucide-react";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { useNavigate, useSearchParams } from "@/lib/navigation";
@@ -219,7 +219,9 @@ const ManageProperty = () => {
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         filtered = filtered.filter(property =>
+          property.id?.toLowerCase().includes(query) ||
           property.title?.toLowerCase().includes(query) ||
+          property.buildingName?.toLowerCase().includes(query) ||
           property.address?.toLowerCase().includes(query) ||
           property.city?.toLowerCase().includes(query) ||
           property.description?.toLowerCase().includes(query)
@@ -278,9 +280,6 @@ const ManageProperty = () => {
       return dateB - dateA; // Descending order
     });
   }, [filteredTenantProperties]);
-
-  const totalProperties = ownedProperties.length + tenantProperties.length;
-  const totalFilteredProperties = filteredOwnedProperties.length + filteredTenantProperties.length;
 
   const formatPrice = (property: any) => {
     // Helper function to get a valid price value
@@ -617,31 +616,23 @@ const ManageProperty = () => {
 
 
   return (
-    <main className={`${workspaceStyles.workspace} container mx-auto py-4 sm:py-8 px-4`}>
+    <main className={workspaceStyles.workspace}>
       <>
         <title>Manage Property — PropBank</title>
         <meta name="description" content="Manage your property listings, update property details, unit numbers, and building information." />
         <link rel="canonical" href="/manage-property" />
       </>
 
-      <div className={`${workspaceStyles.content} max-w-6xl mx-auto`}>
+      <div className={workspaceStyles.content}>
         {/* Header */}
-        <div className={`${workspaceStyles.pageHeading} mb-6 sm:mb-8`}>
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
-            <div className="flex items-center gap-3 sm:gap-4">
-              <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-xl bg-primary/10 text-primary flex-shrink-0">
-                <Building2 className="h-6 w-6 sm:h-7 sm:w-7" />
-              </div>
-              <div className="min-w-0">
-                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Manage Your Properties</h1>
-                <p className="text-sm sm:text-base text-muted-foreground mt-1">Property Management Hub</p>
-              </div>
-            </div>
+        <header className={workspaceStyles.pageHeading}>
+          <div className={workspaceStyles.headerRow}>
+            <h1>Manage Properties</h1>
             
-            <div className="flex-shrink-0 w-full sm:w-auto flex flex-col sm:flex-row gap-3 mt-4 sm:mt-0">
+            <div className={workspaceStyles.headerActions}>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button className="w-full sm:w-auto px-6 shadow-sm">
+                  <Button className={workspaceStyles.primaryAction}>
                     <Plus className="h-4 w-4 mr-2" />
                     Add Property
                     <span aria-hidden="true" className="ml-2 text-xs">▾</span>
@@ -657,7 +648,7 @@ const ManageProperty = () => {
                 </DropdownMenuContent>
               </DropdownMenu>
               <Button
-                className="w-full sm:w-auto px-6 shadow-sm"
+                className={workspaceStyles.secondaryAction}
                 variant="outline"
                 onClick={() => navigate("/archived-properties")}
               >
@@ -666,13 +657,13 @@ const ManageProperty = () => {
               </Button>
             </div>
           </div>
-        </div>
+        </header>
 
         <ProductDashboard/>
-        <BrokerEnquiries/>
-        {/* Filters Card */}
-        <Card className={`${workspaceStyles.filters} mb-8 border shadow-sm`}>
-          <CardContent className="p-4 sm:p-6">
+        <section className={workspaceStyles.portfolioSection} aria-labelledby="your-properties-heading">
+          <h2 id="your-properties-heading" className="sr-only">Your Properties</h2>
+        <Card className={workspaceStyles.filters}>
+          <CardContent className={workspaceStyles.filterContent}>
             <div className="flex flex-col lg:flex-row gap-6 lg:items-center justify-between">
               
               {/* View Toggle */}
@@ -707,8 +698,12 @@ const ManageProperty = () => {
                 </button>
               </div>
 
-              {/* Type Filters */}
-              <div className="flex flex-col sm:flex-row gap-4 items-center w-full lg:w-auto">
+              <div className={workspaceStyles.filterTools}>
+                 <label className={workspaceStyles.searchBox}>
+                   <Search size={17} aria-hidden="true" />
+                   <span className="sr-only">Search properties</span>
+                   <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search name, ID or location" />
+                 </label>
                  <div className="flex items-center gap-3 w-full sm:w-auto">
                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap hidden sm:block">Property Type</span>
                    <Select value={selectedPropertyType || "all"} onValueChange={(v) => setSelectedPropertyType(v === "all" ? "" : v)}>
@@ -787,7 +782,7 @@ const ManageProperty = () => {
           )}
 
           {/* Properties List */}
-          <div className="space-y-8 pb-20">
+          <div className="space-y-3 pb-12">
             {!user ? (
               <div className="text-center py-12">
                 <Building2 className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
@@ -837,7 +832,6 @@ const ManageProperty = () => {
                                     {/* Header with number and action menu */}
                                     <div className="flex items-start justify-between">
                                       <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
-                                        <span className="text-base sm:text-lg font-semibold text-muted-foreground flex-shrink-0 mt-0.5">{index + 1}.</span>
                                         <div className="flex-1 min-w-0">
                                           <div className="flex items-center gap-2 flex-wrap">
                                             <h3 className="font-semibold text-sm sm:text-lg leading-tight text-gray-900 break-words">
@@ -854,6 +848,7 @@ const ManageProperty = () => {
                                               Owner
                                             </Badge>
                                           </div>
+                                          <button type="button" className={workspaceStyles.viewLink} onClick={() => handleView(property.id)}>View details <span aria-hidden="true">→</span></button>
                                           <ListingModeration key={`${property.id}:${property.moderationRevision||0}`} property={property}/>
                                           {/* Show active tenants on a separate line if property is rented out */}
                                           {property.tenants && property.tenants.some((t: any) => t.isActive && (t.firstName || t.lastName || t.phone || t.email)) && (
@@ -1131,7 +1126,6 @@ const ManageProperty = () => {
                                     {/* Header with number and action menu */}
                                     <div className="flex items-start justify-between">
                                       <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
-                                        <span className="text-base sm:text-lg font-semibold text-muted-foreground flex-shrink-0 mt-0.5">{index + 1}.</span>
                                         <div className="flex-1 min-w-0">
                                           <div className="flex items-center gap-2 flex-wrap">
                                             <h3 className="font-semibold text-sm sm:text-lg leading-tight text-gray-900 break-words">
@@ -1155,6 +1149,7 @@ const ManageProperty = () => {
                                               {property.ownerRole === "agent" ? "Agent" : "Owner"}: {property.ownerName}
                                             </p>
                                           )}
+                                          <button type="button" className={workspaceStyles.viewLink} onClick={() => handleView(property.id)}>View details <span aria-hidden="true">→</span></button>
                                         </div>
                                       </div>
                                       {/* Action Menu for Tenants - Limited options */}
@@ -1274,6 +1269,8 @@ const ManageProperty = () => {
           </div>
 
         </div>
+        </section>
+        <BrokerEnquiries/>
       </div>
     </main>
   );
