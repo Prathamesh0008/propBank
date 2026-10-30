@@ -13,5 +13,6 @@ export interface ManagedEnquiry {
   id:string; title:string; message:string; propertyId:string; propertyTitle:string;
   propertyAddress:string; userName:string; userEmail:string; userPhone:string;
   timestamp:string; isRead:boolean; brokerUID:string; brokerName:string;
+  emailDeliveryStatus:string; emailDeliveryFailure:string;
   status:EnquiryStatus; version:number; history:EnquiryEvent[];
 }

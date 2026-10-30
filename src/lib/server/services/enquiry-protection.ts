@@ -2,17 +2,18 @@ import 'server-only';
 import {createHash} from 'node:crypto';
 import {getDatabase} from '../firestore';
 import {ApiError} from '../http';
+import {writeEmailOutbox,type TransactionalEmailEvent} from './transactional-email';
 
 // Distributed Firestore transactions: limits and replay decisions survive restarts/instances.
 // Raw IPs are never stored. Only trust an ingress header explicitly configured and stripped by the edge.
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
-export async function persistInquiry(request:Request,data:FirebaseFirestore.DocumentData,now=Date.now()) {
+export async function persistInquiry(request:Request,data:FirebaseFirestore.DocumentData,now=Date.now(),emailEvents:TransactionalEmailEvent[]=[]){
   const db=getDatabase(),minute=Math.floor(now/60000);
   const configured=process.env.ENQUIRY_TRUSTED_IP_HEADER;
   const header=configured&&['cf-connecting-ip','x-real-ip'].includes(configured)?configured:'';
   const peer=header?(request.headers.get(header)||'unknown').slice(0,100):'shared-untrusted-ingress';
   const contact=String(data.userEmail||'').trim().toLowerCase();
-  const fields=['userId','userName','userEmail','userPhone','inquiryType','propertyType','requestVisit','visitDate','visitTime','message'];
+  const fields=['type','propertyId','userId','userName','userEmail','userPhone','inquiryType','propertyType','requestVisit','visitDate','visitTime','message'];
   const fingerprint=hash(JSON.stringify(fields.map(key=>typeof data[key]==='string'?data[key].trim():data[key]??'')));
   const supplied=request.headers.get('Idempotency-Key');
   if(supplied&&!/^[a-zA-Z0-9_-]{16,128}$/.test(supplied))throw new ApiError(400,'Invalid enquiry idempotency key');
@@ -29,7 +30,8 @@ export async function persistInquiry(request:Request,data:FirebaseFirestore.Docu
     for(let i=0;i<controls.length;i++)tx.set(refs[i],{count:(controls[i].data()?.count||0)+1,expiresAt:new Date((minute+2)*60000),ttlAt:new Date((minute+2)*60000)});
     if(duplicate)return {notification:stored!.data()!,duplicate:true};
     tx.create(db.collection('admin_notifications').doc(data.id),data);
+    writeEmailOutbox(tx,emailEvents);
     tx.set(replay,{fingerprint,notificationId:data.id,expiresAt:now+10*60000,ttlAt:new Date(now+10*60000)});
-    return {notification:data,duplicate:false};
+    return {notification:data,duplicate:false,emailEvents};
   });
 }

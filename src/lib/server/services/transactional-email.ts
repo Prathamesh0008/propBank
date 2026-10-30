@@ -70,7 +70,9 @@ async function deliver(id:string) {
     if(!await invitationIsCurrent(value)){await ref.update({status:'cancelled',errorSummary:'Invitation is no longer eligible',updatedAt:now,deliveryLease:'',deliveryLeaseUntil:now});return 'skipped';}
     if(value.firstAttemptAt&&now.getTime()-new Date(wireValue(value.firstAttemptAt) as string).getTime()>=23*60*60*1000)throw new Error('Delivery reconciliation required');
     if(!value.firstAttemptAt)await ref.update({firstAttemptAt:now});
-    const provider=await sendEmail({to:s(value.recipientEmail)||(value.recipientRole==='admin'?process.env.ADMIN_EMAIL||'':''),subject:s(value.subject),html:s(value.html),text:s(value.text)},s(value.idempotencyKey));
+    const recipient=s(value.recipientEmail)||(value.recipientRole==='admin'?process.env.ADMIN_EMAIL||'':'');
+    if(value.recipientRole==='admin'&&!emailPattern.test(recipient))throw new EmailConfigurationError('ADMIN_EMAIL must be a valid recipient address');
+    const provider=await sendEmail({to:recipient,subject:s(value.subject),html:s(value.html),text:s(value.text)},s(value.idempotencyKey));
     await ref.update({status:'sent',sentAt:now,lastAttemptAt:now,updatedAt:now,retryCount:Number(value.retryCount||0)+1,errorSummary:'',failureCategory:'',providerMessageId:provider.id||'',deliveryLease:'',deliveryLeaseUntil:now});return 'sent';
   }catch(error){
     console.error(`Transactional email delivery failed ${JSON.stringify({deliveryId:id,eventType:value.eventType,...(error instanceof EmailProviderError?{providerStatus:error.status,providerErrorCode:error.providerCode}:{}),configurationFailure:error instanceof EmailConfigurationError})}`);

@@ -13,7 +13,7 @@ import { identity, propertyMember, readModel, readObject, knownFields, parseRFC3
 import { getProperty } from './properties';
 import { getUser } from './users';
 import { bestEffort, escapeHtml } from './property-effects';
-import {persistUserEvent} from './transactional-email';
+import {brandedEmail,dispatchEmailOutbox,persistUserEvent,type TransactionalEmailEvent} from './transactional-email';
 import { inquiryMail } from './group2-mail';
 import { indianMobile } from '../../indian-phone';
 import { indiaCalendarDate } from '../../form-validation';
@@ -77,13 +77,18 @@ export async function postNotification(request:Request) {
     const data=model('AdminNotification',{...req,id:randomUUID(),timestamp:now,createdAt:now,updatedAt:now});
     const saved=await persistInquiry(request,storeModel('AdminNotification',data));notification=model('AdminNotification',saved.notification);duplicate=saved.duplicate;
     if(!duplicate)await bestEffort(()=>inquiryMail(notification));
+  }else if(req.type==='property_enquiry'){
+    const now=new Date(),data=model('AdminNotification',{...req,id:randomUUID(),timestamp:now,createdAt:now,updatedAt:now});
+    const stored=storeModel('AdminNotification',data),content=brandedEmail('New property enquiry',`<p>A customer submitted an enquiry for <strong>${escapeHtml(s(data.propertyTitle)||'a property')}</strong>.</p><p>Name: ${escapeHtml(s(data.userName))}<br>Email: ${escapeHtml(s(data.userEmail))}<br>Contact: ${escapeHtml(s(data.userPhone)||'Not provided')}<br>Property ID: ${escapeHtml(s(data.propertyId))}</p>`,`New property enquiry for ${s(data.propertyTitle)||'a property'}. Customer: ${s(data.userName)}. Email: ${s(data.userEmail)}. Contact: ${s(data.userPhone)||'Not provided'}. Property ID: ${s(data.propertyId)}.`,{label:'Open enquiry inbox',path:'/admin?tab=enquiries'});
+    const event:TransactionalEmailEvent={eventType:'enquiry.property_created',eventId:`${s(data.id)}:created`,recipientRole:'admin',recipientEmail:process.env.ADMIN_EMAIL,propertyId:s(data.propertyId),recordId:s(data.id),templateId:'property-enquiry',templateVersion:1,subject:`New property enquiry | ${s(data.propertyTitle)||'Property'}`,...content,idempotencyKey:`enquiry:property:${s(data.id)}:admin`};
+    const saved=await persistInquiry(request,stored,Date.now(),[event]);notification=model('AdminNotification',saved.notification);duplicate=saved.duplicate;if(!duplicate)dispatchEmailOutbox([event]);
   }else {
     for(const field of ['serviceImage','adminImage'])if(req[field])req[field]=await prepareFile(s(req[field]),actor!,s(req.propertyId),field);
     notification=await createNotification(req,actor);
   }
   const visible=wireModel('AdminNotification',notification);
   for(const key of ['ownerEmail','ownerPhone','tenantEmail','tenantPhone','buyers'])visible[key]='';
-  return jsonResponse({success:true,message:duplicate?'Enquiry already received':'Admin notification created successfully',duplicate,notification:visible},duplicate?200:201);
+  return jsonResponse({success:true,message:duplicate?'Enquiry already received':'Admin notification created successfully',duplicate,notification:visible,...(req.type==='property_enquiry'?{emailNotification:{queued:!duplicate,status:duplicate?'existing':'pending'}}:{})},duplicate?200:201);
 }
 export async function listNotifications(request:Request) {
   const user=await identity(request);const params=new URL(request.url).searchParams;const propertyId=params.get('propertyId');

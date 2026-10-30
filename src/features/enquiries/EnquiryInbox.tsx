@@ -19,6 +19,7 @@ function EnquiryRow({enquiry,admin,agents,onSave}:{enquiry:ManagedEnquiry;admin:
   <p className={styles.customer}>Customer: {enquiry.userName} / {enquiry.userEmail} / {enquiry.userPhone}</p>
   <p className={styles.message}>{enquiry.message}</p>
   <Badge variant="outline">{enquiryStatuses[enquiry.status]}</Badge>
+  {admin&&<p className="text-sm">Admin email: {enquiry.emailDeliveryStatus==='sent'?'Accepted by email provider':enquiry.emailDeliveryStatus==='failed'?'Delivery failed — retry from Email deliveries':enquiry.emailDeliveryStatus==='pending'||enquiry.emailDeliveryStatus==='sending'?'Queued for delivery':'Not queued'}{enquiry.emailDeliveryFailure&&<span> · {enquiry.emailDeliveryFailure}</span>}</p>}
   <p className="text-sm">Assigned broker: {enquiry.brokerName||enquiry.brokerUID||'Unassigned'}</p>
   <Textarea aria-label="Private enquiry notes" placeholder="Optional private notes for admin and the assigned broker" value={notes} onChange={e=>setNotes(e.target.value)} maxLength={2000} disabled={busy}/>
   {admin&&<div className="flex flex-wrap gap-2"><label>Broker<select aria-label="Assigned broker" className="border rounded h-10 w-full" value={broker} onChange={e=>setBroker(e.target.value)} disabled={busy}>
@@ -28,7 +29,8 @@ function EnquiryRow({enquiry,admin,agents,onSave}:{enquiry:ManagedEnquiry;admin:
   <div className="flex flex-wrap gap-2"><label>Enquiry status<select aria-label="Enquiry status" className="border rounded h-10 w-full" value={status} onChange={e=>setStatus(e.target.value as EnquiryStatus)} disabled={busy}>
     {Object.entries(enquiryStatuses).map(([value,label])=><option key={value} value={value}>{label}</option>)}
   </select></label><Button disabled={busy||(status===enquiry.status&&!notes.trim())} onClick={()=>save('status')}>Save progress</Button></div>
-  <details className={styles.history}><summary>Assignment and status history</summary>{enquiry.history.length?<ul className="space-y-2 mt-2">{enquiry.history.map((event,index)=><li key={index} className="text-sm break-words">{event.action.replaceAll('_',' ')} / {event.actorUID} / {new Date(event.at).toLocaleString()} / {event.previousBrokerUID||'Unassigned'} to {event.brokerUID||'Unassigned'} / {enquiryStatuses[event.previousStatus]} to {enquiryStatuses[event.status]}{event.notes&&<p className="whitespace-pre-wrap">{event.notes}</p>}</li>)}</ul>:<p className="text-sm">No assignment or progress recorded.</p>}</details>
+  <p className="text-xs text-muted-foreground">Submitted {new Date(enquiry.timestamp).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})} IST · Enquiry {enquiry.id} · Property {enquiry.propertyId}</p>
+  <details className={styles.history}><summary>Assignment and status history</summary>{enquiry.history.length?<ul className="space-y-2 mt-2">{enquiry.history.map((event,index)=><li key={index} className="text-sm break-words">{event.action.replaceAll('_',' ')} / {event.actorUID} / {new Date(event.at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})} / {event.previousBrokerUID||'Unassigned'} to {event.brokerUID||'Unassigned'} / {enquiryStatuses[event.previousStatus]} to {enquiryStatuses[event.status]}{event.notes&&<p className="whitespace-pre-wrap">{event.notes}</p>}</li>)}</ul>:<p className="text-sm">No assignment or progress recorded.</p>}</details>
  </CardContent></Card>;
 }
 export default function EnquiryInbox({admin=false,agents=[]}:{admin?:boolean;agents?:Agent[]}) {

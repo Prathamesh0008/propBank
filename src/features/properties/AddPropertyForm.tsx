@@ -34,6 +34,7 @@ import { uploadBase64Image } from "../../services/uploadService";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import {calculateAgreementEndDate} from '@/lib/rent-schedule';
+import {activeFurnishedItems,supportsFurnishedChecklist} from '@/lib/property-furnishing';
 
 const formSchema = z.object({
   ...clientPropertySchema,
@@ -356,6 +357,20 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
   const agreementPeriod = form.watch('agreementPeriod');
   const selectedStructure = form.watch('structure');
   const listingType = form.watch('listingType');
+  const unitCondition = form.watch('unitCondition');
+  const showFurnishedChecklist=supportsFurnishedChecklist(unitCondition,selectedStructure);
+
+  const clearFurnishedChecklist=()=>{
+    setFurnishedChecklist([]);
+    setShowFurnishedModal(false);
+    form.setValue('furnishedChecklist',[],{shouldDirty:true});
+  };
+
+  useEffect(()=>{
+    if(form.formState.dirtyFields.structure&&!supportsFurnishedChecklist(form.getValues('unitCondition'),selectedStructure))clearFurnishedChecklist();
+  // The dirty flag prevents initial/default values from being treated as an explicit change.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[selectedStructure,form.formState.dirtyFields.structure]);
 
   useEffect(() => {
     const user=auth.currentUser;setCurrentUser(user);
@@ -523,7 +538,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
       }
 
       // Filter furnished checklist to only include checked items (saves DB space)
-      const checkedFurnishedItems = furnishedChecklist.filter(item => item.checked);
+      const checkedFurnishedItems = activeFurnishedItems(furnishedChecklist,data.unitCondition,data.structure);
       const buildingImages = data.images?.length ? data.images : uploadedImages;
       const interiorImages = data.internalImages?.length ? data.internalImages : uploadedInternalImages;
 
@@ -709,7 +724,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                     render={({ field }) => (
                       <FormItem>
                           <FormLabel>Property purpose</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value||''}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Select listing type" />
@@ -782,7 +797,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                     distinct from finalized agreement terms collected below. */}
                 {['rent','sell','sell_rent'].includes(listingType||'') && <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 border rounded-lg">
                   <div className="lg:col-span-2">
-                    <h3 className="text-lg font-semibold">Pricing</h3>
+                    <h3 className="text-lg font-semibold">Rental & Sale Pricing</h3>
                     <p className="text-sm text-muted-foreground">{['rent','sell_rent'].includes(listingType||'')&&form.watch('rentalStatus')==='rented'?'Record the finalized rental amounts and the separate sale asking price.':'Enter the asking price shown with this listing.'}</p>
                   </div>
                   {['rent','sell_rent'].includes(listingType||'')&&<>
@@ -1155,7 +1170,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Unit Condition</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={value=>{field.onChange(value);if(!supportsFurnishedChecklist(value,selectedStructure))clearFurnishedChecklist();}} value={field.value||''}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Select condition" />
@@ -1173,7 +1188,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                   />
 
                   {/* Furnished Checklist Button - Aligned with Unit Condition */}
-                  <FormField
+                  {showFurnishedChecklist&&<FormField
                     control={form.control}
                     name="furnishedChecklist"
                     render={() => (
@@ -1194,11 +1209,11 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                           )}
                         </Button>
                         <FormDescription className="text-xs text-muted-foreground">
-                          Add items included with this property (available for all unit conditions)
+                          Add items included with this furnished property
                         </FormDescription>
                       </FormItem>
                     )}
-                  />
+                  />}
 
                   {listingType !== "sell" && (
                     <FormField

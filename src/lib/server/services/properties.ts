@@ -20,6 +20,7 @@ import {readObject} from './domain-contracts';
 import { propertyNotificationEvents, bestEffort, propertyCreatedEffects, propertyUpdatedEffects } from './property-effects';
 import { prepareLink, stageLinks, validContact } from './relationship-links';
 import {additionalRentPeriod,validateAdditionalRentSchedule,type RentScheduleRow} from '@/lib/rent-schedule';
+import {activeFurnishedItems,supportsFurnishedChecklist} from '@/lib/property-furnishing';
 
 import { writeEmailOutbox, dispatchEmailOutbox, type TransactionalEmailEvent } from './transactional-email';
 
@@ -187,6 +188,7 @@ async function createPropertyRecord(request:Request) {
     const raw=(body||{}) as RecordData;
     if(Object.keys(raw).some(key=>key.startsWith('moderation')))throw new Error('Moderation fields are server controlled');
     if(raw.nextAgreementDraft!==undefined&&raw.nextAgreementDraft!==null)raw.nextAgreementDraft=normalizeNextAgreementDraft(raw.nextAgreementDraft,s(raw.agreementEndDate));
+    raw.furnishedChecklist=activeFurnishedItems(raw.furnishedChecklist,raw.unitCondition,raw.structure);
     validateProperty(raw);
     const category=parsePropertyCategory(raw.propertyType);
     if(!category)throw new Error('Select a valid residential, commercial or industrial property category');
@@ -218,6 +220,7 @@ async function createPropertyRecord(request:Request) {
     }
   } catch(error) { return propertyError(`Invalid property data: ${error instanceof Error?error.message:'invalid request'}`,400); }
   const tenantCreated=req.createdAs==='tenant';
+  req.furnishedChecklist=activeFurnishedItems(req.furnishedChecklist,req.unitCondition,req.structure);
   if(user.role==='agent'&&!tenantCreated) {
     if(!req.agentOwnerEmail||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s(req.agentOwnerEmail)))return propertyError('A registered legal owner email is required for agent listings',400);
     try {const account=await getFirebaseAdminAuth().getUserByEmail(s(req.agentOwnerEmail));if(account.disabled||account.emailVerified===false||account.uid===user.uid)return propertyError('Legal owner must be a separate active, verified account',400);req.ownerUID=account.uid;}
@@ -313,6 +316,12 @@ export async function updateProperty(request:Request,id:string) {
   // A malformed owner field must not remove ownership while other flexible keys remain supported.
   if ('ownerUID' in req && typeof req.ownerUID!=='string') return propertyError('Unauthorized: You can only update your own properties',403);
   if(req.nextAgreementDraft!==undefined&&req.nextAgreementDraft!==null){const unchangedLegacy=sameNextAgreementDraft(req.nextAgreementDraft,existing.nextAgreementDraft);req.nextAgreementDraft=normalizeNextAgreementDraft(req.nextAgreementDraft,s(req.agreementEndDate||existing.agreementEndDate));const error=validateNextAgreementDraft(req.nextAgreementDraft,s(req.agreementEndDate||existing.agreementEndDate),unchangedLegacy);if(error)return propertyError(error,400);}
+  const nextUnitCondition='unitCondition' in req?req.unitCondition:existing.unitCondition,nextStructure='structure' in req?req.structure:existing.structure;
+  const furnishingContextChanged=('unitCondition' in req&&req.unitCondition!==existing.unitCondition)||('structure' in req&&req.structure!==existing.structure);
+  if(!supportsFurnishedChecklist(nextUnitCondition,nextStructure)){
+    if(furnishingContextChanged)req.furnishedChecklist=[];
+    else delete req.furnishedChecklist;
+  }else if('furnishedChecklist' in req)req.furnishedChecklist=activeFurnishedItems(req.furnishedChecklist,nextUnitCondition,nextStructure);
   try {validateProperty(req);model('Property',{...existing,...req},true);}catch{return propertyError('Invalid property fields',400);}
   const allowed=new Set([...schemas.Property.map(field=>field.name),...additiveFields,'nextAgreementDraft','isRented']);
   for(const key of Object.keys(req))if(!allowed.has(key))return propertyError(`Unsupported property field: ${key}`,400);
