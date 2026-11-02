@@ -4,6 +4,7 @@ import { API_BASE_URL } from '../utils/config';
 interface Property {
   moderationStatus?: string;
   moderationRevision?: number;
+  moderationSubmittedAt?: string;
   moderationReason?: string;
   moderationHistory?: Array<{action:string;actorUID:string;at:string;reason?:string}>;
   createdAs?:'owner'|'tenant';
@@ -150,6 +151,7 @@ class PropertyService {
 
     const response = await apiFetch(`${API_BASE_URL}/properties`, {
       method: 'GET',
+      cache: 'no-store',
       headers,
     });
 
@@ -170,6 +172,7 @@ class PropertyService {
 
     const response = await apiFetch(`${API_BASE_URL}/properties`, {
       method: 'GET',
+      cache: 'no-store',
       headers,
     });
 
@@ -200,6 +203,7 @@ class PropertyService {
 
     const response = await apiFetch(`${API_BASE_URL}/properties?listingType=${listingType}`, {
       method: 'GET',
+      cache: 'no-store',
       headers,
     });
 
@@ -225,6 +229,7 @@ class PropertyService {
 
     const response = await apiFetch(`${API_BASE_URL}/properties/${propertyId}`, {
       method: 'GET',
+      cache: 'no-store',
       headers,
     });
 
@@ -242,6 +247,7 @@ class PropertyService {
 
     const response = await apiFetch(`${API_BASE_URL}/properties?ownerUID=${ownerUID}`, {
       method: 'GET',
+      cache: 'no-store',
       headers,
     });
 
@@ -271,6 +277,7 @@ class PropertyService {
 
     const response = await apiFetch(`${API_BASE_URL}/properties/search?${searchParams.toString()}`, {
       method: 'GET',
+      cache: 'no-store',
       headers,
     });
 

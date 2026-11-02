@@ -84,12 +84,12 @@ export const usePropertyDetails = (propertyId: string | undefined) => {
     queryKey: ['property', propertyId,user?.uid||'public'],
     queryFn: async () => {
       if (!propertyId) return null;
-      const response = await apiFetch(`${API_BASE_URL}/properties/${propertyId}`);
+      const response = await apiFetch(`${API_BASE_URL}/properties/${encodeURIComponent(propertyId)}`,{cache:'no-store'});
       if (!response.ok) {
         throw new Error('Failed to fetch property details');
       }
       const data = await response.json();
-      if (data.success) {
+      if (data.success && data.property?.id === propertyId) {
         // Normalize furnished checklist for backward compatibility
         let furnishedChecklist = data.property.furnishedChecklist;
         if (furnishedChecklist && Array.isArray(furnishedChecklist)) {

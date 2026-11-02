@@ -144,7 +144,7 @@ export async function registrationProfile(request:Request){
     if(existing?.isActive===false)throw new AccessError(403,'Active user profile required','ACCOUNT_DISABLED');
     const profileExists=!!existing,profileComplete=completedProfile(existing||undefined,token);
     if(Date.now()-started>2000)console.warn('auth_profile_slow',JSON.stringify({reference,identityMs,profileMs,totalMs:Date.now()-started}));
-    return jsonResponse({success:true,profileExists,profileComplete,status:profileComplete?'complete':'incomplete'});
+    return jsonResponse({success:true,profileExists,profileComplete,status:profileComplete?'complete':'incomplete',...(profileComplete?{user:{uid:token.uid,...Object.fromEntries(['name','email','phoneNumber','photoURL','role'].map(key=>[key,stringValue(existing?.[key])]))}}:{})});
   }catch(error){
     if(error instanceof AccessError||error instanceof ApiError)throw error;
     const code=String((error as {code?:unknown}).code||(error instanceof Error?error.name:'UNKNOWN'));

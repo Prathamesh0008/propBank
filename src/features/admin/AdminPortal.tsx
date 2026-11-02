@@ -497,6 +497,7 @@ const AdminPortal = () => {
 
       <AdminPropertyDetailsDialog
         property={selectedProperty}
+        onModerationChange={setSelectedProperty}
         onVerificationChange={async()=>{if(selectedProperty?.id)setSelectedProperty(await propertyService.getPropertyById(selectedProperty.id));}}
         isOpen={isPropertyDialogOpen}
         onOpenChange={setIsPropertyDialogOpen}

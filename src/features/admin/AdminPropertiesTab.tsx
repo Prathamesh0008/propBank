@@ -21,7 +21,7 @@ export const AdminPropertiesTab = ({loading,properties,handleViewPropertyDetails
   const labels:Record<string,string>={pending_review:'Pending Review',approved:'Approved',rejected:'Rejected',changes_requested:'Changes Requested',unreviewed:'Unreviewed'};
   const label=(value:string)=>labels[value]||value.replaceAll('_',' ');
   const submitted=(property:Property)=>{
-    const date=new Date(property.createdAt);
+    const date=new Date(property.moderationSubmittedAt||property.createdAt);
     return Number.isNaN(date.getTime())?'Not recorded':date.toLocaleString();
   };
   const presentation=(property:Property)=>{

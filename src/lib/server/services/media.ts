@@ -34,9 +34,10 @@ export async function stageFile(bytes:Buffer,contentType:string,filename:string,
   try {
     await getR2Client().send(new PutObjectCommand({Bucket:bucket,Key:key,Body:bytes,ContentType:contentType,CacheControl:'private, no-store',Metadata:{uploadedBy:user.uid,mediaId:ref.id}}),{abortSignal:AbortSignal.timeout(30000)});
     await ref.update({status:'pending',updatedAt:new Date()});
-  }catch {
+  }catch(error) {
     try{await ref.update({status:'cleanup_pending',updatedAt:new Date(),lastError:'Upload did not complete'});}catch{/* Original durable intent remains for reconciliation. */}
-    throw new ApiError(502,'File upload failed; no business record was saved. Please retry');
+    // Preserve the dependency failure: a metadata write can fail after R2 succeeds.
+    throw new ApiError(502,'File upload failed; no business record was saved. Please retry',error);
   }
   return fileUrl(ref.id,contentType);
 }

@@ -7,9 +7,10 @@ import ListingModeration from './ListingModeration';
 import {ProductDashboard} from './PropertyHub';
 import { propertyCategoryMatches } from '@/lib/client-workflows';
 import { apiFetch } from '@/lib/api-client';
+import {usePropertyFlowNavigation} from '@/lib/property-flow-navigation';
 import SessionMediaImage from '@/components/SessionMediaImage';
 
-import { Building2, Plus, MoreVertical, Users, UserPlus, Eye, Edit, Archive, Wrench, Filter, Home, FileText, Star, Scale, Paperclip, RefreshCw, XCircle, Key, Search } from "lucide-react";
+import { Building2, Plus, ChevronDown, MoreVertical, Users, UserPlus, Eye, Edit, Archive, Wrench, Filter, Home, FileText, Star, Scale, Paperclip, RefreshCw, XCircle, Key, Search } from "lucide-react";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { useNavigate, useSearchParams } from "@/lib/navigation";
@@ -168,25 +169,26 @@ const TenantNameDisplay = ({ tenant }: { tenant: TenantInfo }) => {
 
 const ManageProperty = () => {
   const navigate = useNavigate();
+  const {forward:forwardPropertyStep}=usePropertyFlowNavigation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
   const [user, setUser] = useState<User | null>(null);
   const { data: propertiesData, isLoading: loading, error: propertyError } = useUserProperties(user);
 
-  const ownedProperties = useMemo(() => propertiesData?.owned || [], [propertiesData?.owned]);
-  const tenantProperties = useMemo(() => propertiesData?.tenant || [], [propertiesData?.tenant]);
+  const ownedProperties = useMemo(() => (propertiesData?.owned || []).filter((property:Property)=>property.moderationStatus!=='approved'), [propertiesData?.owned]);
+  const tenantProperties = useMemo(() => (propertiesData?.tenant || []).filter((property:Property)=>property.moderationStatus!=='approved'), [propertiesData?.tenant]);
 
   const [filteredOwnedProperties, setFilteredOwnedProperties] = useState<Property[]>([]);
   const [filteredTenantProperties, setFilteredTenantProperties] = useState<Property[]>([]);
+  const [params]=useSearchParams();
 
   // Filter states
-  const [searchQuery, setSearchQuery] = useState<string>("");
-  const [selectedPropertyType, setSelectedPropertyType] = useState<string>("");
-  const [selectedListingType, setSelectedListingType] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>(params.get('q')||'');
+  const [selectedPropertyType, setSelectedPropertyType] = useState<string>(params.get('category')||'');
+  const [selectedListingType, setSelectedListingType] = useState<string>(params.get('listing')||'');
 
   // View toggle state - 'owned' or 'tenant'
-  const [params]=useSearchParams();
   const [activeView, setActiveView] = useState<'owned' | 'tenant'>(params.get('tab')==='tenant'?'tenant':'owned');
 
   // Toggle states for "Want to Sell" - default false for all properties
@@ -349,8 +351,14 @@ const ManageProperty = () => {
   };
 
   const handleView = (propertyId: string) => {
-    // Navigate to property details page
-    navigate(`/property/${propertyId}`);
+    if(!propertyId)return;
+    const state=new URLSearchParams({tab:activeView});
+    if(searchQuery)state.set('q',searchQuery);
+    if(selectedPropertyType)state.set('category',selectedPropertyType);
+    if(selectedListingType)state.set('listing',selectedListingType);
+    const returnTo=`/manage-property?${state.toString()}`;
+    window.history.replaceState({...window.history.state},'',returnTo);
+    forwardPropertyStep(`/property/${encodeURIComponent(propertyId)}?${new URLSearchParams({returnTo})}`);
   };
 
   const hidePropertyOptimistically=(propertyId:string)=>{
@@ -632,18 +640,35 @@ const ManageProperty = () => {
             <div className={workspaceStyles.headerActions}>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button className={workspaceStyles.primaryAction}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Property
-                    <span aria-hidden="true" className="ml-2 text-xs">▾</span>
+                  <Button
+                    type="button"
+                    className="group h-11 min-w-0 gap-1.5 rounded-full border border-white/15 bg-[#064E3B] bg-gradient-to-b from-[#065640] to-[#033D2E] px-2.5 text-xs font-bold text-white shadow-[0_3px_10px_rgba(3,61,46,0.18),inset_0_1px_0_rgba(255,255,255,0.12)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#047857] hover:from-[#047857] hover:to-[#064E3B] hover:shadow-[0_6px_16px_rgba(3,61,46,0.24)] focus-visible:!outline-none focus-visible:ring-[#047857] data-[state=open]:from-[#047857] data-[state=open]:to-[#064E3B] motion-reduce:transform-none motion-reduce:transition-none sm:gap-2.5 sm:px-5 sm:text-sm"
+                  >
+                    <span aria-hidden="true" className="flex h-5 items-center border-r border-white/30 pr-1.5 sm:pr-2.5"><Plus className="h-4 w-4" strokeWidth={2.5} /></span>
+                    <span>Add Property</span>
+                    <ChevronDown aria-hidden="true" className="h-4 w-4 opacity-90 transition-transform duration-200 group-data-[state=open]:rotate-180 motion-reduce:transition-none" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52">
-                  <DropdownMenuItem onSelect={() => navigate("/select-property-type?as=owner")}>
-                    <Home className="mr-2 h-4 w-4" />As an Owner
+                <DropdownMenuContent
+                  align="end"
+                  sideOffset={10}
+                  collisionPadding={12}
+                  aria-label="Add property as"
+                  className="w-60 min-w-0 max-w-[calc(100vw-24px)] space-y-1.5 rounded-2xl border border-[#D1FAE5] bg-white p-2 text-[#064E3B] shadow-[0_12px_36px_-8px_rgba(3,61,46,0.2),0_2px_8px_rgba(3,61,46,0.06)] duration-200 motion-reduce:animate-none sm:w-64"
+                >
+                  <DropdownMenuItem
+                    onSelect={() => forwardPropertyStep("/select-property-type?as=owner")}
+                    className="h-11 cursor-pointer gap-2.5 rounded-full border border-[#D1FAE5] bg-gradient-to-r from-white to-[#ECFDF5] px-3 py-1.5 text-sm font-bold text-[#064E3B] transition-all duration-150 hover:border-[#A7F3D0] hover:from-[#ECFDF5] hover:to-[#D1FAE5] hover:shadow-sm focus:border-[#A7F3D0] focus:from-[#ECFDF5] focus:to-[#D1FAE5] focus:text-[#064E3B] focus:shadow-sm active:scale-[0.98] motion-reduce:transform-none motion-reduce:transition-none"
+                  >
+                    <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#D1FAE5]/70"><Home className="h-4 w-4" strokeWidth={2} /></span>
+                    As an Owner
                   </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => navigate("/select-property-type?as=tenant")}>
-                    <Key className="mr-2 h-4 w-4" />As a Tenant
+                  <DropdownMenuItem
+                    onSelect={() => forwardPropertyStep("/select-property-type?as=tenant")}
+                    className="h-11 cursor-pointer gap-2.5 rounded-full border border-[#D1FAE5] bg-gradient-to-r from-white to-[#ECFDF5] px-3 py-1.5 text-sm font-bold text-[#064E3B] transition-all duration-150 hover:border-[#A7F3D0] hover:from-[#ECFDF5] hover:to-[#D1FAE5] hover:shadow-sm focus:border-[#A7F3D0] focus:from-[#ECFDF5] focus:to-[#D1FAE5] focus:text-[#064E3B] focus:shadow-sm active:scale-[0.98] motion-reduce:transform-none motion-reduce:transition-none"
+                  >
+                    <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#D1FAE5]/70"><Key className="h-4 w-4" strokeWidth={2} /></span>
+                    As a Tenant
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -838,7 +863,7 @@ const ManageProperty = () => {
                                               {property.title}
                                               {property.unitNumber ? ` (${property.unitNumber})` : ""}
                                               {property.buildingName && property.buildingName.trim()!==property.title?.trim() && <span className="block text-sm font-normal">{property.buildingName}</span>}
-                                              <span className="block text-xs font-normal">Property ID: {property.id}{property.createdAs==="tenant" ? ` - Owner verification ${property.ownershipVerification||"pending"}` : ""}{property.agreementStatus ? ` · ${property.agreementStatus.replaceAll("_"," ")}` : ""}{property.agreementRequest?.status==="pending" ? ` · Pending ${property.agreementRequest.kind}` : ""}</span>
+                                              {(property.createdAs==='tenant'||property.agreementStatus||property.agreementRequest?.status==='pending')&&<span className="block text-xs font-normal">{[property.createdAs==='tenant'?`Owner verification ${property.ownershipVerification||'pending'}`:'',property.agreementStatus?.replaceAll('_',' '),property.agreementRequest?.status==='pending'?`Pending ${property.agreementRequest.kind}`:''].filter(Boolean).join(' · ')}</span>}
                                               {property.address ? `, ${property.address}` : ""}
                                             </h3>
                                             <Badge
@@ -849,7 +874,7 @@ const ManageProperty = () => {
                                             </Badge>
                                           </div>
                                           <button type="button" className={workspaceStyles.viewLink} onClick={() => handleView(property.id)}>View details <span aria-hidden="true">→</span></button>
-                                          <ListingModeration key={`${property.id}:${property.moderationRevision||0}`} property={property}/>
+                                          <ListingModeration key={`${property.id}:${property.moderationRevision||0}`} property={property} showStatus={false}/>
                                           {/* Show active tenants on a separate line if property is rented out */}
                                           {property.tenants && property.tenants.some((t: any) => t.isActive && (t.firstName || t.lastName || t.phone || t.email)) && (
                                             <p className="text-sm text-purple-600 font-medium mt-1">
@@ -1132,7 +1157,7 @@ const ManageProperty = () => {
                                               {property.title}
                                               {property.unitNumber ? ` (${property.unitNumber})` : ""}
                                               {property.buildingName && property.buildingName.trim()!==property.title?.trim() && <span className="block text-sm font-normal">{property.buildingName}</span>}
-                                              <span className="block text-xs font-normal">Property ID: {property.id}{property.agreementStatus ? ` ? ${property.agreementStatus.replaceAll("_"," ")}` : ""}{property.agreementRequest?.status==="pending" ? ` ? Pending ${property.agreementRequest.kind}` : ""}</span>
+                                              {(property.agreementStatus||property.agreementRequest?.status==='pending')&&<span className="block text-xs font-normal">{[property.agreementStatus?.replaceAll('_',' '),property.agreementRequest?.status==='pending'?`Pending ${property.agreementRequest.kind}`:''].filter(Boolean).join(' · ')}</span>}
                                               {property.address ? `, ${property.address}` : ""}
                                             </h3>
                                             <Badge

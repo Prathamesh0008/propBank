@@ -1,12 +1,13 @@
 "use client";
 
-import { useNavigate, useSearchParams } from "@/lib/navigation";
+import { useSearchParams } from "@/lib/navigation";
+import {usePropertyFlowNavigation} from '@/lib/property-flow-navigation';
 import { ArrowLeft, ArrowRight, KeyRound, Building2 } from "lucide-react";
 import PropertyTypeSelector from "./PropertyTypeSelector";
 import styles from "./SelectPropertyType.module.css";
 
 const SelectPropertyType = () => {
-  const navigate = useNavigate();
+  const {forward,back}=usePropertyFlowNavigation();
   const [params, setParams] = useSearchParams();
   const mode = params.get("as");
   const relationship = mode === "owner" || mode === "tenant" ? mode : null;
@@ -14,7 +15,7 @@ const SelectPropertyType = () => {
   const chooseRelationship = (choice: "owner" | "tenant") => {
     const next = new URLSearchParams(params.toString());
     next.set("as", choice);
-    setParams(next);
+    setParams(next,{replace:true});
   };
 
   const handlePropertyTypeSelect = (propertyType: string) => {
@@ -22,7 +23,7 @@ const SelectPropertyType = () => {
     const next = new URLSearchParams({type:propertyType,as:relationship});
     const adminOwnerUID=params.get('adminOwnerUID');
     if(adminOwnerUID)next.set('adminOwnerUID',adminOwnerUID);
-    navigate(`/add-property?${next.toString()}`);
+    forward(`/add-property?${next.toString()}`);
   };
 
   return (
@@ -48,7 +49,7 @@ const SelectPropertyType = () => {
         </section>
       ) : (
         <section className={styles.inner} aria-label="Select the property category">
-          <button type="button" className={styles.back} onClick={() => navigate(-1)}>
+          <button type="button" className={styles.back} onClick={() => back('/manage-property')}>
             <ArrowLeft size={16} aria-hidden="true" /> Back
           </button>
           <PropertyTypeSelector

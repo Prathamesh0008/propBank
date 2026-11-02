@@ -4,7 +4,7 @@ import { projectFiles } from './file-projection';
 import {randomUUID} from 'node:crypto';
 
 export class ApiError extends Error {
-  constructor(public readonly status: number, message: string) {
+  constructor(public readonly status: number, message: string, public readonly cause?: unknown) {
     super(message);
     this.name = 'ApiError';
   }

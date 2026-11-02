@@ -2,7 +2,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict');
 const {isolated,users,properties,request,route,context}=require('./fixtures/native-server.cjs');
 const setup=()=>isolated({users:{...users,agent:{...users.other,uid:'agent',role:'agent'}},properties:{P:{...properties.P,tenants:[],rentalStatus:'available'}}});
 async function submit(app,extra={}) {
- const response=await route(app,'properties').POST(request('/properties','owner','POST',{propertyTitle:'Review Home',propertyType:'residential',location:'Isolated address',ownerUID:'owner',listingType:'rent',monthlyRent:'70000',...extra}));
+ const response=await route(app,'properties').POST(request('/properties','owner','POST',{propertyTitle:'Review Home',propertyType:'residential',configuration:'2 BHK',location:'Isolated address',ownerUID:'owner',listingType:'rent',monthlyRent:'70000',...extra}));
  assert.equal(response.status,200,await response.clone().text());return (await response.json()).property;
 }
 const patch=(app,id,uid,body)=>route(app,'properties/[id]').PATCH(request('/properties/'+id,uid,'PATCH',body),context(id));
@@ -42,7 +42,7 @@ test('owner can explicitly resubmit unchanged rejected listings, but not self-ap
 });
 
 test('moderation metadata cannot be forged through creation or ordinary edits',async()=>{
- const app=setup();const response=await route(app,'properties').POST(request('/properties','owner','POST',{propertyTitle:'Forgery',propertyType:'residential',location:'Address',ownerUID:'owner',listingType:'sell',moderationStatus:'approved'}));assert.equal(response.status,400);
+ const app=setup();const response=await route(app,'properties').POST(request('/properties','owner','POST',{propertyTitle:'Forgery',propertyType:'residential',configuration:'2 BHK',location:'Address',ownerUID:'owner',listingType:'sell',moderationStatus:'approved'}));assert.equal(response.status,400);
  const p=await submit(app);
  for(const body of [{moderationStatus:'approved'},{moderationHistory:[]},{moderationRevision:50}])assert.equal((await patch(app,p.id,'owner',body)).status,400);
  for(const uid of [null,'other','tenant','agent'])assert.equal((await decision(app,p.id,'approve','',uid)).status,uid?403:401);
@@ -70,7 +70,7 @@ test('archival and restoration preserve approval and do not bypass pending moder
 });
 
 test('tenant supplied records remain private and also support admin review',async()=>{
- const app=setup();const response=await route(app,'properties').POST(request('/properties','tenant','POST',{createdAs:'tenant',propertyTitle:'Private tenancy',propertyType:'residential',location:'Private address',reportedOwner:{personName:'Reported owner',phone:'123456'},monthlyRent:'20000',paymentDueDate:'5',agreementPeriod:'12 months',agreementStartDate:'2026-01-01',agreementEndDate:'2027-01-01'}));assert.equal(response.status,200,await response.clone().text());const p=(await response.json()).property;
+ const app=setup();const response=await route(app,'properties').POST(request('/properties','tenant','POST',{createdAs:'tenant',propertyTitle:'Private tenancy',propertyType:'residential',configuration:'2 BHK',location:'Private address',reportedOwner:{personName:'Reported owner',phone:'9876543210'},monthlyRent:'20000',paymentDueDate:'5',agreementPeriod:'12 months',agreementStartDate:'2026-01-01',agreementEndDate:'2027-01-01'}));assert.equal(response.status,200,await response.clone().text());const p=(await response.json()).property;
  assert.equal(p.ownershipVerification,'pending');assert.equal(app.state.properties[p.id].moderationStatus,'pending_review');await hidden(app,p.id);
  assert.equal((await decision(app,p.id,'approve')).status,200);await hidden(app,p.id);
 });
@@ -133,8 +133,8 @@ test('provider failure preserves saved property and admin can retry without dupl
 
 test('outbox write failure rolls back property and sends no notifications',async()=>{
  const app=setup();app.env.TEST_DB_WRITE_COLLECTION='email_deliveries';
- const response=await route(app,'properties').POST(request('/properties','owner','POST',{propertyTitle:'Rollback Home',propertyType:'residential',location:'Address',ownerUID:'owner',listingType:'sell'}));
- assert.equal(response.status,500);assert.ok(!Object.values(app.state.properties).some(p=>p.title==='Rollback Home'));
+ const response=await route(app,'properties').POST(request('/properties','owner','POST',{propertyTitle:'Rollback Home',propertyType:'residential',configuration:'2 BHK',location:'Address',ownerUID:'owner',listingType:'sell'}));
+ assert.equal(response.status,503);assert.ok(!Object.values(app.state.properties).some(p=>p.title==='Rollback Home'));
  await app.flush();assert.equal(app.emails.length,0);assert.equal(Object.keys(app.state.property_submissions||{}).length,0);
 });
 
@@ -169,8 +169,8 @@ test('submission distinguishes malformed JSON from invalid property fields and a
  const app=setup();
  for(const [body,message] of [
   ['{"propertyTitle":','Invalid JSON request body'],
-  [JSON.stringify({propertyTitle:'Invalid day',propertyType:'residential',location:'Address',ownerUID:'owner',listingType:'rent',paymentDueDate:'32'}),'Invalid property data: Invalid payment due day'],
-  [JSON.stringify({propertyTitle:'Invalid type',propertyType:'residential',location:'Address',ownerUID:'owner',listingType:'rent',monthlyRent:123}),'Invalid property data:'],
+  [JSON.stringify({propertyTitle:'Invalid day',propertyType:'residential',configuration:'2 BHK',location:'Address',ownerUID:'owner',listingType:'rent',paymentDueDate:'32'}),'Invalid property data: Invalid payment due day'],
+  [JSON.stringify({propertyTitle:'Invalid type',propertyType:'residential',configuration:'2 BHK',location:'Address',ownerUID:'owner',listingType:'rent',monthlyRent:123}),'Invalid property data:'],
  ]){
   const response=await route(app,'properties').POST(request('/properties','owner','POST',body));
   assert.equal(response.status,400);assert.match(response.headers.get('content-type'),/application\/json/);

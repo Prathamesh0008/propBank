@@ -1,11 +1,8 @@
 "use client";
 
 import { Link } from "@/lib/navigation";
-import { useState, useEffect } from "react";
-import { auth, signOutUser } from "@/firebase";
-import { API_BASE_URL } from "@/utils/config";
-import axios from "axios";
-import { firebaseAuthorizationHeaders } from '@/lib/api-client';
+import { useState } from "react";
+import { signOutUser } from "@/firebase";
 import { usePathname } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
 import { LogIn, LogOut, Menu, X } from "lucide-react";
@@ -23,51 +20,13 @@ const navigation = [
 
 const SiteHeader = () => {
   const pathname = usePathname();
-  const {user,profileStatus}=useAuth();
+  const {user,profile,loading,profileStatus}=useAuth();
   const [isOpen, setIsOpen] = useState(false);
-  const [userPhone, setUserPhone] = useState<string>("");
-  const [userEmail, setUserEmail] = useState<string>("");
-  const [userName, setUserName] = useState<string>("");
-  const [userRole, setUserRole] = useState<string>("");
-
-  useEffect(() => {
-      if (user) {
-        // Avoid showing the previous account’s privileged navigation during user changes.
-        setUserRole("");
-        setUserName("");
-        setUserEmail("");
-        setUserPhone("");
-        void getUserData(user.uid);
-      } else {
-        setUserPhone("");
-        setUserEmail("");
-        setUserName("");
-        setUserRole("");
-      }
-  }, [user]);
-
-  const getUserData = async (uid: string) => {
-    try {
-      const response = await axios.get(`${API_BASE_URL}/users/${uid}`, {
-        headers: Object.fromEntries((await firebaseAuthorizationHeaders({
-          "Content-Type": "application/json",
-        })).entries()),
-      });
-
-      if(auth.currentUser?.uid!==uid)return;
-      if (response.status === 200) {
-        const data = response.data;
-        if (data.user) {
-          if (data.user.phoneNumber) setUserPhone(data.user.phoneNumber);
-          if (data.user.email) setUserEmail(data.user.email);
-          if (data.user.name) setUserName(data.user.name);
-          if (data.user.role) setUserRole(data.user.role);
-        }
-      }
-    } catch (error) {
-      // Error handled silently
-    }
-  };
+  const userPhone=profile?.phoneNumber||'';
+  const userEmail=profile?.email||user?.email||'';
+  const userName=profile?.name||user?.displayName||'';
+  const userRole=profile?.role||'';
+  const checkingAccount=loading||profileStatus==='checking';
 
   const handleLogout = async () => {
     await signOutUser();
@@ -98,7 +57,7 @@ const SiteHeader = () => {
           <nav aria-label="Main navigation" className="hidden items-center gap-4 lg:flex xl:gap-6">
             {renderLinks()}
           </nav>
-          {user ? (
+          {checkingAccount ? <span role="status" className="px-3 text-sm text-slate-500">Checking account?</span> : user ? (
             <UserMenu user={user} userName={userName} userEmail={userEmail} userPhone={userPhone} handleLogout={handleLogout} />
           ) : (
             <Link to="/auth" className="hidden min-h-11 shrink-0 items-center gap-2 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white transition-colors duration-150 hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-slate-500 motion-reduce:transition-none lg:inline-flex">
@@ -124,8 +83,8 @@ const SiteHeader = () => {
                 <Dialog.Description className="text-sm text-slate-500">Your property workspace and account.</Dialog.Description>
                 <nav aria-label="Mobile navigation" className="mt-5 flex flex-col gap-2">{renderLinks(true)}</nav>
                 <div className="mt-6 border-t border-slate-200 pt-5">
-                  {user ? <>
-                    <p className="break-words text-sm font-semibold">{user.displayName || userName || "User"}</p>
+                  {checkingAccount ? <p role="status" className="text-sm text-slate-500">Checking account?</p> : user ? <>
+                    <p className="break-words text-sm font-semibold">{userName || user.displayName || "User"}</p>
                     <p className="mt-1 break-words text-xs leading-6 text-slate-500">{user.email || userEmail}</p>
                     {userPhone && <p className="break-words text-xs leading-6 text-slate-500">{userPhone}</p>}
                     <button type="button" onClick={handleLogout} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-md px-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-500"><LogOut size={17} aria-hidden="true" />Log out</button>
