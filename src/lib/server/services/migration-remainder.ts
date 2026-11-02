@@ -35,7 +35,10 @@ export async function login(request:Request) {
   const registered=await requireUser(request),tokenIdentity=registered.token;
   if(tokenIdentity.uid!==req.uid)throw new AccessError(403,'Access denied');
   if(tokenIdentity.email_verified!==true)throw new AccessError(403,'Verify your email before signing in','EMAIL_VERIFICATION_REQUIRED');
-  const profile=await getUser(s(req.uid));if(!profile)return fail('User not found',401);
+  // requireUser already performed the authoritative profile read. Reuse that
+  // snapshot instead of charging Firestore for the same document again during
+  // session establishment.
+  const profile=registered.profile;if(!profile)return fail('User not found',401);
   if(profile.isActive===false)throw new AccessError(403,'Active user profile required');
   await syncAuthenticationProfile(s(req.uid),tokenIdentity,'session_established');
   await discoverFor({uid:tokenIdentity.uid,token:tokenIdentity,role:profile.role as 'admin'|'agent'|'individual',email:s(profile.email),phoneNumber:''});

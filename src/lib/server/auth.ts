@@ -13,6 +13,7 @@ export interface AuthenticatedUser {
   email: string;
   phoneNumber: string;
   token: DecodedIdToken;
+  profile?: FirebaseFirestore.DocumentData;
 }
 
 export const PROFILE_ROLES:readonly UserRole[]=['admin','agent','individual'];
@@ -74,5 +75,6 @@ export async function userFromToken(token:DecodedIdToken):Promise<AuthenticatedU
     email: data.email || token.email || '',
     phoneNumber: data.phoneNumber || '',
     token:currentToken,
+    profile:data,
   };
 }

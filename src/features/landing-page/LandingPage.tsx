@@ -11,6 +11,7 @@ import { useLandingProperties } from "@/features/landing-page/useLandingProperti
 
 const LandingPage = () => {
   const {
+    navigate,
     properties,
     loading,
     loadingMore,
@@ -53,6 +54,7 @@ const LandingPage = () => {
         bannerImages={siteSettings.bannerImages}
         currentBannerIndex={currentBannerIndex}
         setCurrentBannerIndex={setCurrentBannerIndex}
+        onNavigate={navigate}
       />
 
       <PropertyManagementSections />

@@ -1,14 +1,27 @@
-/* Scoped property workspace foundation. Preserves the established form and action handlers. */
-.workspace { font-family: var(--font-manrope), Manrope, sans-serif; color: var(--pb-ink, #242b28); background: var(--pb-chalk, #f8f6f0); min-height: 75vh; }
-.content { max-width: 1160px; }
-.pageHeading { padding: 18px 0 23px; border-bottom: 1px solid #d8d5cd; }
-.pageHeading h1 { font-size: clamp(1.8rem, 3vw, 2.65rem); letter-spacing: -.055em; font-weight: 600; }
-.pageHeading p { color: #626860; }
-.pageHeading > div > div:first-child > div:first-child { border: 1px solid #d8d5cd; background: transparent; border-radius: 4px; color: #a25c42; }
-.filters { border: 0; border-bottom: 1px solid #d8d5cd; background: transparent; box-shadow: none; border-radius: 0; }
-.propertyRow { border: 0; border-bottom: 1px solid #d8d5cd; background: transparent; box-shadow: none; border-radius: 0; }
-.propertyRow:hover { background: #efebe3; }
-.propertyRow h3 { letter-spacing: -.025em; }
-.propertyRow img { object-fit: cover; }
-.workspace :focus-visible { outline: 2px solid #a25c42; outline-offset: 3px; }
-@media(max-width: 640px) { .pageHeading { padding-top: 4px; } .propertyRow { border-bottom: 1px solid #d8d5cd; } }
+.workspace { min-height:78vh; padding:0 24px 56px; color:var(--pb-ink,#202925); background:var(--pb-chalk,#f8f6f0); font-family:var(--font-manrope),Manrope,sans-serif; }
+.content { width:min(1240px,100%); margin:0 auto; }
+.pageHeading { padding:22px 0 18px; border-bottom:1px solid #d7d3c8; }
+.headerRow { display:flex; align-items:center; justify-content:space-between; gap:24px; }
+.pageHeading h1 { margin:0; font-size:clamp(1.75rem,3vw,2.1rem); line-height:1.1; letter-spacing:-.045em; font-weight:560; }
+.headerActions { display:flex; gap:10px; flex-shrink:0; }
+.primaryAction,.secondaryAction { min-height:44px; padding-inline:20px!important; border-radius:2px!important; box-shadow:none!important; }
+.primaryAction { background:var(--pb-forest,#173f35)!important; color:#fffdf8!important; }
+.secondaryAction { border-color:#bab6aa!important; background:transparent!important; }
+.portfolioSection { padding-top:12px; }
+.filters { margin-bottom:12px; border:0!important; border-bottom:1px solid #d7d3c8!important; border-radius:0!important; background:transparent!important; box-shadow:none!important; }
+.filterContent { padding:8px 0 12px!important; }
+.filterTools { display:flex; align-items:center; justify-content:flex-end; gap:12px; width:100%; }
+.searchBox { display:flex; align-items:center; gap:9px; width:min(300px,100%); min-height:40px; padding:0 12px; border:1px solid #d7d3c8; background:#f9f7f1; color:#747a74; }
+.searchBox:focus-within { border-color:#8a5b43; outline:2px solid rgb(138 91 67 / 18%); }
+.searchBox input { width:100%; border:0; outline:0; background:transparent; color:#202925; font-size:13px; }
+.propertyRow { border:0!important; border-bottom:1px solid #d7d3c8!important; border-radius:0!important; background:transparent!important; box-shadow:none!important; transition:background .18s ease!important; }
+.propertyRow:hover { background:#f1eee7!important; }
+.propertyRow h3 { color:#202925!important; letter-spacing:-.025em; }
+.propertyRow img { object-fit:cover; }
+.viewLink { display:inline-flex; align-items:center; gap:7px; margin-top:8px; border:0; background:transparent; color:#285548; font-size:12px; font-weight:700; cursor:pointer; }
+.viewLink span { transition:transform .18s ease; }
+.viewLink:hover span { transform:translateX(3px); }
+.workspace :focus-visible { outline:2px solid #a25c42; outline-offset:3px; }
+@media(max-width:900px){ .filterTools{flex-wrap:wrap;justify-content:flex-start}.searchBox{width:100%} }
+@media(max-width:640px){ .workspace{padding-inline:16px}.pageHeading{padding:16px 0}.headerRow{align-items:flex-start;flex-direction:column;gap:14px}.headerActions{width:100%}.headerActions>*{flex:1}.primaryAction,.secondaryAction{width:100%}.filterContent{padding:8px 0 10px!important}.filterTools{display:grid;grid-template-columns:1fr} }
+@media(prefers-reduced-motion:reduce){ .propertyRow,.viewLink span{transition:none!important} }

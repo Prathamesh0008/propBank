@@ -17,5 +17,5 @@ export const LEGACY_PROPERTY_STRUCTURES: Record<PropertyCategory, readonly strin
   commercial: ['Office', 'Shop'],
   industrial: ['Unit', 'RCC Shed', 'Land'],
 };
-export const PROPERTY_CONFIGURATIONS = ['Studio','1 BHK','2 BHK','3 BHK','4 BHK','5+ BHK'] as const;
+export const PROPERTY_CONFIGURATIONS = ['1 BHK','2 BHK','3 BHK','4 BHK','5+ BHK'] as const;
 export function structureUsesPlotArea(value:unknown){return typeof value==='string'&&/plot|land/i.test(value);}

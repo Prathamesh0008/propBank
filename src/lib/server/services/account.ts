@@ -20,9 +20,11 @@ const notify=async(input:{uid:string;eventType:string;eventId:string;subject:str
 };
 
 async function self(request:Request){
-  const identity=await requireUser(request),uid=identity.uid,ref=users().doc(uid),snapshot=await ref.get();
-  if(!snapshot.exists)throw new AccessError(403,'Active user profile required');
-  const profile=snapshot.data()!;if(profile.isActive===false)throw new AccessError(403,'Active user profile required');
+  const identity=await requireUser(request),uid=identity.uid,ref=users().doc(uid);
+  // requireUser already retrieved and validated this profile. Keep one
+  // authoritative read per request rather than immediately reading it again.
+  const profile=identity.profile;if(!profile)throw new AccessError(403,'Active user profile required');
+  if(profile.isActive===false)throw new AccessError(403,'Active user profile required');
   const account=await getFirebaseAdminAuth().getUser(uid);if(account.disabled)throw new AccessError(403,'Active user profile required');
   return {identity,uid,ref,profile,account};
 }
@@ -59,7 +61,7 @@ export async function updateMyAccount(request:Request){
   const phone=clean(body.phoneNumber,20).replace(/[^0-9+]/g,'');
   const oldPhone=s(profile.phoneNumber),phoneChanged=phone!==oldPhone&&(!indianMobile(phone)||indianMobile(phone)!==indianMobile(oldPhone));
   if(phoneChanged){
-    const authenticatedAt=Number((await requireUser(request)).token.auth_time||0),verifiedPhone=clean((await requireUser(request)).token.phone_number,20).replace(/[^0-9+]/g,'');
+    const authenticatedAt=Number(identity.token.auth_time||0),verifiedPhone=clean(identity.token.phone_number,20).replace(/[^0-9+]/g,'');
     if(!authenticatedAt||Date.now()/1000-authenticatedAt>300)throw new AccessError(403,'Recent authentication is required to change the mobile number');
     validContact(phone);
     if(!verifiedPhone||indianMobile(verifiedPhone)!==indianMobile(phone)||await verifiedMobile(identity)!==indianMobile(phone))throw new ApiError(503,'Phone verification is not configured or the new number has not been verified');

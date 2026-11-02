@@ -391,7 +391,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
       }
       if(selectedPropertyType==='residential'&&!structureUsesPlotArea(data.structure)&&!data.configuration?.trim()){
         form.setError('configuration',{type:'manual',message:'Select the residential layout.'});
-        toast({title:'Missing residential layout',description:'Select Studio or the applicable BHK layout.',variant:'destructive'});
+        toast({title:'Missing residential layout',description:'Select the applicable BHK layout.',variant:'destructive'});
         return;
       }
       if(addNextAgreementManually){const draftError=validateNextAgreementDraft(nextAgreementDraft,data.agreementEndDate||'');if(draftError){toast({title:'Check next agreement details',description:draftError,variant:'destructive'});return;}}
@@ -702,7 +702,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                         <Select onValueChange={field.onChange} value={field.value || ""}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="Select Studio or BHK" />
+                              <SelectValue placeholder="Select BHK layout" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
