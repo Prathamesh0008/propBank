@@ -1,4 +1,5 @@
 // Read-only provider probes: no account creation, object writes, emails, or reminders.
+if(!process.argv.includes('--live-providers')){console.error('Explicit --live-providers authorization is required: this contacts live Firebase Auth, R2 and Resend.');process.exit(1);}
 require('@next/env').loadEnvConfig(process.cwd(),false,{info(){},error(){}});
 const fs=require('node:fs'),path=require('node:path'),{randomUUID}=require('node:crypto');
 const results={};

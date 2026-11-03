@@ -56,5 +56,3 @@
 @media(prefers-reduced-motion:reduce){.section *{animation:none!important;transition:none!important}
 .listing:hover .photo img{transform:none}
 }
-
-.photo{display:block;color:inherit}

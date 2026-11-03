@@ -13,7 +13,7 @@ import {
   PopoverTrigger,
 } from "@/ui/popover"
 
-interface DatePickerProps extends Pick<React.ComponentProps<'button'>, 'id' | 'aria-invalid' | 'aria-describedby' | 'aria-required'> {
+interface DatePickerProps {
   value?: string;
   onChange?: (value: string) => void;
   className?: string;
@@ -23,7 +23,7 @@ interface DatePickerProps extends Pick<React.ComponentProps<'button'>, 'id' | 'a
   max?: string;
 }
 
-export function DatePicker({ value, onChange, className, placeholder = "Select date", disabled, min, max, ...accessibility }: DatePickerProps) {
+export function DatePicker({ value, onChange, className, placeholder = "Select date", disabled, min, max }: DatePickerProps) {
   const date = value ? parse(value, "yyyy-MM-dd", new Date()) : undefined;
   // Ensure the date is valid before passing to Calendar
   const selectedDate = date && isValid(date) ? date : undefined;
@@ -44,7 +44,6 @@ export function DatePicker({ value, onChange, className, placeholder = "Select d
     <Popover>
       <PopoverTrigger asChild>
         <Button
-          {...accessibility}
           type="button"
           variant={"outline"}
           className={cn(

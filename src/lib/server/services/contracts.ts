@@ -120,7 +120,6 @@ export function propertyResponse(property: RecordData, projection = 'normal', us
   if(userRole==='admin'||userRole==='tenant')for(const key of ['ownershipVerificationReason','ownershipVerificationVersion'])if(key in property)response[key]=wireValue(property[key]);
   if(userRole==='admin')for(const key of ['ownershipVerificationReviewerUID','ownershipVerificationReviewedAt','ownershipVerificationHistory','ownershipVerificationAudit'])if(key in property)response[key]=wireValue(property[key]);
   if(Array.isArray(property.rentSchedule))response.rentSchedule=wireValue(property.rentSchedule);
-  if(userRole)for(const key of ['totalFloors','parking','parkingDetails','parkingSpaces','amenities','facilities','maintenanceCharges','emergencyContact','employmentStatus','employer','isMarried','spouseFirstName','spouseLastName','spouseEmail','spousePhone','spouseEmploymentStatus','spouseEmployer','spouseNotes'])if(key in property)response[key]=wireValue(property[key]);
   return response;
 }
 

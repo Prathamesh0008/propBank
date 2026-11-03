@@ -1,0 +1,2897 @@
+{
+  "selectedBaseline": "649fdf98f4d563fddbb5ebcb060fe42dcf31b318",
+  "parentMain": "38c70ef907804b214ee10166560363f3a0de0b60",
+  "allSourceMatchesRecovered": false,
+  "productionDotenvIdenticalToMain": true,
+  "packageLockIdenticalToMain": true,
+  "paths": [
+    {
+      "path": "scripts/audit-active-api.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "scripts/audit-backend-current.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "scripts/audit-environment.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "scripts/audit-firestore-reads.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "scripts/audit-project.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "scripts/audit-providers-readonly.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "scripts/audit-repository-secrets.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "scripts/auth-emulator-fixtures.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "scripts/check-migration-readonly.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "scripts/run-business-notification-live-test.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "scripts/run-final-notification-live-test.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "scripts/run-visit-notification-live-test.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "scripts/start-emulator-dev.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "scripts/start-firebase-dev.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "scripts/start-live-dev.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "scripts/storage-migration-inventory.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "scripts/test-group2-routing.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "scripts/test-native-routing.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "scripts/verify-live-email.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "scripts/verify-live-r2.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "scripts/verify-property-runtime.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "scripts/wire-migration-remainder.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "scripts/wire-native-group2.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/App.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/(protected)/add-property/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/(protected)/add-tenant/[propertyId]/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/(protected)/archived-properties/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/(protected)/attach-documents/[propertyId]/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/(protected)/edit-property/[propertyId]/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/(protected)/inspection-report/[propertyId]/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/(protected)/layout.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/(protected)/legal-services/[propertyId]/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/(protected)/manage-property/[propertyId]/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/(protected)/manage-property/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/(protected)/my-account/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/(protected)/other-services/[propertyId]/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/(protected)/renew-agreement/[propertyId]/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/(protected)/request-services/[propertyId]/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/(protected)/review/[propertyId]/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/(protected)/select-property-type/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/(protected)/tenant-property/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/(protected)/terminate-agreement/[propertyId]/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/(protected)/visit-planner/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/about/About.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/about/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/admin/layout.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/admin/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/account/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/account/security-event/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/admin/email-deliveries/[id]/retry/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/admin/email-deliveries/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/admin/notifications/[id]/read/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/admin/notifications/[id]/remarks/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/admin/notifications/[id]/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/admin/notifications/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/admin/properties/[id]/tenancy/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/admin/site-settings/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/admin/storage-reconciliation/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/admin/users/search/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/admin/visits/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/agreements/renew/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/agreements/request-renewal/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/agreements/request-termination/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/agreements/terminate/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/auth/activity/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/auth/login/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/auth/user/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/cron/reminders/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/documents/[id]/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/documents/property/[propertyId]/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/documents/property/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/documents/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/enquiries/[id]/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/enquiries/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/files/[...path]/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/files/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/inspection-reports/property/[propertyId]/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/inspection-reports/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/inspection-reports/user/[userId]/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/media/[id]/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/media/legacy/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/media/session/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/negotiations/[id]/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/negotiations/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/owner-verification/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/properties/[id]/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/properties/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/properties/search/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/properties/tenant/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/property-hub/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/app/api/relationship-links/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/app/api/reviews/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/service-requests/[id]/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/service-requests/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/services/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/tenants/[id]/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/tenants/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/upload/document/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/upload/image/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/upload/property-images/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/upload/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/upload/service-request-image/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/users/[id]/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/users/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/users/search/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/visits/[id]/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/api/visits/route.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/auth/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/blog/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/buy/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/contact/ContactPage.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/contact/ContactPage.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/contact/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/error.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/faq/FaqPage.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/faq/FaqPage.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/faq/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/layout.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/not-found.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/privacy/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/properties/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/property/[propertyId]/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/providers.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/rent/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/search/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/sell/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/services/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/support/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/app/terms/page.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/assets/hero-realestate.jpg",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/common components/GradientSpotlight.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/common components/NotFound.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/components/AmountInWords.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/components/ApplicationShell.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/components/DemoFormAutofill.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/components/DemoFormAutofill.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/components/NextAgreementFields.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/components/PwaRegistration.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/components/RouteGuard.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/components/SessionMediaImage.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/contexts/AuthContext.tsx",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/contexts/SearchContext.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/account/MyAccount.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/account/MyAccount.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/account/RelationshipLinks.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/account/RelationshipLinks.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/AdminAgentsTab.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/AdminAgentsTab.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/AdminArchiveTab.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/AdminArchiveTab.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/AdminEmailDeliveries.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/AdminEmailDeliveries.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/AdminPortal.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/AdminPortal.tsx",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/admin/AdminPropertiesTab.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/AdminPropertiesTab.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/admin/AdminPropertyDetailsDialog.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/AdminPropertyDetailsDialog.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/admin/AdminPropertyOperations.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/AdminPropertyOperations.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/AdminServiceRequestsTab.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/AdminServiceRequestsTab.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/AdminSiteSettingsTab.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/AdminSiteSettingsTab.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/AdminTypes.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/AdminUserDetailsDialog.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/AdminUserDetailsDialog.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/AdminVisits.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/AdminVisits.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/OwnerVerification.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/admin/OwnerVerification.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/auth/Auth.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/auth/Auth.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/auth/AuthAccount.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/auth/GoogleAuth.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/auth/RegistrationMobileField.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/brand/BrandLogo.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/brand/BrandLogo.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/brand/PublicMain.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/brand/PublicMain.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/enquiries/EnquiryInbox.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/enquiries/EnquiryInbox.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/footer/FooterInfoPage.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/footer/FooterInfoPage.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/footer/SiteFooter.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/footer/SiteFooter.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/landing-page/AnnouncementBanner.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/landing-page/AnnouncementBanner.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/landing-page/GeneralInquiryForm.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/landing-page/HeroSection.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/landing-page/HeroSection.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/landing-page/LandingPage.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/landing-page/LeftHeroSection.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/landing-page/PortfolioSections.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/landing-page/PortfolioSections.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/landing-page/PropertiesSection.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/landing-page/PropertiesSection.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/landing-page/QuickInquirySection.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/landing-page/QuickInquirySection.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/landing-page/RightHeroSection.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/landing-page/SearchFilterSection.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/landing-page/SearchFilterSection.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/landing-page/landingUtils.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/landing-page/useLandingProperties.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/navbar/DesktopNav.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/navbar/DesktopNav.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/navbar/MobileNav.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/navbar/MobileNav.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/navbar/SiteHeader.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/navbar/SiteHeader.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/navbar/UserMenu.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/navbar/UserMenu.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/negotiations/NegotiationPanel.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/properties/AddPropertyForm.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/properties/ArchivedProperties.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/properties/ArchivedProperties.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/properties/ClientPropertyFields.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/properties/EditProperty.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/properties/FurnishedChecklistModal.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/properties/ListingModeration.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/properties/ManageProperty.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/properties/ManageProperty.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/properties/PendingConnections.tsx",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/properties/PropertyCard.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/properties/PropertyDetails.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/properties/PropertyDetails.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/properties/PropertyDetailsDialog.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/properties/PropertyForm.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/properties/PropertyHub.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/properties/PropertyHub.tsx",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/properties/PropertyTypeSelector.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/properties/PropertyTypeSelector.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/properties/SelectPropertyType.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/properties/SelectPropertyType.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/properties/TenantIntake.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/properties/TenantPropertyForm.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/properties/property-response.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/search/CommercialPropertySearchForm.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/search/PropertySearchForm.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/search/SearchBar.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/search/SearchResults.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/search/SearchResults.tsx",
+      "comparisonToOctober30": "october-30-identical-except-trailing-whitespace",
+      "matchesRecovered": false,
+      "sameAsCurrentMain": false,
+      "matchesRecoveredIgnoringTrailingWhitespace": true,
+      "whitespaceOnlyLineNumbers": [
+        62,
+        68,
+        74,
+        79,
+        83,
+        89,
+        92,
+        104,
+        113,
+        116
+      ]
+    },
+    {
+      "path": "src/features/services/AddTenant.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/services/AgreementWorkflow.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/services/AgreementWorkspace.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/services/AttachDocuments.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/services/DocumentWorkspace.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/services/InspectionReport.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/services/InspectionReportList.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/services/LegalServices.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/services/OtherServices.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/services/RenewAgreement.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/services/RequestServices.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/services/Review.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/services/ReviewHistory.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/services/ServiceRequestWorkflow.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/services/ServiceWorkspace.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/services/TenantWorkspace.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/services/TerminateAgreement.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/features/visit-planner/VisitPlanner.module.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/visit-planner/VisitPlanner.tsx",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/features/visit-planner/visit-form.ts",
+      "comparisonToOctober30": "absent-as-selected-reference",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/firebase.ts",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/hooks/use-mobile.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/hooks/use-toast.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/hooks/useProperties.ts",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/hooks/useUsers.ts",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/index.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/amount-to-words.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/api-client.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/api-response.ts",
+      "comparisonToOctober30": "absent-as-selected-reference",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/auth-destination.ts",
+      "comparisonToOctober30": "absent-as-selected-reference",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/auth.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/client-workflows.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/data-refresh.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/demo-form-data.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/email-address.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/email-development.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/email-development.d.cts",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/enquiry.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/firebase-environment.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/firebase-environment.d.cts",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/form-validation.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/indian-phone.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/inspection-report-policy.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/listing-policy.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/navigation.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/negotiation.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/next-agreement-draft.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/private-file-client.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/private-file-session.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/property-category.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/property-detail-fields.ts",
+      "comparisonToOctober30": "absent-as-selected-reference",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/property-flow-navigation.ts",
+      "comparisonToOctober30": "absent-as-selected-reference",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/property-furnishing.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/property-order.ts",
+      "comparisonToOctober30": "absent-as-selected-reference",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/property-product.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/relationship-link-state.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/rent-schedule.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/auth.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/development-email-budget.ts",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/server/file-projection.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/firebase-admin.ts",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/server/firestore.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/http.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/server/local-development-storage.ts",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/server/native-group1.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/native-group2.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/permissions.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/r2.ts",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/server/services/account.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/services/agreements.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/services/auth-activity.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/services/contracts.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/server/services/documents.ts",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/server/services/domain-contracts.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/services/enquiries.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/services/enquiry-protection.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/services/go-contracts.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/services/group2-email-templates.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/services/group2-mail.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/services/media.ts",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/server/services/migration-remainder.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/services/negotiations.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/services/notifications.ts",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/server/services/owner-verification.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/services/properties.ts",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/server/services/property-effects.ts",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/server/services/property-email-templates.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/services/property-hub.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/services/property-images.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/server/services/r2-storage.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/services/relationship-invitation-email.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/services/relationship-links.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/services/reminders.ts",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/server/services/resend.ts",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/server/services/tenants.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/services/transactional-email.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/services/uploads.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/server/services/users.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/lib/server/services/visits.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/supporting-documents.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/lib/utils.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/services/propertyService.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/services/serviceApi.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/services/uploadService.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/services/visitService.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/styles/brand-fonts.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/styles/brand-tokens.css",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/accordion.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/alert-dialog.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/alert.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/aspect-ratio.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/badge.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/button.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/calendar.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/card.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/carousel.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/chart.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/checkbox.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/collapsible.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/command.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/context-menu.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/date-picker.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/ui/dialog.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/drawer.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/dropdown-menu.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/form.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/input-otp.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/input.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/label.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/menubar.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/navigation-menu.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/pagination.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/popover.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/progress.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/radio-group.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/resizable.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/scroll-area.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/select.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/separator.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/sheet.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/sidebar.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/skeleton.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/slider.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/sonner.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/switch.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/table.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/tabs.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/textarea.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/time-picker.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "src/ui/toast.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/toaster.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/toggle-group.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/toggle.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/tooltip.tsx",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/ui/use-toast.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "src/utils/config.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/acceptance.spec.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/account-completion-shell.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/account-management.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/add-property-navigation.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "tests/add-property-pricing.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/admin-property-operations.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/agent-workflow.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/agreement-admin-notifications.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/amount-to-words.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/api-response.test.cjs",
+      "comparisonToOctober30": "absent-as-selected-reference",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "tests/auth-phase.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/auth-profile-retry.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/automatic-data-refresh.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/brand-lock.spec.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/brand-lock.spec.ts-snapshots/about-content-1440-win32.png",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/brand-lock.spec.ts-snapshots/about-content-390-win32.png",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/brand-lock.spec.ts-snapshots/hero-1440-win32.png",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/brand-lock.spec.ts-snapshots/hero-390-win32.png",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/brand-lock.spec.ts-snapshots/hero-768-win32.png",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/brand-navigation.spec.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/client-backend.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/client-workflows.spec.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/demo-form-autofill.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/development-email-safety.test.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "tests/email-events-phase.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/email-sender.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/enquiry-assignment.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/firebase-environment.test.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "tests/firestore-read-budget.test.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "tests/fixtures/acceptance-server.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/fixtures/browser-session.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/fixtures/native-server.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "tests/form-audit-phase-a.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/form-audit-phase-b.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/form-phase-c.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/functional-audit.spec.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/functional-audit.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/group2-routing.spec.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/homepage-hero-restore.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/listing-approval.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "tests/migration-remainder.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/native-group1.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/native-group2.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/negotiations-reminders.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/next-agreement-draft.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/owner-verification.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/parity.spec.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/pending-connections-ui.test.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "tests/pending-connections.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "tests/phase-2c.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/private-file-auth-lifecycle.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/private-file-session-api.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/private-file-session.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/profile-completion-authorization.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/property-admin-integrity.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/property-category-ui.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/property-category.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/property-enquiry-email.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/property-furnishing.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/property-product.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/property-runtime-repair.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/public-listing-visibility.test.cjs",
+      "comparisonToOctober30": "absent-as-selected-reference",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "tests/registration-mobile-ui.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/registration-mobile.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/relationship-invitation-email.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/relationship-links.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/reminder-phase.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/rent-schedule.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/repository-secret-audit.test.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "tests/residential-layout.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/routes.spec.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/security-workflows.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/server-foundation.test.cjs",
+      "comparisonToOctober30": "verified-reference-firebase-quota-or-transport-improvement",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "tests/storage-security.spec.ts",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/storage-security.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/tenant-invitation-repair.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/tenant-supporting-documents.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/verified-email-relationships.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    },
+    {
+      "path": "tests/visit-form.test.cjs",
+      "comparisonToOctober30": "absent-as-selected-reference",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": false
+    },
+    {
+      "path": "tests/visit-planner-repair.test.cjs",
+      "comparisonToOctober30": "october-30-identical",
+      "matchesRecovered": true,
+      "sameAsCurrentMain": true
+    }
+  ],
+  "allSourceMatchesRecoveredExceptDocumentedWhitespace": true
+}

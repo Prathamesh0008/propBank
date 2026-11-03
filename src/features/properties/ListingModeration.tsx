@@ -6,34 +6,28 @@ import {apiFetch} from '@/lib/api-client';
 import {Button} from '@/ui/button';
 import {Textarea} from '@/ui/textarea';
 import {Badge} from '@/ui/badge';
-import type {Property} from '@/services/propertyService';
 
 export interface ListingReview {
   id:string; createdAs?:string; listingType?:string;
   moderationStatus?:string; moderationRevision?:number; moderationReason?:string;
   moderationHistory?:Array<{action:string;actorUID:string;at:string;reason?:string}>;
 }
-export default function ListingModeration({property,admin=false,onDecision,showStatus=true}:{property:ListingReview;admin?:boolean;onDecision?:(property:Property)=>void;showStatus?:boolean}) {
+export default function ListingModeration({property,admin=false}:{property:ListingReview;admin?:boolean}) {
   const [current,setCurrent]=useState(property),[reason,setReason]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const queries=useQueryClient();
   if(!current.moderationStatus&&(current.createdAs==='tenant'||!['rent','sell','sell_rent'].includes(current.listingType||'')))return null;
   const status=current.moderationStatus??'unreviewed';
-  if(!showStatus&&!admin&&!current.moderationReason&&!['rejected','changes_requested'].includes(status)&&!error)return null;
   async function decide(action:string) {
     setBusy(true);setError('');
     try {
       const response=await apiFetch(`/api/properties/${current.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({moderationAction:action,reason,expectedRevision:current.moderationRevision||0})});
       const result=await response.json();
       if(!response.ok||!result.success)throw new Error(result.message||result.error||'Listing decision failed; refresh and retry.');
-      setCurrent(result.property);setReason('');
-      if(admin)queries.setQueriesData<Property[]>({queryKey:['allProperties']},rows=>rows?.map(row=>row.id===result.property.id?result.property:row));
-      onDecision?.(result.property);
-      // apiFetch already publishes the mutation event; AuthContext invalidates
-      // admin and public queries once, including other tabs in this browser.
+      setCurrent(result.property);setReason('');await Promise.all(['property','userProperties','allProperties','productHub'].map(key=>queries.invalidateQueries({queryKey:[key]})));
     }catch(e){setError(e instanceof Error?e.message:'Listing decision failed');}finally{setBusy(false);}
   }
   return <div className="space-y-2 mt-2">
-    {showStatus&&<Badge variant="outline">Listing: {status.replaceAll('_',' ')}</Badge>}
+    <Badge variant="outline">Listing: {status.replaceAll('_',' ')}</Badge>
     {current.moderationReason&&<p className="text-sm">Review reason: {current.moderationReason}</p>}
     {admin&&['pending_review','unreviewed'].includes(status)&&<>
       <Textarea aria-label="Listing review reason" placeholder="Reason (required for rejection or changes)" maxLength={2000} value={reason} onChange={e=>setReason(e.target.value)} disabled={busy}/>

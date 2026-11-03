@@ -1,3 +1,4 @@
+if(process.env.PROPBANK_FIREBASE_MODE==='firebase'||process.env.PROPBANK_EMAIL_MODE||require('node:fs').existsSync(require('node:path').resolve('.env.firebase-dev.local')))throw new Error('Legacy live/bulk email tests are blocked in development worktrees. Use the allowlisted application transport.');
 // Explicitly authorized, one-shot Resend transport test. Never targets Firebase.
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {isolated}=require('../tests/fixtures/native-server.cjs');

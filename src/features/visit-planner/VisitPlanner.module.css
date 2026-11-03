@@ -18,7 +18,6 @@
 .propertySelector select:focus-visible{outline:3px solid var(--pb-focus);outline-offset:2px}
 .fieldHelp,.fieldNotice,.reminderHelp{font-size:.78rem;line-height:1.5;color:var(--pb-slate)}
 .fieldNotice{color:var(--pb-danger)}
-.scheduler [aria-invalid="true"]{border-color:var(--pb-danger)}
 .reminderHelp{border-left:2px solid var(--pb-clay);padding:.15rem 0 .15rem .75rem}
 .visitList{display:grid;gap:0;margin-top:1.25rem}
 .visitRecord{border:0;border-bottom:1px solid var(--pb-line);border-radius:0;box-shadow:none;background:transparent;transition:background-color .18s}

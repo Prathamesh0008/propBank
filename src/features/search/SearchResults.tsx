@@ -2,8 +2,7 @@
 
 import { apiFetch } from '@/lib/api-client';
 
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams, Link, useNavigate } from "@/lib/navigation";
 import { Search, MapPin, BedDouble, Bath, Maximize, Loader2, ArrowUpRight, SlidersHorizontal, X, ArrowRight } from "lucide-react";
 import styles from "./SearchResults.module.css";
@@ -11,6 +10,7 @@ import { propertyService, Property } from "@/services/propertyService";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "../../firebase";
 import { API_BASE_URL } from "../../utils/config";
+import {useDataRefresh} from '@/lib/data-refresh';
 
 // Utility function to get placeholder image URL
 const getPlaceholderImage = (propertyType?: string): string => {
@@ -29,10 +29,11 @@ const getPlaceholderImage = (propertyType?: string): string => {
 
 const SearchResults = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [visibleCount, setVisibleCount] = useState(12);
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
-  const [searchType, setSearchType] = useState<'all' | 'buy' | 'rent'>(
-    (['buy','rent'].includes(searchParams.get('type') || '') ? searchParams.get('type') as 'buy' | 'rent' : 'all')
+  const [searchType, setSearchType] = useState<'buy' | 'rent'>(
+    (searchParams.get('type') as 'buy' | 'rent') || 'buy'
   );
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
     searchParams.get('categories')?.split(',').filter(Boolean) || []
@@ -48,47 +49,87 @@ const SearchResults = () => {
   const [sendingEnquiry, setSendingEnquiry] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [sortBy, setSortBy] = useState("recommended");
-  const [appliedFilters, setAppliedFilters] = useState({
-    query: searchQuery, type: searchType, condition: selectedProjectCondition,
-    categories: selectedCategories, listingTypes: selectedListingTypes,
-  });
-  const purposeFor = (type: typeof searchType, types: string[]) => types.length === 1
-    ? types[0] as 'buy' | 'rent' : types.length > 1 || type === 'all' ? undefined : type;
-  const listingType = purposeFor(appliedFilters.type, appliedFilters.listingTypes);
-  const {data: results = [], isPending: loading, isStale, error: listingError, refetch} = useQuery({
-    queryKey: ['publicProperties', 'search', appliedFilters.query.trim(), listingType || '', appliedFilters.condition],
-    queryFn: () => propertyService.searchProperties(appliedFilters.query.trim(), listingType, appliedFilters.condition),
-    staleTime: 30_000,
-    refetchOnWindowFocus: true,
-    retry: false,
-  });
-  const error = listingError ? 'Could not load properties. Please try again.' : '';
-  const properties = [...new Map(results.map(property => [property.id, property])).values()].filter(property =>
-    !appliedFilters.categories.length || appliedFilters.categories.some(category =>
-      property.propertyType?.toLowerCase().includes(category.toLowerCase())
-    )
-  );
+  const searchGeneration=useRef(0);
 
-  // Queries retain the applied filters during approval invalidation and focus refresh.
-  const performSearch = (overrides: {type?: 'all' | 'buy' | 'rent'; condition?: string; query?: string; categories?: string[]; listingTypes?: string[]} = {}) => {
-    const filters = {
-      type: overrides.type ?? searchType,
-      condition: overrides.condition ?? selectedProjectCondition,
-      query: overrides.query ?? searchQuery,
-      categories: overrides.categories ?? selectedCategories,
-      listingTypes: overrides.listingTypes ?? selectedListingTypes,
-    };
-    setAppliedFilters(filters);
-    setVisibleCount(12);
-    if (isStale && filters.query.trim() === appliedFilters.query.trim() && filters.condition === appliedFilters.condition && purposeFor(filters.type, filters.listingTypes) === listingType) void refetch();
-    const newParams = new URLSearchParams();
-    if (filters.query.trim()) newParams.set('q', filters.query.trim());
-    if (filters.type !== 'all') newParams.set('type', filters.type);
-    if (filters.categories.length) newParams.set('categories', filters.categories.join(','));
-    if (filters.listingTypes.length) newParams.set('types', filters.listingTypes.join(','));
-    if (filters.condition) newParams.set('projectCondition', filters.condition);
-    setSearchParams(newParams);
+  // Load search results with filters
+  const performSearch = async (overrides: {type?: 'buy' | 'rent'; condition?: string; query?: string} = {}) => {
+    const generation=++searchGeneration.current;
+    const type = overrides.type ?? searchType;
+    const condition = overrides.condition ?? selectedProjectCondition;
+    const query = overrides.query ?? searchQuery;
+    try {
+      setLoading(true);
+
+      // Use the first selected listing type if available, otherwise use searchType
+      let listingType: 'buy' | 'rent' | undefined = type;
+      if (selectedListingTypes.length > 0) {
+        listingType = selectedListingTypes[0] as 'buy' | 'rent';
+      }
+
+      let results = await propertyService.searchProperties(
+        query,
+        listingType,
+        condition
+      );
+
+      // Client-side filtering by multiple listing types if needed
+      if (selectedListingTypes.length > 1) {
+        // If multiple listing types are selected, we need to search for each and combine
+        const allResults = await Promise.all(
+          selectedListingTypes.map(type =>
+            propertyService.searchProperties(query, type as 'buy' | 'rent', condition)
+          )
+        );
+
+        // Combine and deduplicate results
+        const combinedResults = allResults.flat();
+        const uniqueResults = combinedResults.filter((property, index, self) =>
+          index === self.findIndex(p => p.id === property.id)
+        );
+
+        results = uniqueResults;
+      }
+
+      // Client-side filtering by categories if needed
+      if (selectedCategories.length > 0) {
+        results = results.filter(property =>
+          selectedCategories.some(category =>
+            property.propertyType?.toLowerCase().includes(category.toLowerCase())
+          )
+        );
+      }
+
+      if(generation!==searchGeneration.current)return;
+      setProperties(results);
+
+      // Update URL params
+      const newParams = new URLSearchParams();
+      if (query.trim()) newParams.append('q', query.trim());
+      if (type) newParams.append('type', type);
+      if (selectedCategories.length > 0) newParams.append('categories', selectedCategories.join(','));
+      if (selectedListingTypes.length > 0) newParams.append('types', selectedListingTypes.join(','));
+      if (condition) newParams.append('projectCondition', condition);
+      setSearchParams(newParams);
+
+    } catch (error) {
+      if(generation!==searchGeneration.current)return;
+
+      toast({
+        title: "Search Error",
+        description: "Failed to search properties. Please try again.",
+        variant: "destructive",
+      });
+      setProperties([]);
+    } finally {
+      if(generation===searchGeneration.current)setLoading(false);
+    }
   };
+  useDataRefresh(['properties'],()=>{void performSearch();});
+
+  // Initial search on component mount
+  useEffect(() => {
+    performSearch();
+  }, []); // Only run on mount
 
   // Handle search form submission
   const handleSearch = (e: React.FormEvent) => {
@@ -96,7 +137,7 @@ const SearchResults = () => {
     performSearch();
   };
 
-  const handleTypeChange = (newType: 'all' | 'buy' | 'rent') => {
+  const handleTypeChange = (newType: 'buy' | 'rent') => {
     setSearchType(newType);
     // Auto-search when type changes
     void performSearch({type: newType});
@@ -199,15 +240,18 @@ const SearchResults = () => {
     if (sortBy === 'price-low') return getNumericPrice(a) - getNumericPrice(b);
     if (sortBy === 'price-high') return getNumericPrice(b) - getNumericPrice(a);
     return 0;
-  }).slice(0, visibleCount);
+  });
   const filterCount = selectedCategories.length + selectedListingTypes.length + Number(Boolean(selectedProjectCondition));
   const clearFilters = () => {
     setSelectedCategories([]);
     setSelectedListingTypes([]);
     setSelectedProjectCondition('');
     setSearchQuery('');
-    setSearchType('all');
-    void performSearch({type:'all',query:'',condition:'',categories:[],listingTypes:[]});
+    setSearchParams(new URLSearchParams({type: searchType}));
+    // Reset from the server instead of reusing the previously filtered result set.
+    void propertyService.searchProperties('', searchType, '').then(setProperties).catch(() => {
+      toast({title: 'Could not reset filters', description: 'Try searching again.', variant: 'destructive'});
+    });
   };
 
   return (
@@ -225,7 +269,6 @@ const SearchResults = () => {
         <section className={styles.searchSection} aria-label="Property search">
           <form onSubmit={handleSearch} className={styles.searchForm}>
             <div className={styles.modeSwitch} role="group" aria-label="Property transaction">
-              <button type="button" className={searchType === 'all' ? styles.modeActive : styles.mode} aria-pressed={searchType === 'all'} onClick={() => handleTypeChange('all')}>All</button>
               <button type="button" className={searchType === 'buy' ? styles.modeActive : styles.mode} aria-pressed={searchType === 'buy'} onClick={() => handleTypeChange('buy')}>Buy</button>
               <button type="button" className={searchType === 'rent' ? styles.modeActive : styles.mode} aria-pressed={searchType === 'rent'} onClick={() => handleTypeChange('rent')}>Rent</button>
             </div>
@@ -255,10 +298,10 @@ const SearchResults = () => {
 
         <section className={styles.resultsSection} aria-label="Property results" aria-live="polite">
           <div className={styles.resultsHeading}>
-            <div><p className={styles.eyebrow}>THE COLLECTION</p><h2>{searchType === 'all' ? 'All available properties' : searchType === 'rent' ? 'Properties to rent' : 'Properties for sale'}</h2><p>{loading ? 'Finding available spaces…' : `${properties.length} ${properties.length === 1 ? 'property' : 'properties'} found`}{searchQuery.trim() ? ` for “${searchQuery.trim()}”` : ''}</p></div>
-            <label className={styles.sortControl}>Sort by <select value={sortBy} onChange={e => {setSortBy(e.target.value);setVisibleCount(12);}}><option value="recommended">Recommended</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option></select></label>
+            <div><p className={styles.eyebrow}>THE COLLECTION</p><h2>{searchType === 'rent' ? 'Properties to rent' : 'Properties for sale'}</h2><p>{loading ? 'Finding available spaces…' : `${properties.length} ${properties.length === 1 ? 'property' : 'properties'} found`}{searchQuery.trim() ? ` for “${searchQuery.trim()}”` : ''}</p></div>
+            <label className={styles.sortControl}>Sort by <select value={sortBy} onChange={e => setSortBy(e.target.value)}><option value="recommended">Recommended</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option></select></label>
           </div>
-          {loading ? <div className={styles.emptyState}><Loader2 className={styles.spinner} size={32}/><h3>Finding your next space</h3><p>Checking available properties…</p></div> : error ? <div className={styles.emptyState} role="alert"><h3>Properties unavailable</h3><p>{error}</p><button type="button" onClick={() => void refetch()}>Try again</button></div> : visibleProperties.length === 0 ? <div className={styles.emptyState}><Search size={36}/><h3>No matching properties yet</h3><p>Try another location or remove your filters to discover more properties.</p><button type="button" onClick={clearFilters}>Clear search and filters <ArrowRight size={16}/></button></div> :
+          {loading ? <div className={styles.emptyState}><Loader2 className={styles.spinner} size={32}/><h3>Finding your next space</h3><p>Checking available properties…</p></div> : visibleProperties.length === 0 ? <div className={styles.emptyState}><Search size={36}/><h3>No matching properties yet</h3><p>Try another location or remove your filters to discover more properties.</p><button type="button" onClick={clearFilters}>Clear search and filters <ArrowRight size={16}/></button></div> :
           <div className={styles.resultsGrid}>{visibleProperties.map(property => <article key={property.id} className={styles.property}>
             <Link to={`/property/${property.id}`} className={styles.propertyImageLink} aria-label={`View ${property.title || 'property'} details`}>
               <img src={property.images?.[0] || getPlaceholderImage(property.propertyType)} alt={property.title ? `${property.title} property` : 'Property photograph'} loading="lazy" onError={e => { const img=e.currentTarget; const fallback=getPlaceholderImage(property.propertyType); if (!img.src.includes(fallback)) img.src=fallback; }} />
@@ -277,7 +320,6 @@ const SearchResults = () => {
               <div className={styles.propertyActions}><button type="button" disabled={sendingEnquiry === property.id} onClick={() => void handleEnquireProperty(property)}>{sendingEnquiry === property.id ? 'Sending enquiry…' : 'Enquire about this property'} <ArrowUpRight size={16}/></button><Link to={`/property/${property.id}`}>Details <ArrowRight size={16}/></Link></div>
             </div>
           </article>)}</div>}
-          {!loading && !error && visibleCount < properties.length && <div className={styles.pagination}><button type="button" className={styles.applyFilters} onClick={() => setVisibleCount(count => count + 12)}>Load more properties ({visibleProperties.length} of {properties.length}) <ArrowRight size={16}/></button></div>}
         </section>
       </div>
     </main>

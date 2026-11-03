@@ -4,13 +4,12 @@ import { useNavigate } from "@/lib/navigation";
 import { propertyService, Property, SiteSettings } from "@/services/propertyService";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/firebase";
-import {useAuth} from "@/contexts/AuthContext";
+import { onAuthStateChanged, User } from "firebase/auth";
 import { useSearch } from "@/contexts/SearchContext";
 import { API_BASE_URL } from "@/utils/config";
 
 import { filterProperties } from "./landingUtils";
 import {useDataRefresh} from '@/lib/data-refresh';
-import {useQuery} from '@tanstack/react-query';
 
 const ITEMS_PER_PAGE = 12;
 
@@ -18,35 +17,29 @@ export const useLandingProperties = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   
-  const {data, isPending: loading, error: listingError, refetch} = useQuery({
-    queryKey: ['publicProperties', 'home'],
-    queryFn: () => propertyService.getAllPropertiesWithSettings(),
-    staleTime: 30_000,
-    refetchOnWindowFocus: true,
-    retry: false,
-  });
-  const allProperties = data?.properties || [];
-  const loadingMore = false;
-  const error = listingError ? 'Could not load properties. Please try again.' : '';
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [allProperties, setAllProperties] = useState<Property[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   const [selectedProjectCondition, setSelectedProjectCondition] = useState<string>("");
   const [budgetRange, setBudgetRange] = useState<{ min: number; max: number }>({ min: 0, max: 0 });
   const observerTarget = useRef<HTMLDivElement>(null);
   
-  const {user,profile}=useAuth();
-  const userPhone=profile?.phoneNumber||"";
+  const [user, setUser] = useState<User | null>(null);
+  const [userPhone, setUserPhone] = useState<string>("");
   const [sendingEnquiry, setSendingEnquiry] = useState<string | null>(null);
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
 
-  const siteSettings: SiteSettings = {
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>({
     quote: "Manage your properties and plan visits with ease",
     heroTitle: "Your Smart Hub for Property Management",
     heroSubtitle: "Manage, list your properties and find your dream house— all in one platform",
     announcementText: "",
     isAnnouncementActive: false,
     bannerImages: [],
-    ...data?.siteSettings,
-  };
+  });
 
   const {
     searchQuery,
@@ -62,12 +55,54 @@ export const useLandingProperties = () => {
     setOnSearchTrigger,
   } = useSearch();
 
+  const hasLoadedRef = useRef(false);
+  const loadGeneration=useRef(0);
+
   const loadAllProperties = useCallback(async () => {
-    await refetch();
-  }, [refetch]);
-  // Property mutations invalidate the publicProperties query through AuthContext.
-  useDataRefresh(['settings'],()=>{void loadAllProperties();});
-  useEffect(() => {setPage(1);}, [data]);
+    const generation=++loadGeneration.current;
+    try {
+      setLoading(true);
+      const response = await propertyService.getAllPropertiesWithSettings();
+      if(generation!==loadGeneration.current)return;
+      const fetchedProperties = response.properties || [];
+
+      const displayProperties = fetchedProperties.filter((property) => {
+        const isInactive = property.status?.toLowerCase() === "inactive" || property.isActive === false;
+        if (isInactive) return false;
+
+        if (property.listingType === "rent") {
+          return property.rentalStatus !== "rented" && !property.isRented;
+        }
+        if (property.listingType === "sell") {
+          return !property.isSold;
+        }
+        return true;
+      });
+
+      setAllProperties(displayProperties);
+
+      if (response.siteSettings) {
+        setSiteSettings((prev) => ({
+          ...prev,
+          ...response.siteSettings,
+        }));
+      }
+
+      setProperties(displayProperties.slice(0, ITEMS_PER_PAGE));
+      setHasMore(displayProperties.length > ITEMS_PER_PAGE);
+      setPage(1);
+    } catch (error) {
+      if(generation!==loadGeneration.current)return;
+      toast({
+        title: "Error",
+        description: "Failed to load properties. Please refresh the page.",
+        variant: "destructive",
+      });
+    } finally {
+      if(generation===loadGeneration.current)setLoading(false);
+    }
+  },[toast]);
+  useDataRefresh(['properties','settings'],()=>{void loadAllProperties();});
 
   const getFilteredProperties = useCallback(() => {
     return filterProperties(
@@ -81,13 +116,26 @@ export const useLandingProperties = () => {
     );
   }, [allProperties, searchQuery, searchType, selectedListingTypes, selectedCategories, selectedProjectCondition, budgetRange]);
 
-  // Cards, pagination and counts share one filtered snapshot after every refresh.
-  const filteredProperties = getFilteredProperties();
-  const properties = filteredProperties.slice(0, page * ITEMS_PER_PAGE);
-  const hasMore = properties.length < filteredProperties.length;
   const loadMoreProperties = useCallback(() => {
-    if (hasMore && !loading) setPage(current => current + 1);
-  }, [hasMore, loading]);
+    if (!hasMore || loadingMore) return;
+    setLoadingMore(true);
+
+    setTimeout(() => {
+      const startIndex = page * ITEMS_PER_PAGE;
+      const endIndex = startIndex + ITEMS_PER_PAGE;
+      const sourceProperties = isSearching ? getFilteredProperties() : allProperties;
+      const newProperties = sourceProperties.slice(startIndex, endIndex);
+
+      if (newProperties.length > 0) {
+        setProperties((prev) => [...prev, ...newProperties]);
+        setPage((prev) => prev + 1);
+        setHasMore(endIndex < sourceProperties.length);
+      } else {
+        setHasMore(false);
+      }
+      setLoadingMore(false);
+    }, 500);
+  }, [page, hasMore, loadingMore, isSearching, allProperties, getFilteredProperties]);
 
   const handleSearch = useCallback(() => {
     const hasActiveFilters =
@@ -101,8 +149,47 @@ export const useLandingProperties = () => {
 
     setIsSearching(hasActiveFilters);
 
+    const filteredProperties = getFilteredProperties();
+    setProperties(filteredProperties.slice(0, ITEMS_PER_PAGE));
     setPage(1);
-  }, [searchQuery, searchType, selectedCategories, selectedListingTypes, selectedProjectCondition, budgetRange, setIsSearching]);
+    setHasMore(filteredProperties.length > ITEMS_PER_PAGE);
+
+    if (filteredProperties.length === 0 && (searchQuery.trim() || selectedCategories.length > 0)) {
+      toast({
+        title: "No Results",
+        description: "No properties found matching your search criteria.",
+      });
+    }
+  }, [searchQuery, selectedCategories, getFilteredProperties, setIsSearching, toast]);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setUser(firebaseUser);
+      if (firebaseUser) {
+        try {
+          const response = await apiFetch(`${API_BASE_URL}/users/${firebaseUser.uid}`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.user && data.user.phoneNumber) {
+              setUserPhone(data.user.phoneNumber);
+            }
+          }
+        } catch (error) {
+          // Silent error
+        }
+      } else {
+        setUserPhone("");
+      }
+    });
+    return () => unsubscribe();
+  }, [loadAllProperties]);
+
+  useEffect(() => {
+    if (!hasLoadedRef.current) {
+      hasLoadedRef.current = true;
+      loadAllProperties();
+    }
+  }, []);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -151,6 +238,8 @@ export const useLandingProperties = () => {
     setBudgetRange({ min: 0, max: 0 });
     setIsSearching(false);
     setPage(1);
+    setProperties(allProperties.slice(0, ITEMS_PER_PAGE));
+    setHasMore(allProperties.length > ITEMS_PER_PAGE);
   };
 
   const handleCategoryToggle = (categoryId: string) => {
@@ -262,8 +351,6 @@ export const useLandingProperties = () => {
     allProperties,
     loading,
     loadingMore,
-    error,
-    retry: loadAllProperties,
     hasMore,
     selectedProjectCondition,
     setSelectedProjectCondition,

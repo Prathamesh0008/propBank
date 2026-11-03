@@ -4,8 +4,10 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "next dev --port 8080",
+    "dev": "node scripts/start-firebase-dev.cjs",
     "dev:emulator": "node scripts/start-emulator-dev.cjs",
+    "dev:live": "node scripts/start-live-dev.cjs",
+    "dev:check": "node scripts/start-firebase-dev.cjs --check",
     "build": "next build",
     "start": "next start --port 8080",
     "lint": "eslint src",
@@ -17,12 +19,12 @@
     "test": "npm run test:functional",
     "test:functional": "node --test tests/*.test.cjs",
     "test:storage": "node --test tests/storage-security.test.cjs",
-    "audit:storage": "node scripts/storage-migration-inventory.cjs"
-    ,"test:auth": "node --test tests/auth-phase.test.cjs"
-    ,"dev:auth:seed": "node scripts/auth-emulator-fixtures.cjs --seed"
-    ,"dev:auth:cleanup": "node scripts/auth-emulator-fixtures.cjs --cleanup"
-    ,"dev:accounts:seed": "node --env-file=.env.test-accounts.local scripts/auth-emulator-fixtures.cjs --seed-reusable"
-    ,"dev:accounts:cleanup": "node --env-file=.env.test-accounts.local scripts/auth-emulator-fixtures.cjs --cleanup-reusable"
+    "audit:storage": "node scripts/storage-migration-inventory.cjs",
+    "test:auth": "node --test tests/auth-phase.test.cjs",
+    "dev:auth:seed": "node scripts/auth-emulator-fixtures.cjs --seed",
+    "dev:auth:cleanup": "node scripts/auth-emulator-fixtures.cjs --cleanup",
+    "dev:accounts:seed": "node --env-file=.env.test-accounts.local scripts/auth-emulator-fixtures.cjs --seed-reusable",
+    "dev:accounts:cleanup": "node --env-file=.env.test-accounts.local scripts/auth-emulator-fixtures.cjs --cleanup-reusable"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1147.0",

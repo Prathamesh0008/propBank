@@ -13,6 +13,8 @@ interface R2Configuration {
 const singleton = globalThis as typeof globalThis & { propbankR2Client?: S3Client };
 
 export function getR2Configuration(): R2Configuration {
+  if(process.env.PROPBANK_FIREBASE_MODE==='firebase')return {accountId:'local-mock',accessKeyId:'',secretAccessKey:'',bucketName:'propbank-development-public',publicUrl:''};
+  if(process.env.PROPBANK_FIREBASE_MODE==='emulator'||process.env.FIRESTORE_EMULATOR_HOST)throw new Error('Cloudflare R2 is disabled in emulator mode. Use isolated storage mocks for file tests.');
   const config = {
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID || '',
     accessKeyId: process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || '',
@@ -27,6 +29,8 @@ export function getR2Configuration(): R2Configuration {
 }
 
 export function getR2Client() {
+  if(process.env.PROPBANK_FIREBASE_MODE==='firebase')return {send:async(command:Parameters<typeof import('./local-development-storage').sendLocalStorageCommand>[0])=>(await import('./local-development-storage')).sendLocalStorageCommand(command)} as unknown as S3Client;
+  if(process.env.PROPBANK_FIREBASE_MODE==='emulator'||process.env.FIRESTORE_EMULATOR_HOST)throw new Error('Cloudflare R2 is disabled in emulator mode.');
   if (!singleton.propbankR2Client) {
     const config = getR2Configuration();
     singleton.propbankR2Client = new S3Client({

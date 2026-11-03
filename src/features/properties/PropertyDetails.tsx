@@ -8,10 +8,7 @@ import ReviewHistory from '@/features/services/ReviewHistory';
 import { apiFetch } from '@/lib/api-client';
 import SessionMediaImage from '@/components/SessionMediaImage';
 
-import { useParams, useNavigate, useSearchParams } from "@/lib/navigation";
-import {usePropertyFlowNavigation} from '@/lib/property-flow-navigation';
-import {useAuth} from '@/contexts/AuthContext';
-import {detailText,detailDate,detailAmount,detailArea,propertyDetailFields,tenantDetailFields,managePropertiesReturn} from '@/lib/property-detail-fields';
+import { useParams, useNavigate } from "@/lib/navigation";
 import { ArrowLeft, Eye, MapPin, Home, Calendar, CheckCircle, ClipboardList, FileText, Scale, Wrench, RefreshCw, FileX, Image as ImageIcon, Loader2, MessageSquare } from "lucide-react";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
@@ -36,6 +33,8 @@ import {
 } from "@/ui/select";
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { auth } from "../../firebase";
+import { User, onAuthStateChanged } from "firebase/auth";
 import { API_BASE_URL } from "../../utils/config";
 import { usePropertyDetails } from "../../hooks/useProperties";
 
@@ -133,7 +132,7 @@ interface BuyerInfo {
   updatedAt: string;
 }
 
-interface Property extends Record<string,unknown> {
+interface Property {
   userRole?:string;
   isSold?:boolean;
   id: string;
@@ -272,7 +271,7 @@ const DetailItem = ({ label, value, isCurrency = false, capitalize = false, clas
     <div className={className}>
       <label className="text-sm font-medium text-muted-foreground">{label}</label>
       <p className={`text-sm ${isCurrency ? 'font-semibold' : ''} ${capitalize ? 'capitalize' : ''}`}>
-        {isCurrency ? detailAmount(value) : value}
+        {isCurrency ? `₹${Number(value).toLocaleString()}` : value}
       </p>
     </div>
   );
@@ -281,38 +280,14 @@ const DetailItem = ({ label, value, isCurrency = false, capitalize = false, clas
 const PropertyDetails = () => {
   const { propertyId } = useParams();
   const navigate = useNavigate();
-  const {back:backPropertyStep}=usePropertyFlowNavigation();
-  const [navigationParams]=useSearchParams();
-  const {user,profile,loading:authLoading}=useAuth();
   const { toast } = useToast();
   
-  const { data: propertyData, isLoading: loading, error: propertyError } = usePropertyDetails(propertyId);
+  const { data: propertyData, isLoading: loading } = usePropertyDetails(propertyId);
   const property = propertyData as Property | null;
-  const canViewPrivate=!!user&&['owner','tenant','admin','agent'].includes(property?.userRole||'');
-  const details=propertyDetailFields(property||{});
-  const returnTo=managePropertiesReturn(navigationParams.get('returnTo'),property?.userRole==='tenant'?'tenant':'owned');
-  const fromManage=!!navigationParams.get('returnTo')||canViewPrivate||!!user&&!property;
-  const backToList=()=>fromManage?backPropertyStep(returnTo):navigate(-1);
-  const propertyTenants:Partial<TenantInfo>[]=canViewPrivate&&property?(property.tenants?.length?property.tenants:
-    property.tenantName||property.tenantEmail||property.personName||property.mobileNumber?[{
-      id:property.id,firstName:property.tenantName||property.personName,email:property.tenantEmail,
-      phone:property.mobileNumber||property.primaryNo||property.ultNo,emergencyContact:property.emergencyContact,
-      ...{primaryPhone:property.primaryNo,alternatePhone:property.ultNo},
-      employmentStatus:property.employmentStatus,employer:property.employer,
-      spouse:{firstName:property.spouseFirstName,lastName:property.spouseLastName,email:property.spouseEmail,phone:property.spousePhone,employmentStatus:property.spouseEmploymentStatus,employer:property.spouseEmployer,notes:property.spouseNotes},
-      monthlyRent:property.monthlyRent,securityDeposit:property.securityDeposit,leaseStartDate:property.agreementStartDate,
-      leaseEndDate:property.agreementEndDate,paymentDueDate:property.paymentDueDate,noticePeriod:property.noticePeriod,
-    }]:[]):[];
   
-  const propertyAreas=property?[
-                    ['Carpet Area',detailArea(property.carpetArea,property.carpetAreaUnit||property.areaUnit)],
-                    ['Plot Area',detailArea(property.plotArea,property.plotAreaUnit||property.areaUnit)],
-                    ['Constructed Area',detailArea(property.constructedArea,property.constructedAreaUnit||property.areaUnit)],
-                    ['Area (sq ft)',property.squareFeet>0?String(property.squareFeet):undefined],
-                  ].filter(([,value])=>value):[];
-  const [requestState,setRequestState]=useState<{id:string;rows:RaisedRequest[]}>({id:'',rows:[]});
-  const raisedRequests=requestState.id===propertyId?requestState.rows:[];
+  const [raisedRequests, setRaisedRequests] = useState<RaisedRequest[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
   const [isTerminationDialogOpen, setIsTerminationDialogOpen] = useState(false);
   const [selectedNoticePeriod, setSelectedNoticePeriod] = useState("");
   const [noticeStartDate, setNoticeStartDate] = useState<string>(() => {
@@ -323,7 +298,7 @@ const PropertyDetails = () => {
     return `${year}-${month}-${day}`;
   });
   const [submittingTermination, setSubmittingTermination] = useState(false);
-  const currentUserRole=profile?.role||null;
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
 
   useEffect(() => {
     if (property) {
@@ -335,20 +310,39 @@ const PropertyDetails = () => {
   }, [property]);
 
   useEffect(() => {
-    setRequestState({id:propertyId||'',rows:[]});
-    setIsTerminationDialogOpen(false);
-    if(!propertyId||!user||!['owner','tenant','admin'].includes(property?.userRole||'')){setLoadingRequests(false);return;}
-    const controller=new AbortController();
-    void fetchRaisedRequests(propertyId,controller.signal);
-    return()=>controller.abort();
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        try {
+          const res = await apiFetch(`${API_BASE_URL}/users/${currentUser.uid}`);
+          if (res.ok) {
+            const userData = await res.json();
+            // Handle both {success: true, user: {...}} and direct {...} formats
+            const role = userData.user?.role || userData.role || 'individual';
+            setCurrentUserRole(role);
+          }
+        } catch (e) {
+          console.error("Error fetching user role", e);
+        }
+      } else {
+        setCurrentUserRole(null);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (propertyId) {
+      if(user && ["owner","tenant","admin"].includes(property?.userRole||""))fetchRaisedRequests(propertyId);
+      else setRaisedRequests([]);
+    }
   }, [propertyId,user,property?.userRole]);
 
-  const fetchRaisedRequests = async (id: string, signal:AbortSignal) => {
+  const fetchRaisedRequests = async (id: string) => {
     setLoadingRequests(true);
     try {
-      const response = await apiFetch(`${API_BASE_URL}/admin/notifications?propertyId=${encodeURIComponent(id)}`, {
+      const response = await apiFetch(`${API_BASE_URL}/admin/notifications?propertyId=${id}`, {
         method: 'GET',
-        signal,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -368,20 +362,22 @@ const PropertyDetails = () => {
           'document_upload'
         ];
         const filteredRequests = Array.isArray(data)
-          ? data.filter((req: RaisedRequest) => req.propertyId===id&&requestTypes.includes(req.type))
+          ? data.filter((req: RaisedRequest) => requestTypes.includes(req.type))
           : [];
-        if(!signal.aborted)setRequestState({id,rows:filteredRequests});
+        setRaisedRequests(filteredRequests);
       }
     } catch (error) { /* Preserve existing best-effort behavior. */ } finally {
-      if(!signal.aborted)setLoadingRequests(false);
+      setLoadingRequests(false);
     }
   };
 
   const formatPrice = (property: Property) => {
-    const fallback=property.price>0?property.price:undefined;
-    const amount=property.listingType==='rent'?property.expectedRent||property.monthlyRent||fallback:property.sellingPrice||fallback;
-    const price=detailAmount(amount);
-    return price ? price+(property.listingType==='rent'?'/month':'') : '';
+    if (property.listingType === 'rent') {
+      return property.monthlyRent ? `₹${Number(property.monthlyRent).toLocaleString()}/month` : 'Price not set';
+    } else if (property.listingType === 'sell') {
+      return property.sellingPrice ? `₹${Number(property.sellingPrice).toLocaleString()}` : 'Price not set';
+    }
+    return 'Price not set';
   };
 
   const getListingTypeBadge = (listingType: string) => {
@@ -460,7 +456,7 @@ const PropertyDetails = () => {
 
   const isOwner = user && property && user.uid === property.ownerUID;
 
-  if (loading||authLoading) {
+  if (loading) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="flex items-center justify-center min-h-[400px]">
@@ -474,14 +470,14 @@ const PropertyDetails = () => {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="text-center py-12">
-          <p className="text-gray-500 text-lg">{propertyError ? "Property details could not be loaded. Please try again or check your access." : "Property not found"}</p>
+          <p className="text-gray-500 text-lg">Property not found</p>
           <Button
             variant="outline"
-            onClick={() => fromManage?backPropertyStep(returnTo):navigate("/")}
+            onClick={() => navigate("/")}
             className="mt-4"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
-            {fromManage?"Back to Manage Properties":"Back to Home"}
+            Back to Home
           </Button>
         </div>
       </div>
@@ -491,7 +487,7 @@ const PropertyDetails = () => {
   return (
     <div className={styles.page}>
       <>
-        <title>{`${property.title} | PropBank`}</title>
+        <title>{property.title} | PropBank</title>
       </>
 
       {/* Hero Section */}
@@ -514,11 +510,11 @@ const PropertyDetails = () => {
                 {property.propertyType}
               </Badge>
               <Badge variant="outline" className="text-white border-white/30 bg-white/10 backdrop-blur-sm px-3 py-1">
-                {({rent:'For Rent',sell:'For Sale',sell_rent:'For Sale and Rent',manage:'Private Management'} as Record<string,string>)[property.listingType]||property.listingType}
+                {property.listingType === 'rent' ? 'For Rent' : 'For Sale'}
               </Badge>
               <Badge variant="outline" className={`border-white/30 bg-white/10 backdrop-blur-sm px-3 py-1 ${property.rentalStatus === 'rented' ? 'text-amber-300 border-amber-300/50' : 'text-green-300 border-green-300/50'
                 }`}>
-                {property.isSold?'Sold':property.rentalStatus==='rented'||property.isRented?'Rented':'Available'}
+                {property.rentalStatus === 'rented' ? 'Rented' : 'Available'}
               </Badge>
             </div>
 
@@ -528,7 +524,7 @@ const PropertyDetails = () => {
 
             <div className="flex items-center text-gray-300 text-lg">
               <MapPin className="h-5 w-5 mr-2 text-blue-400" />
-              {property.location||property.address}
+              {property.location}
             </div>
 
             <div className="pt-4 flex flex-wrap gap-4">
@@ -550,8 +546,7 @@ const PropertyDetails = () => {
           variant="outline"
           size="icon"
           className="absolute top-4 left-4 rounded-full bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white transition-all backdrop-blur-md"
-          onClick={backToList}
-          aria-label={fromManage?"Back to Manage Properties":"Back"}
+          onClick={() => navigate(-1)}
         >
           <ArrowLeft className="h-5 w-5" />
         </Button>
@@ -567,12 +562,12 @@ const PropertyDetails = () => {
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-2">
                   <MapPin className="h-5 w-5 text-muted-foreground" />
-                  <span>{[property.address||property.location,property.city,property.state,property.zipCode].filter(Boolean).join(', ')}</span>
+                  <span>{property.address || property.location}, {property.city}, {property.state} {property.zipCode}</span>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <Home className="h-5 w-5 text-muted-foreground" />
-                  <span className="capitalize">{[detailText(property.propertyCategory)||property.propertyType,detailText(property.structure),property.configuration].filter(Boolean).join(' ? ')}</span>
+                  <span className="capitalize">{property.propertyType} - {property.configuration}</span>
                 </div>
 
                 {/* Unit Condition */}
@@ -587,14 +582,13 @@ const PropertyDetails = () => {
 
                 {/* Last Modified */}
                 {
-                  detailDate(property.updatedAt) && (
+                  property.updatedAt && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Calendar className="h-4 w-4" />
                       <span>Last modified: {new Date(property.updatedAt).toLocaleDateString('en-GB')} at {new Date(property.updatedAt).toLocaleTimeString()}</span>
                     </div>
                   )
                 }
-                {property.description&&<p className="text-sm whitespace-pre-wrap">{property.description}</p>}
               </CardContent >
             </Card >
 
@@ -620,9 +614,6 @@ const PropertyDetails = () => {
                     <span className="text-sm">No image available</span>
                   </div>
                 </div>
-                {property.images?.length>1&&<div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
-                  {property.images.slice(1).map((image,index)=><div key={image+index} className="rounded-lg overflow-hidden border bg-gray-100 relative h-32 flex items-center justify-center group"><SessionMediaImage src={image} alt={property.title+' '+(index+2)} className="w-full h-full object-cover" onError={event=>{event.currentTarget.style.display='none';}}/></div>)}
-                </div>}
               </CardContent>
             </Card>
 
@@ -656,43 +647,73 @@ const PropertyDetails = () => {
             }
 
             {/* Unit Details */}
-            {details.specifications.length>0&&<Card>
+            <Card>
               <CardHeader>
                 <CardTitle>Unit Details</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {details.specifications.map(item=><DetailItem key={item.label} {...item}/>)}
-
+                  {[
+                    { label: 'Unit Number', value: property.unitNumber || 'N/A' },
+                    { label: 'Floor', value: property.floor || 'N/A' },
+                    ...(property.buildingName?.trim()&&property.buildingName.trim()!==property.title.trim()?[{ label: 'Building / Society Name', value: property.buildingName }]:[]),
+                    { label: 'Location', value: property.location || property.address || 'N/A', className: 'md:col-span-2' },
+                  ].map((item, idx) => (
+                    <DetailItem key={idx} {...item} />
+                  ))}
                 </div>
               </CardContent>
-            </Card>}
+            </Card>
 
             {/* Area Details */}
-            {propertyAreas.length>0&&<Card>
+            <Card>
               <CardHeader>
                 <CardTitle>Area Details</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {propertyAreas.map(([label,value])=><div key={label} className="text-center"><div className="text-xl font-semibold">{value}</div><div className="text-sm text-muted-foreground">{label}</div></div>)}
-
+                  <div className="text-center">
+                    <div className="text-xl font-semibold">{property.carpetArea || 'N/A'}</div>
+                    <div className="text-sm text-muted-foreground">Carpet Area</div>
+                  </div>
+                  {property.plotArea && (
+                    <div className="text-center">
+                      <div className="text-xl font-semibold">{property.plotArea}</div>
+                      <div className="text-sm text-muted-foreground">Plot Area</div>
+                    </div>
+                  )}
+                  <div className="text-center">
+                    <div className="text-xl font-semibold">{property.constructedArea || 'N/A'}</div>
+                    <div className="text-sm text-muted-foreground">Constructed Area</div>
+                  </div>
                 </div>
               </CardContent>
-            </Card>}
+            </Card>
 
 
 
             {/* Agreement & Security Details */}
             {
-              (details.financial.length>0||!!property.rentSchedule?.length) && (
+              (property.securityDeposit || property.agreementPeriod || property.agreementStartDate || property.agreementEndDate || property.noticePeriod) && (
                 <Card>
                   <CardHeader>
                     <CardTitle>Agreement & Security</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {details.financial.map(item=><DetailItem key={item.label} {...item}/>)}
+                      {[
+                        { label: 'Security Deposit', value: property.securityDeposit, isCurrency: true },
+                        { label: 'Agreement Period', value: property.agreementPeriod },
+                        { label: 'Agreement Start Date', value: property.agreementStartDate ? new Date(property.agreementStartDate).toLocaleDateString() : null },
+                        { label: 'Agreement End Date', value: property.agreementEndDate ? new Date(property.agreementEndDate).toLocaleDateString() : null },
+                        { label: 'Notice Period', value: property.noticePeriod },
+                        { label: 'Lock-in Period', value: property.lockInPeriod },
+                        { label: 'Payment Due Date', value: property.paymentDueDate ? `${property.paymentDueDate} of each month` : null },
+                        { label: 'Annual Escalation', value: property.escalationPercentage ? `${property.escalationPercentage}%` : null },
+                        { label: 'Escalation Amount', value: property.escalationAmount, isCurrency: true },
+                      ].map((item, idx) => (
+                        <DetailItem key={idx} {...item} />
+                      ))}
                     </div>
 
                     {property.rentSchedule && property.rentSchedule.length > 0 && (
@@ -714,7 +735,7 @@ const PropertyDetails = () => {
                                 {property.rentSchedule.map((item: any, idx: number) => (
                                   <tr key={idx} className="border-t">
                                     <td className="px-4 py-2">{item.year}</td>
-                                    <td className="px-4 py-2">{item.months || ''}</td>
+                                    <td className="px-4 py-2">{item.months || '11'}</td>
                                     <td className="px-4 py-2">₹{Number(item.amount).toLocaleString()}</td>
                                     <td className="px-4 py-2">{item.fromDate ? new Date(item.fromDate).toLocaleDateString() : 'N/A'}</td>
                                     <td className="px-4 py-2">{item.toDate ? new Date(item.toDate).toLocaleDateString() : 'N/A'}</td>
@@ -733,14 +754,22 @@ const PropertyDetails = () => {
 
             {/* Unit Condition & Maintenance */}
             {
-              details.maintenance.length>0 && (
+              (property.unitCondition || property.maintenanceToBePaidBy || property.rentalStatus || property.projectCondition || (property.possessionDate && !(property.listingType === 'rent' && property.rentalStatus === 'rented'))) && (
                 <Card>
                   <CardHeader>
                     <CardTitle>Unit Condition & Maintenance</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {details.maintenance.map(item=><DetailItem key={item.label} {...item}/>)}
+                      {[
+                        { label: 'Unit Condition', value: property.unitCondition, capitalize: true },
+                        { label: 'Maintenance To Be Paid By', value: property.maintenanceToBePaidBy, capitalize: true },
+                        { label: 'Rental Status', value: property.rentalStatus, capitalize: true },
+                        { label: 'Project Condition', value: property.projectCondition },
+                        { label: 'Possession Date', value: property.possessionDate && !(property.listingType === 'rent' && property.rentalStatus === 'rented') ? new Date(property.possessionDate).toLocaleDateString() : null },
+                      ].map((item, idx) => (
+                        <DetailItem key={idx} {...item} />
+                      ))}
                     </div>
                   </CardContent>
                 </Card>
@@ -845,13 +874,13 @@ const PropertyDetails = () => {
 
             {/* Comments */}
             {
-              details.additional.length>0 && (
+              property.specificComments && (
                 <Card>
                   <CardHeader>
                     <CardTitle>Additional Comments</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {details.additional.map(item=><DetailItem key={item.label} {...item}/>)}
+                    <p className="text-sm">{property.specificComments}</p>
                   </CardContent>
                 </Card>
               )
@@ -859,20 +888,20 @@ const PropertyDetails = () => {
 
             {/* Tenants Information - Moved below Additional Comments */}
             {
-              propertyTenants.length>0 && (
+              property.tenants && property.tenants.length > 0 && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Home className="h-5 w-5" />
-                      Tenant Information ({propertyTenants.length})
+                      Current Tenants ({property.tenants.length})
                     </CardTitle>
                     <CardDescription>
-                      Tenants recorded for this property
+                      Active tenants for this property
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-6">
-                      {propertyTenants.map((tenant, index) => (
+                      {property.tenants.filter(tenant => tenant.isActive).map((tenant, index) => (
                         <div key={tenant.id}>
                           {index > 0 && <div className="border-t pt-6 mt-6"></div>}
                           <div className="flex items-center justify-between mb-4">
@@ -888,7 +917,20 @@ const PropertyDetails = () => {
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {tenantDetailFields(tenant).map(item=><DetailItem key={item.label} {...item}/>)}
+                            {[
+                              { label: 'Phone', value: tenant.phone },
+                              { label: 'Monthly Rent', value: tenant.monthlyRent, isCurrency: true },
+                              { label: 'Lease Start', value: tenant.leaseStartDate ? new Date(tenant.leaseStartDate).toLocaleDateString() : null },
+                              { label: 'Lease End', value: tenant.leaseEndDate ? new Date(tenant.leaseEndDate).toLocaleDateString() : null },
+                              { label: 'Employer', value: tenant.employer },
+                              { label: 'Payment Due', value: tenant.paymentDueDate ? `${tenant.paymentDueDate}th of each month` : null },
+                              { label: 'Notice Period', value: tenant.noticePeriod },
+                              { label: 'Annual Escalation', value: tenant.escalationPercentage },
+                              { label: 'Emergency Contact', value: tenant.emergencyContact },
+                              { label: 'Last Modified', value: tenant.updatedAt ? `${new Date(tenant.updatedAt).toLocaleDateString('en-GB')} at ${new Date(tenant.updatedAt).toLocaleTimeString()}` : null },
+                            ].map((item, idx) => (
+                              <DetailItem key={idx} {...item} />
+                            ))}
                           </div>
 
                           {/* Rent Schedule Display */}
@@ -912,7 +954,7 @@ const PropertyDetails = () => {
                                     {tenant.rentSchedule.map((item, idx) => (
                                       <tr key={idx} className="border-t">
                                         <td className="px-4 py-2">{item.year}</td>
-                                        <td className="px-4 py-2">{item.months || ''}</td>
+                                        <td className="px-4 py-2">{item.months || '11'}</td>
                                         <td className="px-4 py-2">₹{Number(item.amount).toLocaleString()}</td>
                                         <td className="px-4 py-2">{item.fromDate ? new Date(item.fromDate).toLocaleDateString() : 'N/A'}</td>
                                         <td className="px-4 py-2">{item.toDate ? new Date(item.toDate).toLocaleDateString() : 'N/A'}</td>
@@ -1123,7 +1165,7 @@ const PropertyDetails = () => {
 
           <div className="space-y-6">
             {/* Pricing */}
-            {!!formatPrice(property) && (
+            {!(property.listingType === 'rent' && property.rentalStatus === 'rented') && (
               <Card>
                 <CardHeader>
                   <CardTitle>Pricing</CardTitle>
@@ -1132,10 +1174,10 @@ const PropertyDetails = () => {
                   <div className="text-3xl font-bold text-primary mb-2">
                     {formatPrice(property)}
                   </div>
-                  {detailDate(property.createdAt)&&<div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
                     <Calendar className="h-4 w-4" />
-                    Listed on {detailDate(property.createdAt)}
-                  </div>}
+                    Listed on {new Date(property.createdAt).toLocaleDateString()}
+                  </div>
 
                   {/* Detailed Rent Information for Rentals */}
                   {property.listingType === 'rent' && (
@@ -1171,7 +1213,30 @@ const PropertyDetails = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {canViewPrivate ? details.owner.map(item=><div key={item.label}><label className="text-xs font-medium text-muted-foreground">{property.ownerRole==='agent'?item.label.replace('Owner','Agent'):item.label}</label><p className={item.label==='Owner Name'?'text-sm font-medium':'text-sm'}>{item.value}</p></div>) : <div className="pt-2"><p className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-100">Contact details are hidden for privacy. Please use the "Enquire Now" button to contact the admin.</p></div>}
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">{property.ownerRole === "agent" ? "Agent Name" : "Owner Name"}</label>
+                    <p className="text-sm font-medium">{property.ownerName}</p>
+                  </div>
+                  {(currentUserRole === 'admin' || isOwner || isTenant) ? (
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">{property.ownerRole === "agent" ? "Agent Email" : "Owner Email"}</label>
+                        <p className="text-sm">{property.ownerEmail}</p>
+                      </div>
+                      {property.ownerPhone && (
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground">{property.ownerRole === "agent" ? "Agent Phone" : "Owner Phone"}</label>
+                          <p className="text-sm">{property.ownerPhone}</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="pt-2">
+                      <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-100">
+                        Contact details are hidden for privacy. Please use the "Enquire Now" button to contact the admin.
+                      </p>
+                    </div>
+                  )}
                   <div className="pt-2">
                     <label className="text-xs font-medium text-muted-foreground">Property Status</label>
                     <div className="text-sm mt-1">

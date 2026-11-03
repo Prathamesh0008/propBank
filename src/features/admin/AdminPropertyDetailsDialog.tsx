@@ -70,7 +70,6 @@ interface AdminPropertyDetailsDialogProps {
     isOpen: boolean;
     onOpenChange: (open: boolean) => void;
     onVerificationChange?:()=>void|Promise<void>;
-    onModerationChange?:(property:Property)=>void;
 }
 
 const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
@@ -78,7 +77,6 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
     isOpen,
     onOpenChange,
     onVerificationChange,
-    onModerationChange,
 }) => {
     const [inspectionReports, setInspectionReports] = useState<any[]>([]);
     const [loadingReports, setLoadingReports] = useState(false);
@@ -177,6 +175,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent className={`${styles.detailsDialog} max-w-[100vw] w-screen h-[100dvh] max-h-[100dvh] sm:max-w-[100vw] sm:rounded-none border-0 p-0 flex flex-col gap-0 overflow-hidden`}>
                 <DialogHeader className={`${styles.dialogHeading} p-6 pb-6 border-b shrink-0 z-10 relative`}>
+                    {property.createdAs==='tenant'&&<section className="max-w-6xl mx-auto mb-4 p-3 border rounded bg-amber-50"><p className="font-semibold">Tenant-submitted property · Owner verification {property.ownershipVerification}</p><p>Submitted by: {property.submittedByUID}</p><dl className="grid sm:grid-cols-2 gap-2 text-sm">{Object.entries(property.reportedOwner||{}).map(([key,value])=><div key={key} className="break-words"><dt className="font-medium">{({companyName:'Owner company',personName:'Owner person',phone:'Owner contact',alternatePhone:'Alternate contact',email:'Owner email',workingProfile:'Working profile'} as Record<string,string>)[key]||key}</dt><dd>{value||'Not supplied'}</dd></div>)}</dl></section>}
                     <div className="max-w-6xl mx-auto w-full flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pr-6">
                         <div>
                             <DialogTitle className="text-3xl font-bold mb-2 text-slate-800 tracking-tight">{propertyName}</DialogTitle>
@@ -215,7 +214,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                 </DialogHeader>
 
                 <ScrollArea className="flex-1 p-6 md:p-10 overflow-y-auto">
-                    <ListingModeration key={`${property.id}:${property.moderationRevision||0}`} property={property} admin onDecision={onModerationChange}/>
+                    <ListingModeration key={`${property.id}:${property.moderationRevision||0}`} property={property} admin/>
                     {property.createdAs==='tenant'&&<OwnerVerification key={property.id} propertyId={property.id} status={property.ownershipVerification} version={property.ownershipVerificationVersion} reason={property.ownershipVerificationReason} history={property.ownershipVerificationHistory} evidenceDocuments={documents} onDecision={onVerificationChange}/>}
                     <div className="max-w-6xl mx-auto w-full flex flex-col gap-8 pb-16">
 

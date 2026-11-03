@@ -1,4 +1,6 @@
 // Diagnose read configuration without printing credentials or document contents.
+if(!process.argv.includes('--allow-live-firebase')){console.error('Explicit --allow-live-firebase is required: this diagnostic can read production Firestore and consume quota.');process.exit(1);}
+process.env.PROPBANK_ALLOW_LIVE_FIREBASE='1';
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),ts=require('typescript');
 require('@next/env').loadEnvConfig(process.cwd(),false,{info:()=>{},error:()=>{}});
 const root=path.resolve('src'),cache=new Map();
@@ -6,7 +8,7 @@ function load(file) {
  let resolved=file.startsWith('@/')?path.join(root,file.slice(2)):path.resolve(file);if(!resolved.endsWith('.ts'))resolved+='.ts';
  if(cache.has(resolved))return cache.get(resolved);const exports={};cache.set(resolved,exports);
  const code=ts.transpileModule(fs.readFileSync(resolved,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
- vm.runInNewContext(code,{exports,Date,Buffer,URL,Headers,Request,Response,process,require:name=>name==='server-only'?{}:name.startsWith('.')?load(path.resolve(path.dirname(resolved),name)):name.startsWith('@/')?load(name):require(name)});return exports;
+ vm.runInNewContext(code,{exports,Date,Buffer,URL,Headers,Request,Response,process,require:name=>name==='server-only'?{}:name.endsWith('.cjs')?require(path.resolve(path.dirname(resolved),name)):name.startsWith('.')?load(path.resolve(path.dirname(resolved),name)):name.startsWith('@/')?load(name):require(name)});return exports;
 }
 (async()=>{
  let stage='configuration';try{

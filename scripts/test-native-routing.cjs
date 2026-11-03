@@ -5,6 +5,7 @@ const root=path.resolve(__dirname,'..');
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function main() {
  const wrappersOnly=process.argv.includes('--compatibility-only');
+ if(!wrappersOnly&&!process.argv.includes('--allow-live-firebase'))throw new Error('Explicit --allow-live-firebase is required: public routing checks can read production Firestore. Use isolated tests for routine development.');
  const inventory=JSON.parse(fs.readFileSync(path.join(root,'migration-audit/api-inventory.json'),'utf8'));
  const child=spawn(process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port','18090'],{cwd:root,windowsHide:true,env:process.env,stdio:['ignore','pipe','pipe']});
  let log='';child.stdout.on('data',v=>{log+=v;});child.stderr.on('data',v=>{log+=v;});

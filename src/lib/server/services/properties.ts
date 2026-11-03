@@ -5,7 +5,6 @@ import {propertyCategory as parsePropertyCategory,PROPERTY_CONFIGURATIONS,PROPER
 import { createHash, randomInt, randomUUID } from 'node:crypto';
 import type { Query, DocumentSnapshot } from 'firebase-admin/firestore';
 import {publicListing} from '../../listing-policy';
-import {newestApprovedFirst,newestSubmittedFirst} from '../../property-order';
 import { AccessError, requireUser } from '../auth';
 import { COLLECTIONS, SITE_SETTINGS_DOCUMENT, getDatabase } from '../firestore';
 import { requireOwnerOrAdmin, requireSelfOrAdmin, isPropertyTenant } from '../permissions';
@@ -87,18 +86,19 @@ export async function listProperties(request:Request) {
     const rented=await tenantProperties(ownerUID,user.uid===ownerUID&&user.token.email_verified===true?user.token.email||'':'');
     const merged=new Map(own.map(({property})=>[s(property.id),propertyResponse(property,'normal','owner')]));
     for(const {property} of submitted)merged.set(s(property.id),propertyResponse(property,'normal','agent'));
-    for (const property of rented) if(!merged.has(s(property.id))) merged.set(s(property.id),propertyResponse(property,'tenant','tenant'));
+    // Match the dedicated tenant endpoint so the combined response can replace
+    // its duplicate request without losing fields such as the displayed price.
+    for (const property of rented) if(!merged.has(s(property.id))) merged.set(s(property.id),propertyResponse(property,'normal','tenant'));
     return listResponse([...merged.values()],{ownerUID});
   }
   if(params.get('admin')==='true') {
     const user=await requireUser(request);if(user.role!=='admin')throw new AccessError(403,'Administrator access required');
-    const rows=await queryProperties(properties());return listResponse(rows.map(row=>row.property).sort(newestSubmittedFirst).map(property=>propertyResponse(property,'normal','admin')));
+    const rows=await queryProperties(properties());return listResponse(rows.map(row=>propertyResponse(row.property,'normal','admin')));
   }
   const listingType=params.get('listingType')||'';
-  // Use the existing single-field index; check the remaining eligibility rules
-  // below without requiring a deployed composite index or reading pending records.
-  const query:Query=properties().where('moderationStatus','==','approved');
-  const rows=(await queryProperties(query)).sort((a,b)=>newestApprovedFirst(a.property,b.property));
+  let query:Query=properties().where('isActive','==',true);
+  if (listingType&&!['rent','sell'].includes(listingType)) query=query.where('listingType','==',listingType);
+  const rows=await queryProperties(query);
   const filtered=rows.filter(row=>available(row.property,row.raw)&&!(listingType==='rent'&&row.property.rentalStatus==='rented')&&(!listingType||row.property.listingType===listingType||row.property.listingType==='sell_rent'&&['rent','sell'].includes(listingType))).map(row=>publicPropertyResponse(listingType&&row.property.listingType==='sell_rent'?{...row.property,listingType}:row.property));
   return listResponse(filtered,{...(await siteSettings() || {}),...(listingType?{listingType}:{})});
 }
@@ -107,12 +107,13 @@ export async function searchProperties(request:Request) {
   const term=params.get('q')||'';
   const listingType=params.get('listingType')||'';
   const projectCondition=params.get('projectCondition')||'';
-  const query:Query=properties().where('moderationStatus','==','approved');
-  const rows=(await queryProperties(query)).sort((a,b)=>newestApprovedFirst(a.property,b.property));
+  let query:Query=properties().where('isActive','==',true);
+  if (listingType&&!['rent','sell'].includes(listingType)) query=query.where('listingType','==',listingType);
+  if (projectCondition) query=query.where('projectCondition','==',projectCondition);
+  const rows=await queryProperties(query,false);
   const search=term.trim().toLowerCase();
   const filtered=rows.filter(({property,raw})=>{
     if (!available(property,raw)||listingType==='rent'&&property.rentalStatus==='rented'||listingType&&property.listingType!==listingType&&!(property.listingType==='sell_rent'&&['rent','sell'].includes(listingType))) return false;
-    if (projectCondition && property.projectCondition!==projectCondition) return false;
     if (!term) return true;
     const fields=['location','address','city','state','title','propertyType','configuration','unitNumber','floor'];
     return fields.some(key=>!!s(property[key])&&s(property[key]).toLowerCase().includes(search)) || ['bhk','rk'].some(tag=>search.includes(tag)&&s(property.configuration).toLowerCase().includes(tag));
@@ -164,39 +165,22 @@ async function generateID() {
   return properties().doc().id;
 }
 export async function createProperty(request:Request) {
-  const reference=randomUUID(),started=Date.now();
-  let operation='authenticate_and_profile';
-  try{return await createPropertyRecord(request,step=>{operation=step;});}
+  try{return await createPropertyRecord(request);}
   catch(error){
-    // Follow preserved upload causes so Firestore quota/permission errors are not
-    // mistaken for R2 failures. Never log submitted fields or raw SDK messages.
-    let dependency=error;
-    for(let depth=0;depth<6&&dependency instanceof Error&&'cause' in dependency&&dependency.cause;depth++)dependency=dependency.cause;
-    const rawCode=typeof dependency==='object'&&dependency!==null&&'code' in dependency?String(dependency.code):'unknown';
-    const code=/^[a-zA-Z0-9/_-]{1,80}$/.test(rawCode)?rawCode:'unknown';
-    const quota=['8','RESOURCE_EXHAUSTED','resource-exhausted'].includes(code);
-    const permission=['7','PERMISSION_DENIED','permission-denied','auth/insufficient-permission'].includes(code);
-    const unavailable=['14','UNAVAILABLE','unavailable','4','DEADLINE_EXCEEDED','deadline-exceeded'].includes(code);
-    const configuration=['16','UNAUTHENTICATED','unauthenticated','auth/invalid-credential','app/invalid-credential'].includes(code);
-    const controlled=dependency instanceof AccessError?dependency:error instanceof ApiError||error instanceof AccessError?error:undefined;
-    const dependencyName=dependency instanceof Error&&/^[a-zA-Z][a-zA-Z0-9_]{0,79}$/.test(dependency.name)?dependency.name:'unknown';
-    const metadata=typeof dependency==='object'&&dependency!==null&&'$metadata' in dependency?dependency.$metadata:undefined;
-    const storageStatus=isRecord(metadata)&&typeof metadata.httpStatusCode==='number'?metadata.httpStatusCode:undefined;
-    const frames=dependency instanceof Error?dependency.stack?.split('\n').slice(1,9).filter(line=>/^\s+at /.test(line)).map(line=>line.replace(/\?.*?(?=[:)])/g,'')):[];
-    console.error(`property_creation_failed ${JSON.stringify({reference,operation,code,dependencyName,storageStatus,durationMs:Date.now()-started,frames})}`);
-    const responseCode=quota?'FIRESTORE_RESOURCE_EXHAUSTED':permission?'PROPERTY_PERMISSION_DENIED':unavailable?'SERVICE_UNAVAILABLE':configuration?'PROPERTY_CONFIGURATION_ERROR':'PROPERTY_CREATION_FAILED';
-    const reason=quota?'The property database has reached its service quota. Please try again after service is restored or contact support.':
-      permission?'Property submission is unavailable because server permissions need attention. Please contact support.':
-      unavailable?'The property database is temporarily unavailable. Please try again later.':
-      configuration?'Property submission is unavailable because server configuration needs attention. Please contact support.':
-      controlled?controlled.message:'Property could not be saved. Please share this reference with support.';
-    const status=quota||permission||unavailable||configuration?503:controlled?controlled.status:503;
-    return jsonResponse({success:false,message:`${reason} Reference: ${reference}`,code:controlled instanceof AccessError?controlled.code||responseCode:responseCode,reference},status);
+    if(error instanceof ApiError||error instanceof AccessError)throw error;
+    const reference=randomUUID(),code=typeof error==='object'&&error!==null&&'code' in error?String(error.code):'unknown';
+    const category=/^(auth\/[a-z-]+|[a-z-]+|\d{1,2})$/.test(code)?code:'unknown';
+    // Stack frames identify the source without logging exception messages,
+    // payloads, recipient addresses or credential details.
+    const frames=error instanceof Error?error.stack?.split('\n').slice(1,5).map(line=>line.replace(/\?.*?(?=[:)])/g,'')):[];
+    console.error(`property_creation_failed ${JSON.stringify({reference,code:category,frames})}`);
+    const reason=['7','permission-denied','auth/insufficient-permission'].includes(code)?'Property persistence or account lookup was denied. Server permissions need attention.':
+      ['14','unavailable','4','deadline-exceeded'].includes(code)?'The property database is unavailable. Please retry.':'Property could not be saved. Please share this reference with support.';
+    return jsonResponse({success:false,message:`${reason} Reference: ${reference}`,code:'PROPERTY_CREATION_FAILED',reference},503);
   }
 }
-async function createPropertyRecord(request:Request,step:(operation:string)=>void) {
+async function createPropertyRecord(request:Request) {
   const user=await requireUser(request);
-  step('validate_submission');
   let req:RecordData;
   let submissionFingerprint='';
   let body:unknown;
@@ -241,7 +225,6 @@ async function createPropertyRecord(request:Request,step:(operation:string)=>voi
   const tenantCreated=req.createdAs==='tenant';
   req.furnishedChecklist=activeFurnishedItems(req.furnishedChecklist,req.unitCondition,req.structure);
   if(user.role==='agent'&&!tenantCreated) {
-    step('agent_owner_account_lookup');
     if(!req.agentOwnerEmail||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s(req.agentOwnerEmail)))return propertyError('A registered legal owner email is required for agent listings',400);
     try {const account=await getFirebaseAdminAuth().getUserByEmail(s(req.agentOwnerEmail));if(account.disabled||account.emailVerified===false||account.uid===user.uid)return propertyError('Legal owner must be a separate active, verified account',400);req.ownerUID=account.uid;}
     catch(error){if((error as {code?:string}).code==='auth/user-not-found')return propertyError('Registered legal owner account not found',400);throw error;}
@@ -251,9 +234,7 @@ async function createPropertyRecord(request:Request,step:(operation:string)=>voi
     const dates=[s(req.agreementStartDate),s(req.agreementEndDate)];
     if(dates.some(value=>!/^\d{4}-\d{2}-\d{2}$/.test(value)||!Number.isFinite(Date.parse(value)))||dates[1]<dates[0])return propertyError('Valid agreement start and end dates are required',400);
   }
-  if(!tenantCreated&&req.rentalStatus==='rented') {
-    try{validContact(req.mobileNumber);}catch{return propertyError('Enter a valid Indian tenant mobile number',400);}
-  }
+  if(!tenantCreated&&req.rentalStatus==='rented')validContact(req.mobileNumber);
   if(Array.isArray(req.rentSchedule)&&req.rentSchedule.length){
     const rows=req.rentSchedule.filter(isRecord).map((row,index)=>({year:s(row.year),months:s(row.months)||additionalRentPeriod(s(req.agreementStartDate),s(req.agreementPeriod),index)?.months||'',amount:s(row.amount),fromDate:s(row.fromDate).slice(0,10),toDate:s(row.toDate).slice(0,10)}));
     if(rows.length!==req.rentSchedule.length)return propertyError('Invalid year-wise rent schedule',400);
@@ -264,36 +245,26 @@ async function createPropertyRecord(request:Request,step:(operation:string)=>voi
   }
   if (!req.propertyTitle||!req.propertyType||!req.location||(!tenantCreated&&!req.ownerUID)) return propertyError('Missing required fields: propertyTitle, propertyType, location, ownerUID',400);
   if(!tenantCreated&&user.role!=='agent')requireSelfOrAdmin(user,s(req.ownerUID));
-  step('owner_profile_read');
-  const ownerUID=tenantCreated?user.uid:s(req.ownerUID);
-  // Authentication already read and validated this profile. Avoid charging a
-  // second read for the common owner/tenant submission path.
-  const owner=ownerUID===user.uid&&user.profile?{...user.profile,...model('User',user.profile),uid:user.uid,isActive:user.profile.isActive!==false}:await getUser(ownerUID);
+  const owner=await getUser(tenantCreated?user.uid:s(req.ownerUID));
   if (!owner||owner.isActive===false) return propertyError('Owner must have an active profile',400);
   if(!tenantCreated&&user.role==='admin'&&user.uid!==s(req.ownerUID)){
-    step('admin_owner_account_lookup');
     try{const account=await getFirebaseAdminAuth().getUser(s(req.ownerUID));if(account.disabled||account.emailVerified===false)return propertyError('Owner account must be active and verified',400);}
     catch(error){if((error as {code?:string}).code==='auth/user-not-found')return propertyError('Owner account does not exist',400);throw error;}
   }
-  step('submission_receipt_read');
   const submissionRef=getDatabase().collection('property_submissions').doc(submissionFingerprint);
   const previous=await submissionRef.get();
   if(previous.exists) {
-    step('existing_submission_read');
     const saved=await getProperty(s(previous.data()?.propertyId));
     if(!saved)throw new ApiError(409,'Submission already processed; contact support');
     return jsonResponse({success:true,message:'Property already submitted',property:propertyResponse(saved,'create',tenantCreated?'tenant':'owner')});
   }
-  step('property_id_allocation');
   const id=await generateID();
   const property=model('Property',{});
   for(const key of additiveFields)if(key in req)property[key]=req[key];
   if(req.nextAgreementDraft)property.nextAgreementDraft=req.nextAgreementDraft;
   for(const [to,from] of projections.request) property[to]=req[from];
   property.rentSchedule=req.rentSchedule;
-  step('internal_image_upload');
   property.internalImages=await uploadPropertyImages((req.internalImages as string[]|null)||[],id,user,true);
-  step('listing_image_upload');
   Object.assign(property,{id,title:req.propertyTitle,address:req.location,tenantName:`${s(req.tenantFirstName)} ${s(req.tenantLastName)}`,images:await uploadPropertyImages((req.images as string[]|null)||[],id,user,tenantCreated),ownerUID:req.ownerUID,ownerName:owner.name,ownerEmail:owner.email,ownerPhone:owner.phoneNumber,ownerRole:owner.role,status:'active',isActive:true});
   if(tenantCreated) {
     Object.assign(property,{createdAs:'tenant',submittedByUID:user.uid,ownershipVerification:'pending',reportedOwner:req.reportedOwner,ownerUID:'',ownerName:'',ownerEmail:'',ownerPhone:'',ownerRole:'',listingType:'rent',rentalStatus:'rented',isSold:false});
@@ -312,7 +283,7 @@ async function createPropertyRecord(request:Request,step:(operation:string)=>voi
   if(req.isSold) property.buyers=[model('BuyerInfo',{id:`buyer_${BigInt(now.getTime())*1000000n}`,firstName:req.buyerFirstName,lastName:req.buyerLastName,phone:req.buyerPhone,isActive:true,createdAt:now,updatedAt:now})];
   property.createdAt=now;property.updatedAt=now;
   if(!tenantCreated&&user.role==='admin'&&user.uid!==s(req.ownerUID))Object.assign(property,{createdByUID:user.uid,adminCreatedForUID:s(req.ownerUID),relationshipHistory:[{action:'property_created_for_user',actorUID:user.uid,userUID:s(req.ownerUID),relationship:'owner',propertyId:id,at:now}]});
-  if(!tenantCreated&&user.role==='agent')Object.assign(property,{submittedByUID:user.uid,submittingAgentUID:user.uid,submittingAgentName:s(user.profile?.name||user.email)});
+  if(!tenantCreated&&user.role==='agent')Object.assign(property,{submittedByUID:user.uid,submittingAgentUID:user.uid,submittingAgentName:s((await getUser(user.uid))?.name)});
   Object.assign(property,{moderationStatus:'pending_review',moderationRevision:1,moderationSubmittedAt:now,moderationHistory:[{action:'submitted',actorUID:user.uid,at:now,revision:1}]});
   // Atomic create avoids overwriting a property on a race or infrastructure failure.
   const data={...storeModel('Property',property),...Object.fromEntries(additiveFields.filter(key=>key in property).map(key=>[key,property[key]]))};
@@ -320,13 +291,10 @@ async function createPropertyRecord(request:Request,step:(operation:string)=>voi
   if(tenantCreated)for(const key of ['createdAs','submittedByUID','ownershipVerification','reportedOwner'])data[key]=property[key];
   for(const key of ['createdByUID','adminCreatedForUID','relationshipHistory','submittedByUID','submittingAgentUID','submittingAgentName'])if(key in property)data[key]=property[key];
   for(const key of moderationFields)if(key in property)data[key]=property[key];
-  step('notification_preparation');
-  const notificationSubmitter=user.role==='agent'?(user.profile||await getUser(user.uid)||owner):owner;
+  const notificationSubmitter=user.role==='agent'?(await getUser(user.uid)||owner):owner;
   const events=propertyNotificationEvents(property,notificationSubmitter);
-  step('property_transaction');
-  const created=await writeProperty(id,data,user,true,{ref:submissionRef,events,step});
-  if(!created){step('concurrent_submission_read');const receipt=await submissionRef.get(),saved=await getProperty(s(receipt.data()?.propertyId));if(!saved)throw new ApiError(409,'Submission already processed; contact support');return jsonResponse({success:true,message:'Property already submitted',property:propertyResponse(saved,'create',tenantCreated?'tenant':'owner')});}
-  step('post_commit_notifications');
+  const created=await writeProperty(id,data,user,true,{ref:submissionRef,events});
+  if(!created){const receipt=await submissionRef.get(),saved=await getProperty(s(receipt.data()?.propertyId));return jsonResponse({success:true,message:'Property already submitted',property:propertyResponse(saved!,'create',tenantCreated?'tenant':'owner')});}
   property.tenants=data.tenants;
   dispatchEmailOutbox(events);
   await propertyCreatedEffects(property);
@@ -407,10 +375,9 @@ export async function updateProperty(request:Request,id:string) {
   await propertyUpdatedEffects(existing,updated,updates);
   return jsonResponse({success:true,message:'Property updated successfully',property:propertyResponse(updated,'normal',user.role==='admin'?'admin':'owner')});
 }
-async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnType<typeof requireUser>>,create=false,submission?:{ref:FirebaseFirestore.DocumentReference;events:TransactionalEmailEvent[];step?:(operation:string)=>void}) {
+async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnType<typeof requireUser>>,create=false,submission?:{ref:FirebaseFirestore.DocumentReference;events:TransactionalEmailEvent[]}) {
   const db=getDatabase(),ref=properties().doc(id);
   if(Array.isArray(updates.tenants))for(const tenant of updates.tenants as RecordData[]) {tenant.id ||= randomUUID();tenant.createdAt ||= new Date();tenant.updatedAt=new Date();}
-  submission?.step?.('relationship_preparation');
   const candidates:RecordData[]=[];
   if(create&&updates.createdAs==='tenant')candidates.push(await prepareLink('owner',id,s((updates.reportedOwner as RecordData).phone),user.uid,'','',(updates.reportedOwner as RecordData).email));
   if(Array.isArray(updates.tenants))for(const tenant of updates.tenants as RecordData[])if(tenant.isActive===true&&tenant.linkConfirmationRequired===true&&!tenant.userUID) {
@@ -420,10 +387,8 @@ async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnTyp
   const intents=create?candidates.map(claim=>({claimId:s(claim.id),email:claim.relationship==='owner'?(updates.reportedOwner as RecordData)?.email:(updates.tenants as RecordData[]|undefined)?.find(t=>t.id===claim.tenantId)?.email})):[];
   let invitationEvents:TransactionalEmailEvent[]=[];
   const result=await db.runTransaction(async tx=>{
-    submission?.step?.('transaction_receipt_read');
     invitationEvents=[];
     if(submission&&(await tx.get(submission.ref)).exists)return false;
-    submission?.step?.('transaction_property_read');
     const before=await tx.get(ref);
     if(create&&before.exists)throw new Error('Property ID conflict');
     if(!create) {if(!before.exists)throw new Error('Property not found');requirePropertyEditor(user,before.data()||{});}
@@ -441,26 +406,21 @@ async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnTyp
         if((updates.tenants as RecordData[]).length>50)throw new ApiError(409,'Tenant relationship history limit reached');
       }
     }
-    submission?.step?.('transaction_tenant_query');
     const records=Array.isArray(updates.tenants)?await tx.get(db.collection(COLLECTIONS.tenants).where('propertyId','==',id)):null;
-    submission?.step?.('transaction_media_binding');
     const bindMedia=await prepareMediaBindings(tx,user,'properties',id,id,{...(before.data()||{}),...updates},before.data()||{});
     if(!create&&['agreementStartDate','agreementEndDate','monthlyRent','tenants'].some(key=>key in updates)) {
       const history=Array.isArray(before.data()?.agreementHistory)?before.data()!.agreementHistory:[];
       if(history.length>=500)throw new Error('Agreement history limit reached');
       updates.agreementHistory=[...history,{action:'property_terms_updated',actorUID:user.uid,at:new Date(),previousTerms:Object.fromEntries(['monthlyRent','agreementStartDate','agreementEndDate','securityDeposit'].map(key=>[key,before.data()?.[key]??''])),previousTenants:before.data()?.tenants||[]}];
     }
-    submission?.step?.('transaction_relationship_reads');
     const writeLinks=await stageLinks(tx,candidates,intents);invitationEvents=writeLinks.events;
     if(Array.isArray(updates.tenants)) {
-      submission?.step?.('transaction_tenant_reads');
       const tenantRefs=await Promise.all((updates.tenants as RecordData[]).map(t=>tx.get(db.collection(COLLECTIONS.tenants).doc(s(t.id)))));
       for(const tenantRef of tenantRefs)if(tenantRef.exists&&tenantRef.data()?.propertyId!==id)throw new AccessError(403,'Tenant belongs to another property');
       for(const record of records?.docs||[])if(!(updates.tenants as RecordData[]).some(t=>t.id===record.id))tx.update(record.ref,{isActive:false,updatedAt:new Date()});
       for(const tenant of updates.tenants as RecordData[])tx.set(db.collection(COLLECTIONS.tenants).doc(s(tenant.id)),storeModel('Tenant',model('Tenant',{...tenant,propertyId:id,ownerUID:updates.ownerUID||before.data()?.ownerUID})),{merge:true});
       if(!create)updates.rentalStatus=(updates.tenants as RecordData[]).some(t=>t.isActive===true)?'rented':'available';
     }
-    submission?.step?.('transaction_commit');
     writeLinks();
     bindMedia();
     if(create)tx.create(ref,updates);else tx.update(ref,updates);

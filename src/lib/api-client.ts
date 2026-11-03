@@ -33,8 +33,7 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   return response;
 }
 
-export interface AuthProfile {uid:string;name:string;email:string;phoneNumber:string;photoURL:string;role:string}
-export type AuthProfileResult={response:Response;data:{profileExists?:boolean;profileComplete?:boolean;status?:string;message?:string;code?:string;user?:AuthProfile}};
+export type AuthProfileResult={response:Response;data:{profileExists?:boolean;profileComplete?:boolean;status?:string;message?:string;code?:string}};
 const authProfileRequests=new Map<string,Promise<AuthProfileResult>>();
 export function loadAuthProfile(uid:string):Promise<AuthProfileResult>{
   const existing=authProfileRequests.get(uid);if(existing)return existing;

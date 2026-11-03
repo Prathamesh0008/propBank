@@ -9,17 +9,10 @@ export const filterProperties = (
   selectedProjectCondition: string,
   budgetRange: { min: number; max: number }
 ): Property[] => {
-  const purpose = selectedListingTypes.length === 1 ? selectedListingTypes[0] : searchType;
-  let filtered = allProperties.map(property => {
-    if (property.listingType !== 'sell_rent' || !['buy','rent'].includes(purpose)) return property;
-    const listingType = purpose === 'buy' ? 'sell' : 'rent';
-    const amount = listingType === 'rent' ? property.expectedRent || property.monthlyRent : property.sellingPrice;
-    const price = Number(String(amount || '').replace(/[₹,]/g, '').trim());
-    return {...property, listingType, price: price > 0 ? price : property.price};
-  });
+  let filtered = [...allProperties];
 
   if (searchQuery.trim()) {
-    const query = searchQuery.trim().toLowerCase();
+    const query = searchQuery.toLowerCase();
     filtered = filtered.filter(
       (property) =>
         property.title?.toLowerCase().includes(query) ||
@@ -33,7 +26,7 @@ export const filterProperties = (
   if (searchType && searchType !== "all") {
     filtered = filtered.filter((property) => {
       const backendType = (searchType === "buy" ? "sell" : searchType).toLowerCase();
-      return property.listingType?.toLowerCase() === backendType || property.listingType === 'sell_rent';
+      return property.listingType?.toLowerCase() === backendType;
     });
   }
 
@@ -59,7 +52,7 @@ export const filterProperties = (
     filtered = filtered.filter((property) => {
       const propType = property.listingType?.toLowerCase();
       const displayType = propType === "sell" ? "buy" : propType;
-      return selectedListingTypes.some((t) => t.toLowerCase() === displayType || propType === 'sell_rent' && ['buy','rent'].includes(t.toLowerCase()));
+      return selectedListingTypes.some((t) => t.toLowerCase() === displayType);
     });
   }
 

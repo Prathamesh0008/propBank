@@ -1,0 +1,9 @@
+// Static inventory only. Never imports application code or initializes Firebase.
+const fs=require('node:fs'),path=require('node:path'),ts=require('typescript');
+const roots=['src','scripts','tests'],rows=[];
+const calls=new Set(['get','getAll','getDoc','getDocs','getDocFromServer','getDocsFromServer','onSnapshot','collectionGroup','runTransaction','count','getCountFromServer','aggregate','stream','onSchedule']);
+function walk(dir){for(const entry of fs.readdirSync(dir,{withFileTypes:true})){const file=path.join(dir,entry.name);if(entry.isDirectory())walk(file);else if(/\.(?:[cm]?js|tsx?)$/.test(file)&&file!==__filename){const source=fs.readFileSync(file,'utf8'),ast=ts.createSourceFile(file,source,ts.ScriptTarget.Latest,true);function visit(node){if(ts.isCallExpression(node)){const callee=node.expression,name=ts.isPropertyAccessExpression(callee)?callee.name.text:ts.isIdentifier(callee)?callee.text:'';if(calls.has(name)){const line=ast.getLineAndCharacterOfPosition(node.getStart()).line+1;rows.push({file:file.replaceAll('\\','/'),line,operation:name,expression:node.getText(ast).replace(/\s+/g,' ').slice(0,700),classification:file.includes('lib\\server')?'server candidate':file.startsWith('tests')?'isolated fixture/test candidate':'candidate; verify receiver (Map/Headers/URL are not Firestore)'});}}ts.forEachChild(node,visit);}visit(ast);}}}
+roots.forEach(walk);
+fs.mkdirSync('backend-audit',{recursive:true});
+fs.writeFileSync('backend-audit/firestore-read-inventory.json',JSON.stringify({mode:'static; no Firebase traffic',note:'Conservative call-site inventory. Generic get calls include non-Firestore receivers. Query/transaction helpers require caller inspection. Generated artifacts, caches, history and dependencies are not executable consumers.',rows},null,2)+'\n');
+console.log(`Recorded ${rows.length} candidate call sites; no database access.`);

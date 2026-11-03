@@ -24,7 +24,6 @@ import { Textarea } from "@/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
 import { ArrowLeft, Building2, Upload, X, Image as ImageIcon, CheckSquare } from "lucide-react";
 import { useNavigate, useSearchParams } from "@/lib/navigation";
-import {propertyCategoryUrl,usePropertyFlowNavigation} from '@/lib/property-flow-navigation';
 import { auth } from "../../firebase";
 import { User as FirebaseUser } from "firebase/auth";
 import { useState, useRef, useEffect } from "react";
@@ -43,7 +42,7 @@ const formSchema = z.object({
   propertyTitle: z.string().min(1, "Property title is required"),
   propertyType: z.string().min(1, "Property type is required"),
   configuration: z.string().optional(),
-  listingType: z.string().min(1, "Listing type is required").refine(value => ['rent', 'sell'].includes(value), "Select For Rent or For Sale"),
+  listingType: z.string().min(1, "Listing type is required"),
   agentOwnerEmail: z.string().email("Enter the registered legal owner's email").optional().or(z.literal("")),
 
   // Unit Details (conditional based on property type)
@@ -114,15 +113,14 @@ interface UserInfo {
 
 const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
   const navigate = useNavigate();
-  const {back:backPropertyStep}=usePropertyFlowNavigation();
   const [searchParams] = useSearchParams();
   const selectedPropertyType = category;
+  const selectedRole = searchParams.get('as') || searchParams.get('role') || 'owner';
   const adminOwnerUID = searchParams.get('adminOwnerUID') || '';
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [uploadedInternalImages, setUploadedInternalImages] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const internalFileInputRef = useRef<HTMLInputElement>(null);
-  const submissionInFlight = useRef(false);
   const [showFurnishedModal, setShowFurnishedModal] = useState(false);
   const [furnishedChecklist, setFurnishedChecklist] = useState<any[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -385,8 +383,6 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
   }, [agreementStartDate, agreementPeriod, form]);
 
   const onSubmit = async (data: FormData) => {
-    if (submissionInFlight.current || isUploading || isInternalUploading) return;
-    submissionInFlight.current = true;
     try {
       if(!data.structure?.trim()){
         form.setError('structure',{type:'manual',message:'Select the property type.'});
@@ -618,8 +614,6 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
         description: error instanceof Error?error.message:"Failed to connect to server. Please try again.",
         variant: "destructive",
       });
-    } finally {
-      submissionInFlight.current = false;
     }
   };
 
@@ -651,7 +645,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
       <div className={styles.shell}>
         {/* Header */}
         <div className={styles.pageIntro}>
-          <Button variant="ghost" onClick={() => backPropertyStep(propertyCategoryUrl('owner',adminOwnerUID))} className="mb-4">
+          <Button variant="ghost" onClick={() => navigate(`/select-property-type?as=${selectedRole}${adminOwnerUID?`&adminOwnerUID=${encodeURIComponent(adminOwnerUID)}`:''}`)} className="mb-4">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Property Type Selection
           </Button>
@@ -739,6 +733,8 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                           <SelectContent>
                             <SelectItem value="rent">For Rent</SelectItem>
                             <SelectItem value="sell">For Sale</SelectItem>
+                            <SelectItem value="sell_rent">For Sale and Rent</SelectItem>
+                            <SelectItem value="manage">Private Management</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />

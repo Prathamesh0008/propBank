@@ -16,6 +16,7 @@ function load(name, dependencies = {}, env = {}, globals = {}) {
     AbortSignal, ...globals,
     require: name => {
       if (name === 'server-only') return {};
+      if (name === '../firebase-environment.cjs') return require('../src/lib/firebase-environment.cjs');
       if (!(name in dependencies)) throw new Error(`Unexpected dependency: ${name}`);
       return dependencies[name];
     },

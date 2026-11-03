@@ -94,7 +94,7 @@ export async function listNotifications(request:Request) {
   const user=await identity(request);const params=new URL(request.url).searchParams;const propertyId=params.get('propertyId');
   let query=collection() as FirebaseFirestore.Query;
   if(propertyId) {if(!await propertyMember(user,propertyId))return plainError('Property not found',404);query=query.where('propertyId','==',propertyId);}
-  else {requireAdmin(user);query=params.get('unread')==='true'?query.where('isRead','==',false):query.orderBy('timestamp','desc');}
+  else {requireAdmin(user);query=params.get('unread')==='true'?query.where('isRead','==',false):params.get('unread')==='false'?query.where('isRead','==',true):query.orderBy('timestamp','desc');}
   const snapshot=await query.get();let notifications:RecordData[]=[];
   for(const doc of snapshot.docs)try{const data=doc.data();notifications.push({...model('AdminNotification',data),id:doc.id,...(typeof data.relatedId==='string'?{relatedId:data.relatedId}:{})});}catch{/* Skip malformed legacy records. */}
   if(propertyId&&user.role!=='admin') {const property=await getProperty(propertyId);if(property?.ownerUID!==user.uid)notifications=notifications.filter(n=>n.userId===user.uid||['agreement_termination','agreement_renewal'].includes(s(n.type)));}

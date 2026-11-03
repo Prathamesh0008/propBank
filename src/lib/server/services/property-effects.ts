@@ -26,7 +26,7 @@ export async function bestEffort<T>(action:()=>Promise<T>):Promise<T|null> {
 }
 export function queueEmail(mail:Email) {
   if (!mail.to) return;
-  after(async()=>{ await bestEffort(()=>sendEmail(mail)); });
+  after(async()=>{try{await sendEmail(mail);}catch{console.error('Queued email delivery failed; message was not delivered.');}});
 }
 const entries=(value:unknown):RecordData[]=>Array.isArray(value)?value.filter(isRecord):[];
 const fullName=(tenant:RecordData)=>`${s(tenant.firstName)} ${s(tenant.lastName)}`;

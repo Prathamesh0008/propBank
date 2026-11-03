@@ -40,3 +40,26 @@ phase-1-security/private-inventory.local.json
 
 # Local live-notification attempt journals (contain recipient/provider metadata)
 .notification-live-test-*.json
+
+# Captured development email contains test recipient/content data
+.cache/firebase-dev-email/
+
+.cache/firebase-dev-files/
+
+# Two-developer workflow: only credential-free templates may be newly added.
+# Ignore rules do not untrack historical files (including .env.production).
+.env.*
+!.env.example
+!.env.*.example
+*service-account*.json
+*service_account*.json
+*firebase-adminsdk*.json
+*.credentials.json
+.firebase-keys/
+*.pem
+*.key
+*.p12
+*.pfx
+# Local captures, build caches, diagnostics and exports are never source inputs.
+.cache/
+*.log

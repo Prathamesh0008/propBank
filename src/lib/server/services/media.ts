@@ -18,7 +18,7 @@ export interface Binding {collection:string;id:string;propertyId:string;field:st
 const files=()=>getDatabase().collection(MEDIA_COLLECTION);
 const maxBytes=20*1024*1024;
 export function privateBucket() {
-  const bucket=process.env.CLOUDFLARE_R2_PRIVATE_BUCKET_NAME;
+  const bucket=process.env.PROPBANK_FIREBASE_MODE==='firebase'?'propbank-development-private':process.env.CLOUDFLARE_R2_PRIVATE_BUCKET_NAME;
   if(!bucket||bucket===getR2Configuration().bucketName)throw new ApiError(503,'A separate private file bucket must be configured before uploading files');
   return bucket;
 }
@@ -34,10 +34,9 @@ export async function stageFile(bytes:Buffer,contentType:string,filename:string,
   try {
     await getR2Client().send(new PutObjectCommand({Bucket:bucket,Key:key,Body:bytes,ContentType:contentType,CacheControl:'private, no-store',Metadata:{uploadedBy:user.uid,mediaId:ref.id}}),{abortSignal:AbortSignal.timeout(30000)});
     await ref.update({status:'pending',updatedAt:new Date()});
-  }catch(error) {
+  }catch {
     try{await ref.update({status:'cleanup_pending',updatedAt:new Date(),lastError:'Upload did not complete'});}catch{/* Original durable intent remains for reconciliation. */}
-    // Preserve the dependency failure: a metadata write can fail after R2 succeeds.
-    throw new ApiError(502,'File upload failed; no business record was saved. Please retry',error);
+    throw new ApiError(502,'File upload failed; no business record was saved. Please retry');
   }
   return fileUrl(ref.id,contentType);
 }

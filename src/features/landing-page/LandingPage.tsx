@@ -14,8 +14,6 @@ const LandingPage = () => {
     navigate,
     properties,
     loading,
-    error,
-    retry,
     loadingMore,
     hasMore,
     selectedProjectCondition,
@@ -83,8 +81,6 @@ const LandingPage = () => {
       <PropertiesSection
         properties={properties}
         loading={loading}
-        error={error}
-        retry={retry}
         loadingMore={loadingMore}
         hasMore={hasMore}
         loadMoreProperties={loadMoreProperties}

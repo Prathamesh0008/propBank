@@ -4,14 +4,13 @@ const fs=require('node:fs'),path=require('node:path'),ts=require('typescript'),R
 const {renderToStaticMarkup}=require('react-dom/server');
 
 function harness(initial='/manage-property'){
- const history=[initial],historyStates=[{__NA:true,tree:'preserved'}],cache=new Map(),state=[];let position=0,index=0;
+ const history=[initial],cache=new Map(),state=[];let position=0,index=0;
  const current=()=>new URL(history[position],'http://local');
- const router={push:url=>{history.splice(++position);historyStates.splice(position);history.push(url);historyStates.push({__NA:true,tree:'preserved'});},replace:url=>{history[position]=url;},back:()=>{if(position>0)position--;},forward:()=>{if(position<history.length-1)position++;}};
- const browser={get location(){return current();},history:{get state(){return historyStates[position];},get length(){return history.length;},replaceState(value,_title,url){historyStates[position]=value;history[position]=String(url);}}};
+ const router={push:url=>{history.splice(++position);history.push(url);},replace:url=>{history[position]=url;},back:()=>{if(position>0)position--;},forward:()=>{if(position<history.length-1)position++;}};
  const OwnerForm=()=>null,TenantForm=()=>null;
  const load=file=>{if(cache.has(file))return cache.get(file);const output={};cache.set(file,output);const code=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
   const scoped=name=>{
-   if(name==='react')return {...React,useEffect:effect=>effect(),useCallback:fn=>fn,useState:initial=>{const key=index++;if(!(key in state))state[key]=typeof initial==='function'?initial():initial;return [state[key],value=>{state[key]=value;}];}};
+   if(name==='react')return {...React,useCallback:fn=>fn,useState:initial=>{const key=index++;if(!(key in state))state[key]=typeof initial==='function'?initial():initial;return [state[key],value=>{state[key]=value;}];}};
    if(name==='next/navigation')return {useRouter:()=>router,usePathname:()=>current().pathname,useSearchParams:()=>current().searchParams,useParams:()=>({}),redirect:url=>{const error=new Error('Redirect');error.location=url;throw error;}};
    if(name==='next/link')return ()=>null;
    if(name==='lucide-react')return new Proxy({},{get:(_,key)=>key==='__esModule'?false:()=>null});
@@ -21,7 +20,7 @@ function harness(initial='/manage-property'){
    if(name.startsWith('@/')){const base=path.resolve('src',name.slice(2));return load(base+(fs.existsSync(base+'.tsx')?'.tsx':'.ts'));}
    if(name.startsWith('./'))return load(path.resolve(path.dirname(file),name)+'.tsx');
    return require(name);
-  };new Function('require','exports','window',code)(scoped,output,browser);return output;
+  };new Function('require','exports',code)(scoped,output);return output;
  };
  const Selection=load(path.resolve('src/features/properties/SelectPropertyType.tsx')).default;
  const Page=load(path.resolve('src/app/(protected)/add-property/page.tsx')).default;
@@ -30,9 +29,7 @@ function harness(initial='/manage-property'){
  const text=element=>element==null?'':Array.isArray(element)?element.map(text).join(''):typeof element==='object'?text(element.props?.children):String(element);
  const button=label=>nodes(render()).find(node=>node.type==='button'&&(node.props['aria-label']===label||text(node).trim()===label));
  const navigate=load(path.resolve('src/lib/navigation.tsx')).useNavigate();
- const flow=()=>load(path.resolve('src/lib/property-flow-navigation.ts')).usePropertyFlowNavigation();
- const categoryUrl=load(path.resolve('src/lib/property-flow-navigation.ts')).propertyCategoryUrl;
- return {router,navigate,current,render,button,history,flow,categoryUrl,forwardPropertyStep:url=>flow().forward(url),backPropertyStep:url=>flow().back(url),html:()=>renderToStaticMarkup(render()),legacyPage:()=>load(path.resolve('src/app/(protected)/tenant-property/page.tsx')).default({searchParams:Promise.resolve(Object.fromEntries(current().searchParams))}),page:()=>Page({searchParams:Promise.resolve(Object.fromEntries(current().searchParams))}),OwnerForm,TenantForm};
+ return {router,navigate,current,render,button,html:()=>renderToStaticMarkup(render()),legacyPage:()=>load(path.resolve('src/app/(protected)/tenant-property/page.tsx')).default({searchParams:Promise.resolve(Object.fromEntries(current().searchParams))}),page:()=>Page({searchParams:Promise.resolve(Object.fromEntries(current().searchParams))}),OwnerForm,TenantForm};
 }
 
 // Execute the existing dropdown/back callbacks without rendering unrelated
@@ -45,14 +42,10 @@ function handler(file,tag,label,attribute='onSelect',scope={}){
 }
 
 for(const mode of ['owner','tenant'])test(`${mode} dropdown opens categories directly and carries mode through every category`,async()=>{
- for(const category of ['residential','commercial','industrial']){const h=harness();handler('src/features/properties/ManageProperty.tsx','DropdownMenuItem',mode==='owner'?'As an Owner':'As a Tenant','onSelect',{forwardPropertyStep:h.forwardPropertyStep})();assert.equal(h.current().pathname,'/select-property-type');assert.equal(h.current().searchParams.get('as'),mode);assert.match(h.html(),/Select property category/);assert.doesNotMatch(h.html(),/I&#x27;m the owner|I&#x27;m a tenant|Change owner \/ tenant choice|Adding as/);h.button(`Select ${category[0].toUpperCase()+category.slice(1)} property`).props.onClick();assert.equal(h.current().pathname,'/add-property');assert.equal(h.current().searchParams.get('type'),category);assert.equal(h.current().searchParams.get('as'),mode);const page=await h.page();assert.equal(page.type,mode==='tenant'?h.TenantForm:h.OwnerForm);assert.equal(page.props.category,category);
- const scope={backPropertyStep:h.backPropertyStep,propertyCategoryUrl:h.categoryUrl,navigationParams:h.current().searchParams,adminOwnerUID:''};
- handler('src/features/properties/'+(mode==='tenant'?'TenantPropertyForm.tsx':'AddPropertyForm.tsx'),'Button',mode==='tenant'?'Back':'Back to Property Type Selection','onClick',scope)();assert.equal(h.current().pathname,'/select-property-type');assert.equal(h.current().searchParams.get('as'),mode);h.button('Back').props.onClick();assert.equal(h.current().pathname,'/manage-property');assert.equal(h.history.length,3);
- h.router.forward();h.router.forward();assert.equal(h.current().searchParams.get('type'),category);h.router.back();assert.equal(h.current().pathname,'/select-property-type');h.router.back();assert.equal(h.current().pathname,'/manage-property');}
-
+ for(const category of ['residential','commercial','industrial']){const h=harness();handler('src/features/properties/ManageProperty.tsx','DropdownMenuItem',mode==='owner'?'As an Owner':'As a Tenant','onSelect',{navigate:h.navigate})();assert.equal(h.current().pathname,'/select-property-type');assert.equal(h.current().searchParams.get('as'),mode);assert.match(h.html(),/Select property category/);assert.doesNotMatch(h.html(),/I&#x27;m the owner|I&#x27;m a tenant|Change owner \/ tenant choice|Adding as/);h.button(`Select ${category[0].toUpperCase()+category.slice(1)} property`).props.onClick();assert.equal(h.current().pathname,'/add-property');assert.equal(h.current().searchParams.get('type'),category);assert.equal(h.current().searchParams.get('as'),mode);const page=await h.page();assert.equal(page.type,mode==='tenant'?h.TenantForm:h.OwnerForm);assert.equal(page.props.category,category);}
 });
-test('URL without mode retains role choice without an extra history entry',()=>{
- const h=harness('/select-property-type');assert.match(h.html(),/First, tell us your connection/);assert.doesNotMatch(h.html(),/Select Residential property/);h.button("I'm a tenantRecord the home or space you're renting.").props.onClick();assert.equal(h.current().searchParams.get('as'),'tenant');assert.match(h.html(),/Select Residential property/);h.button('Select Commercial property').props.onClick();h.router.back();assert.equal(h.current().searchParams.get('as'),'tenant');assert.match(h.html(),/Select Commercial property/);h.button('Back').props.onClick();assert.equal(h.current().pathname,'/manage-property');assert.equal(h.history.length,2);
+test('URL without mode retains role choice and records the chosen mode in navigation history',()=>{
+ const h=harness('/select-property-type');assert.match(h.html(),/First, tell us your connection/);assert.doesNotMatch(h.html(),/Select Residential property/);h.button("I'm a tenantRecord the home or space you're renting.").props.onClick();assert.equal(h.current().searchParams.get('as'),'tenant');assert.match(h.html(),/Select Residential property/);h.button('Select Commercial property').props.onClick();h.router.back();assert.equal(h.current().searchParams.get('as'),'tenant');assert.match(h.html(),/Select Commercial property/);h.router.back();assert.equal(h.current().search,'');assert.match(h.html(),/First, tell us your connection/);
 });
 test('browser Back/Forward and category Back preserve the dropdown-selected mode without another role prompt',async()=>{
  const h=harness();h.navigate('/select-property-type?as=tenant');assert.match(h.html(),/Select property category/);h.button('Select Residential property').props.onClick();h.router.back();assert.equal(h.current().pathname,'/select-property-type');assert.match(h.html(),/Select property category/);assert.doesNotMatch(h.html(),/First, tell us/);h.router.forward();assert.equal((await h.page()).type,h.TenantForm);h.router.back();h.button('Back').props.onClick();assert.equal(h.current().pathname,'/manage-property');
@@ -71,8 +64,8 @@ test('existing form deep links keep their owner default and tenant category sele
  for(const [url,mode,category]of [['/add-property?type=commercial','owner'],['/add-property?as=owner&type=industrial','owner'],['/add-property?as=tenant&type=commercial','tenant','commercial']]){const h=harness(url),page=await h.page();assert.equal(page.type,mode==='tenant'?h.TenantForm:h.OwnerForm);if(category)assert.equal(page.props.category,category);}
 });
 test('form Back actions retain the role and administrator context',()=>{
- const h=harness('/add-property?as=tenant&type=residential');handler('src/features/properties/TenantPropertyForm.tsx','Button','Back','onClick',{backPropertyStep:h.backPropertyStep,propertyCategoryUrl:h.categoryUrl,navigationParams:h.current().searchParams})();assert.equal(h.current().searchParams.get('as'),'tenant');assert.match(h.html(),/Select property category/);
- const owner=harness('/add-property?type=industrial&adminOwnerUID=owner%2Bfixture');handler('src/features/properties/AddPropertyForm.tsx','Button','Back to Property Type Selection','onClick',{backPropertyStep:owner.backPropertyStep,propertyCategoryUrl:owner.categoryUrl,adminOwnerUID:'owner+fixture'})();assert.equal(owner.current().searchParams.get('as'),'owner');assert.equal(owner.current().searchParams.get('adminOwnerUID'),'owner+fixture');assert.match(owner.html(),/Select property category/);
+ const h=harness('/add-property?as=tenant&type=residential');handler('src/features/properties/TenantPropertyForm.tsx','Button','Back','onClick',{navigate:h.navigate})();assert.equal(h.current().searchParams.get('as'),'tenant');assert.match(h.html(),/Select property category/);
+ const owner=harness('/add-property?type=industrial&adminOwnerUID=owner%2Bfixture');handler('src/features/properties/AddPropertyForm.tsx','Button','Back to Property Type Selection','onClick',{navigate:owner.navigate,selectedRole:'owner',adminOwnerUID:'owner+fixture'})();assert.equal(owner.current().searchParams.get('as'),'owner');assert.equal(owner.current().searchParams.get('adminOwnerUID'),'owner+fixture');assert.match(owner.html(),/Select property category/);
 });
 
 

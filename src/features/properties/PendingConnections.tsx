@@ -5,7 +5,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Check, CheckCircle2, ChevronDown, Clock3, KeyRound, RefreshCw, ShieldCheck, MailCheck, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiFetch } from '@/lib/api-client';
-import { readApiResponse } from '@/lib/api-response';
 import { Link } from '@/lib/navigation';
 import { CONNECTION_LABELS, connectionPending, type ConnectionState } from '@/lib/relationship-link-state';
 import styles from './PropertyHub.module.css';
@@ -22,7 +21,9 @@ async function connectionRequest(action: string, connection?: Connection) {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({action, ...(connection ? {claimId: connection.id, expectedVersion: connection.version} : {})}),
   });
-  return readApiResponse<{truncated?: boolean; status?: ConnectionState}>(response, 'The connection could not be updated.');
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.message || 'The connection could not be updated.');
+  return data;
 }
 
 export default function PendingConnections() {
@@ -35,12 +36,16 @@ export default function PendingConnections() {
   async function discover() {for (let page = 0; page < 5; page++) if (!(await connectionRequest('discover')).truncated) break;discoveredIdentity.current=identityKey;}
   const query = useQuery<ConnectionsResponse>({
     queryKey: ['relationshipLinks', user?.uid, user?.email, user?.emailVerified], enabled: !!user,
-    staleTime: 0, retry: false, refetchOnWindowFocus: 'always',
-    refetchInterval: query => query.state.data?.connections.some(item => connectionPending(item.status)) ? 30000 : false,
+    staleTime: 30_000, retry: false, refetchOnWindowFocus: true,
+    // Each refresh fans out over canonical and legacy status queries. Keep
+    // mutation/focus/manual refresh, with a slower fallback for other devices.
+    refetchInterval: query => query.state.data?.connections.some(item => connectionPending(item.status)) ? 120_000 : false,
     queryFn: async () => {
       if(discoveredIdentity.current!==identityKey)await discover();
       const response = await apiFetch('/api/relationship-links');
-      return readApiResponse<ConnectionsResponse>(response, 'Pending connections could not be loaded.');
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Pending connections could not be loaded.');
+      return data;
     },
   });
   const data = query.data;
