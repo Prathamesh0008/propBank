@@ -25,7 +25,7 @@ export const AuthProvider=({children}:{children:ReactNode})=>{
   const refreshProfile=useCallback(async()=>{setProfileRevision(value=>value+1);},[]);
 
   useEffect(()=>privateFileSession.subscribe(setFileAccess),[]);
-  useEffect(()=>subscribeDataRefresh(event=>{const keys=[...new Set(event.domains.flatMap(domain=>queryKeysByDomain[domain]))];void Promise.all(keys.map(key=>queryClient.invalidateQueries({queryKey:[key],refetchType:document.visibilityState==='hidden'?'none':'active'},{cancelRefetch:false})));}),[queryClient]);
+  useEffect(()=>subscribeDataRefresh(event=>{const keys=[...new Set(event.domains.flatMap(domain=>queryKeysByDomain[domain]))];void Promise.all(keys.map(key=>queryClient.invalidateQueries({queryKey:[key]})));}),[queryClient]);
   useEffect(()=>{const refresh=()=>setProfileRevision(value=>value+1);window.addEventListener('propbank:profile-completed',refresh);return()=>window.removeEventListener('propbank:profile-completed',refresh);},[]);
   useEffect(()=>{
     let generation=0;

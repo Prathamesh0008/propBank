@@ -18,7 +18,7 @@ export interface Binding {collection:string;id:string;propertyId:string;field:st
 const files=()=>getDatabase().collection(MEDIA_COLLECTION);
 const maxBytes=20*1024*1024;
 export function privateBucket() {
-  const bucket=process.env.PROPBANK_FIREBASE_MODE==='firebase'?'propbank-development-private':process.env.CLOUDFLARE_R2_PRIVATE_BUCKET_NAME;
+  const bucket=process.env.CLOUDFLARE_R2_PRIVATE_BUCKET_NAME;
   if(!bucket||bucket===getR2Configuration().bucketName)throw new ApiError(503,'A separate private file bucket must be configured before uploading files');
   return bucket;
 }

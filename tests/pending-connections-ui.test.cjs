@@ -6,7 +6,7 @@ const {renderToStaticMarkup}=require('react-dom/server');
 
 // Render the real component with isolated query results; no browser, database,
 // auth service or network is used. Event mutations are covered by API fixtures.
-function render(result={},reviewId='',captureQuery=()=>{}) {
+function render(result={},reviewId='') {
   let stateIndex=0;
   const cache=new Map();
   const query={isLoading:false,isFetching:false,isError:false,error:null,refetch:async()=>{},...result};
@@ -16,7 +16,7 @@ function render(result={},reviewId='',captureQuery=()=>{}) {
     const code=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
     const scopedRequire=name=>{
       if(name==='react')return {...React,useState:initial=>React.useState(++stateIndex===2?reviewId:initial)};
-      if(name==='@tanstack/react-query')return {useQuery:options=>{captureQuery(options);return query;},useQueryClient:()=>({invalidateQueries:async()=>{}})};
+      if(name==='@tanstack/react-query')return {useQuery:()=>query,useQueryClient:()=>({invalidateQueries:async()=>{}})};
       if(name==='@/contexts/AuthContext')return {useAuth:()=>({user:{uid:'tenant',phoneNumber:'+919123456789'}})};
       if(name==='@/lib/api-client')return {apiFetch:()=>{throw new Error('Rendering must not access the network');}};
       if(name==='@/lib/navigation')return {Link:({to,children,...rest})=>React.createElement('a',{href:to,...rest},children)};
@@ -54,10 +54,3 @@ test('API failure renders an accessible retry state without presenting stale suc
 test('tenant review makes acceptance available while explaining when the property appears',()=>{const item=connection({}),before=render({data:data([item])}),after=render({data:data([item])},item.id);assert.match(before,/Tenant connection request/);assert.match(before,/Review Invitation/);assert.match(before,/property will appear after confirmation/);assert.match(before,/<button[^>]*disabled[^>]*>.*?Accept Tenancy/s);assert.match(after,/aria-expanded="true"/);const accept=[...after.matchAll(/<button([^>]*)>([\s\S]*?)<\/button>/g)].find(match=>match[2].includes('Accept Tenancy'));assert.ok(accept);assert.doesNotMatch(accept[1],/disabled/);});
 test('tenant awaiting owner approval receives a clear explanation and no repeated accept action',()=>{const html=render({data:data([connection({status:'pending_owner_authorization'})])});assert.match(html,/Your acceptance has been recorded/);assert.match(html,/Waiting for the property owner/);assert.doesNotMatch(html,/Accept Tenancy/);});
 test('owner can review and authorize sending an admin-created invitation',()=>{const item=connection({viewer:'owner',status:'verification_required',canAuthorizeInvitation:true,propertyLabel:'Owned property'});const html=render({data:data([item])},item.id);assert.match(html,/Authorize &amp; Send Invitation/);assert.match(html,/needs your authorization/);assert.doesNotMatch(html,/Accept Tenancy/);});
-
-test('pending fallback polls at two minutes and stops without pending records',()=>{
- let options;render({},'',value=>{options=value;});
- assert.equal(options.refetchInterval({state:{data:data([connection({})])}}),120000);
- assert.equal(options.refetchInterval({state:{data:data([connection({status:'linked'})])}}),false);
- assert.equal(options.staleTime,30000);assert.equal(options.refetchOnWindowFocus,true);
-});

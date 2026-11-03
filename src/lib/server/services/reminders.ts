@@ -9,10 +9,7 @@ import { formatIST } from './group2-mail';
 import { brandedEmail, processTransactionalEmail, type TransactionalEmailEvent } from './transactional-email';
 import {rentAmountForDate} from '@/lib/rent-schedule';
 
-function blockLocalScheduler(){if(process.env.PROPBANK_FIREBASE_MODE==='firebase'||process.env.PROPBANK_FIREBASE_MODE==='emulator'||process.env.FIRESTORE_EMULATOR_HOST)throw new ApiError(503,'Reminder scheduler is disabled in local development.');}
-
 export function requireCron(request:Request) {
-  blockLocalScheduler();
   const secret=process.env.CRON_SECRET;
   if(!secret||secret.length<32)throw new ApiError(503,'Reminder scheduler is not configured');
   const supplied=request.headers.get('authorization')||'';
@@ -28,7 +25,6 @@ export function dueReminder(visit:Record<string,unknown>,now:number) {
     && Number.isFinite(at)&&at>=now&&at-minutes*60000<=now;
 }
 export async function runVisitReminders(now=new Date()) {
-  blockLocalScheduler();
   if(!process.env.RESEND_API_KEY||!process.env.FROM_EMAIL||!process.env.ADMIN_EMAIL)throw new ApiError(503,'Reminder email delivery is not configured');
   const db=getDatabase();
   const snapshot=await db.collection(COLLECTIONS.visits).where('visitDate','>=',now).where('visitDate','<=',new Date(now.getTime()+7*86400000)).orderBy('visitDate','asc').limit(1000).get();
@@ -150,7 +146,6 @@ function transactionalEvent(property:RecordData,event:ReminderCandidate,schedule
 }
 
 export async function runPropertyReminders(now=new Date(),cursorToken='') {
-  blockLocalScheduler();
   if(!process.env.RESEND_API_KEY||!process.env.FROM_EMAIL)throw new ApiError(503,'Reminder email delivery is not configured');
   const cursor=decodeCursor(cursorToken),db=getDatabase();let query:FirebaseFirestore.Query=db.collection(COLLECTIONS.properties).where('isActive','==',true).orderBy('__name__').limit(250);
   if(cursor.after)query=query.startAfter(cursor.after);

@@ -59,37 +59,37 @@ const SearchResults = () => {
     const query = overrides.query ?? searchQuery;
     try {
       setLoading(true);
-
+      
       // Use the first selected listing type if available, otherwise use searchType
       let listingType: 'buy' | 'rent' | undefined = type;
       if (selectedListingTypes.length > 0) {
         listingType = selectedListingTypes[0] as 'buy' | 'rent';
       }
-
+      
       let results = await propertyService.searchProperties(
         query,
         listingType,
         condition
       );
-
+      
       // Client-side filtering by multiple listing types if needed
       if (selectedListingTypes.length > 1) {
         // If multiple listing types are selected, we need to search for each and combine
         const allResults = await Promise.all(
-          selectedListingTypes.map(type =>
+          selectedListingTypes.map(type => 
             propertyService.searchProperties(query, type as 'buy' | 'rent', condition)
           )
         );
-
+        
         // Combine and deduplicate results
         const combinedResults = allResults.flat();
         const uniqueResults = combinedResults.filter((property, index, self) =>
           index === self.findIndex(p => p.id === property.id)
         );
-
+        
         results = uniqueResults;
       }
-
+      
       // Client-side filtering by categories if needed
       if (selectedCategories.length > 0) {
         results = results.filter(property =>
@@ -101,7 +101,7 @@ const SearchResults = () => {
 
       if(generation!==searchGeneration.current)return;
       setProperties(results);
-
+      
       // Update URL params
       const newParams = new URLSearchParams();
       if (query.trim()) newParams.append('q', query.trim());
@@ -110,10 +110,10 @@ const SearchResults = () => {
       if (selectedListingTypes.length > 0) newParams.append('types', selectedListingTypes.join(','));
       if (condition) newParams.append('projectCondition', condition);
       setSearchParams(newParams);
-
+      
     } catch (error) {
       if(generation!==searchGeneration.current)return;
-
+      
       toast({
         title: "Search Error",
         description: "Failed to search properties. Please try again.",

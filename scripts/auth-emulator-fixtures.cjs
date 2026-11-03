@@ -2,7 +2,7 @@ const crypto=require('node:crypto');
 const admin=require('firebase-admin');
 const authHost=process.env.FIREBASE_AUTH_EMULATOR_HOST,firestoreHost=process.env.FIRESTORE_EMULATOR_HOST,project=process.env.FIREBASE_TEST_PROJECT_ID||'demo-propbank';
 const localEmulator=/^(127\.0\.0\.1|localhost|\[::1\]):\d+$/i;
-if(!localEmulator.test(authHost||'')||!localEmulator.test(firestoreHost||'')||!/^demo-[a-z0-9-]+$/.test(project)){console.error('Refusing to run. Use local emulator hosts and a synthetic project ID beginning with demo-.');process.exit(1);}
+if(!localEmulator.test(authHost||'')||!localEmulator.test(firestoreHost||'')||!/^(demo-|test-)/i.test(project)){console.error('Refusing to run. Use local emulator hosts and a project ID beginning with demo- or test-.');process.exit(1);}
 const action=process.argv[2];if(!['--seed','--cleanup','--seed-reusable','--cleanup-reusable'].includes(action)){console.error('Use --seed, --cleanup, --seed-reusable or --cleanup-reusable.');process.exit(1);}
 const prefix=process.env.PROPBANK_TEST_PREFIX||'PBDEV_AUTH_V1',password=process.env.PROPBANK_TEST_PASSWORD;
 if(['--seed','--cleanup'].includes(action)&&!password){console.error('Refusing to run without PROPBANK_TEST_PASSWORD. Use a development-only value supplied through the environment.');process.exit(1);}

@@ -86,9 +86,7 @@ export async function listProperties(request:Request) {
     const rented=await tenantProperties(ownerUID,user.uid===ownerUID&&user.token.email_verified===true?user.token.email||'':'');
     const merged=new Map(own.map(({property})=>[s(property.id),propertyResponse(property,'normal','owner')]));
     for(const {property} of submitted)merged.set(s(property.id),propertyResponse(property,'normal','agent'));
-    // Match the dedicated tenant endpoint so the combined response can replace
-    // its duplicate request without losing fields such as the displayed price.
-    for (const property of rented) if(!merged.has(s(property.id))) merged.set(s(property.id),propertyResponse(property,'normal','tenant'));
+    for (const property of rented) if(!merged.has(s(property.id))) merged.set(s(property.id),propertyResponse(property,'tenant','tenant'));
     return listResponse([...merged.values()],{ownerUID});
   }
   if(params.get('admin')==='true') {

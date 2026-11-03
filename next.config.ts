@@ -1,8 +1,5 @@
 import type { NextConfig } from 'next';
 import { networkInterfaces } from 'node:os';
-import {firebaseEnvironment} from './src/lib/firebase-environment.cjs';
-// Next loads .env files first. Direct next dev must not bypass local isolation.
-firebaseEnvironment(process.env);
 const config: NextConfig = {
   // Allow this PC's LAN addresses to load development assets and hot updates.
   allowedDevOrigins: Object.values(networkInterfaces()).flatMap(addresses =>

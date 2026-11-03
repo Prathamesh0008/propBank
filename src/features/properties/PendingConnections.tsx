@@ -36,10 +36,8 @@ export default function PendingConnections() {
   async function discover() {for (let page = 0; page < 5; page++) if (!(await connectionRequest('discover')).truncated) break;discoveredIdentity.current=identityKey;}
   const query = useQuery<ConnectionsResponse>({
     queryKey: ['relationshipLinks', user?.uid, user?.email, user?.emailVerified], enabled: !!user,
-    staleTime: 30_000, retry: false, refetchOnWindowFocus: true,
-    // Each refresh fans out over canonical and legacy status queries. Keep
-    // mutation/focus/manual refresh, with a slower fallback for other devices.
-    refetchInterval: query => query.state.data?.connections.some(item => connectionPending(item.status)) ? 120_000 : false,
+    staleTime: 0, retry: false, refetchOnWindowFocus: 'always',
+    refetchInterval: query => query.state.data?.connections.some(item => connectionPending(item.status)) ? 30000 : false,
     queryFn: async () => {
       if(discoveredIdentity.current!==identityKey)await discover();
       const response = await apiFetch('/api/relationship-links');

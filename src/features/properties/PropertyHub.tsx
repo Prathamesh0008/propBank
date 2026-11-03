@@ -37,8 +37,7 @@ export function useProductHub(propertyId?: string) {
         `property-hub${propertyId ? "?propertyId=" + encodeURIComponent(propertyId) : ""}`,
       ),
     enabled: !!user && !loading,
-    staleTime: 60_000,
-    retry: false,
+    staleTime: 0,
   });
 }
 function CompactActions({
