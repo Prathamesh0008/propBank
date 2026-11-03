@@ -1,0 +1,3 @@
+.shortcut { font-family: var(--pb-ui); padding-block: 16px; }
+.shortcut a { display: inline-flex; align-items: center; gap: 13px; min-height: 42px; color: var(--pb-forest); font-size: 13px; text-decoration: underline; text-underline-offset: 4px; }
+.shortcut a:focus-visible { outline: 2px solid var(--pb-focus); outline-offset: 4px; }

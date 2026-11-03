@@ -1,0 +1,65 @@
+"use client";
+
+import { useSearchParams } from "@/lib/navigation";
+import {usePropertyFlowNavigation} from '@/lib/property-flow-navigation';
+import { ArrowLeft, ArrowRight, KeyRound, Building2 } from "lucide-react";
+import PropertyTypeSelector from "./PropertyTypeSelector";
+import styles from "./SelectPropertyType.module.css";
+
+const SelectPropertyType = () => {
+  const {forward,back}=usePropertyFlowNavigation();
+  const [params, setParams] = useSearchParams();
+  const mode = params.get("as");
+  const relationship = mode === "owner" || mode === "tenant" ? mode : null;
+
+  const chooseRelationship = (choice: "owner" | "tenant") => {
+    const next = new URLSearchParams(params.toString());
+    next.set("as", choice);
+    setParams(next,{replace:true});
+  };
+
+  const handlePropertyTypeSelect = (propertyType: string) => {
+    if (!relationship) return;
+    const next = new URLSearchParams({type:propertyType,as:relationship});
+    const adminOwnerUID=params.get('adminOwnerUID');
+    if(adminOwnerUID)next.set('adminOwnerUID',adminOwnerUID);
+    forward(`/add-property?${next.toString()}`);
+  };
+
+  return (
+    <main className={styles.page}>
+      {!relationship ? (
+        <section className={styles.inner} aria-labelledby="add-property-heading">
+          <p className={styles.kicker}>Your property workspace</p>
+          <h1 id="add-property-heading" className={styles.heading}>First, tell us your connection to the property.</h1>
+          <p className={styles.intro}>We'll tailor the next steps to the information you need to share.</p>
+          <div className={styles.choices}>
+            <button type="button" className={styles.choice} onClick={() => chooseRelationship("owner")}>
+              <Building2 aria-hidden="true" className={styles.icon} />
+              <span className={styles.choiceText}><strong>I'm the owner</strong><span>Add a property you own or manage.</span></span>
+              <ArrowRight aria-hidden="true" className={styles.arrow} />
+            </button>
+            <button type="button" className={styles.choice} onClick={() => chooseRelationship("tenant")}>
+              <KeyRound aria-hidden="true" className={styles.icon} />
+              <span className={styles.choiceText}><strong>I'm a tenant</strong><span>Record the home or space you're renting.</span></span>
+              <ArrowRight aria-hidden="true" className={styles.arrow} />
+            </button>
+          </div>
+          <p className={styles.note}>Property ownership and tenant records follow different verification steps.</p>
+        </section>
+      ) : (
+        <section className={styles.inner} aria-label="Select the property category">
+          <button type="button" className={styles.back} onClick={() => back('/manage-property')}>
+            <ArrowLeft size={16} aria-hidden="true" /> Back
+          </button>
+          <PropertyTypeSelector
+            onSelect={handlePropertyTypeSelect}
+            title="Select property category"
+          />
+        </section>
+      )}
+    </main>
+  );
+};
+
+export default SelectPropertyType;

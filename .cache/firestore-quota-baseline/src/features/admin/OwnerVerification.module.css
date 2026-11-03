@@ -1,0 +1,6 @@
+/* Auditable owner review surface */
+.verification{padding:clamp(16px,2vw,27px);border:1px solid #d9d5cc;border-radius:4px;background:#faf9f5;color:#242b28;font-family:var(--font-manrope),sans-serif;overflow-wrap:anywhere}
+.verification h3{font-size:1.12rem;letter-spacing:-.025em}.verification form{padding:16px 0;border-top:1px solid #e0dcd3}.verification label{font-size:.88rem;line-height:1.5}.verification input:not([type=checkbox]){margin-top:6px;min-height:42px;background:#fff}.verification input:focus-visible{outline:2px solid #a25c42;outline-offset:2px}
+.verification summary{cursor:pointer;font-weight:600;padding:12px 0}.verification li{padding:9px 0;border-top:1px solid #e6e1d6}
+.status{border-left:3px solid #858d76;padding:9px 13px;background:#f0efe7}
+@media(max-width:640px){.verification{padding:16px}.verification button{white-space:normal;height:auto;min-height:42px;text-align:left}}

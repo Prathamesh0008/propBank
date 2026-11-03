@@ -1,0 +1,11 @@
+import { handle, OPTIONS, unsupported } from '@/lib/server/http';
+import { updateServiceRequest } from '@/lib/server/services/migration-remainder';
+export { OPTIONS };
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const GET = unsupported;
+export const POST = unsupported;
+export const PUT = handle(async (request: Request, context: { params: Promise<{ id: string }> }) => updateServiceRequest(request, (await context.params).id), 'Failed to update service request', true);
+export const PATCH = unsupported;
+export const DELETE = unsupported;
+export const HEAD = unsupported;

@@ -60,7 +60,7 @@ test('failed document and service image uploads never create misleading business
  assert.equal(Object.keys(app.state.documents||{}).length,0);assert.equal(Object.keys(app.state.service_requests||{}).length,0);assert.ok(Object.values(app.state.storage_objects).every(v=>v.status==='cleanup_pending'));
 });
 test('property base64 upload failure aborts the property instead of silently skipping photos',async()=>{
- const app=setup();const response=await route(app,'properties').POST(request('/properties','owner','POST',{ownerUID:'owner',propertyTitle:'No silent loss',propertyType:'residential',listingType:'rent',monthlyRent:'70000',location:'Test',images:[image,'bad']}));assert.equal(response.status,502);assert.equal(Object.keys(app.state.properties).length,2);assert.ok(!app.writes.some(w=>w.kind==='storage'));
+ const app=setup();const response=await route(app,'properties').POST(request('/properties','owner','POST',{ownerUID:'owner',propertyTitle:'No silent loss',propertyType:'residential',configuration:'2 BHK',listingType:'rent',monthlyRent:'70000',location:'Test',images:[image,'bad']}));assert.equal(response.status,502);assert.equal(Object.keys(app.state.properties).length,2);assert.ok(!app.writes.some(w=>w.kind==='storage'));
 });
 test('document deletion failure remains visible/retryable; pending files cannot be downloaded',async()=>{
  const app=setup(),doc=await document(app),api=route(app,'documents/[id]');app.env.TEST_R2_DELETE_FAIL='1';
@@ -128,7 +128,7 @@ test('legacy galleries can be reordered without losing their guarded references'
 });
 
 test('new-user media session does not grant access before active profile registration',async()=>{
- const app=setup(),doc=await document(app),session=await route(app,'media/session').POST(request('/media/session','new-user','POST'));assert.equal(session.status,403);assert.equal((await session.json()).code,'ACCOUNT_PROFILE_REQUIRED');assert.equal(app.sessions.size,0);const response=await route(app,'media/[id]').GET(new Request('http://local'+doc.fileUrl,{headers:{Authorization:'Bearer new-user'}}),context(doc.fileUrl.split('/').at(-1).split('#')[0]));assert.equal(response.status,403);
+ const app=setup();app.claims['new-user']={email:'new-user@test.invalid',email_verified:true};const doc=await document(app),session=await route(app,'media/session').POST(request('/media/session','new-user','POST'));assert.equal(session.status,403);assert.equal((await session.json()).code,'ACCOUNT_PROFILE_REQUIRED');assert.equal(app.sessions.size,0);const response=await route(app,'media/[id]').GET(new Request('http://local'+doc.fileUrl,{headers:{Authorization:'Bearer new-user'}}),context(doc.fileUrl.split('/').at(-1).split('#')[0]));assert.equal(response.status,403);
 });
 
 test('enquiry counters expire by window and replay protection expires without permanent deduplication',async()=>{
@@ -140,4 +140,9 @@ test('enquiry counters expire by window and replay protection expires without pe
 test('removing an old file reference cannot resurrect a cleanup lease or tombstone',async()=>{
  const app=setup(),url=await upload(app,'owner',{folder:'properties'}),id=url.split('/').at(-1);const api=route(app,'properties/[id]');assert.equal((await api.PUT(request('/properties/P','owner','PUT',{images:[url]}),context('P'))).status,200);
  app.state.storage_objects[id].status='deleting';app.state.storage_objects[id].cleanupLease='lease';assert.equal((await api.PUT(request('/properties/P','owner','PUT',{images:[]}),context('P'))).status,200);assert.equal(app.state.storage_objects[id].status,'deleting');assert.equal(app.state.storage_objects[id].cleanupLease,'lease');
+});
+
+
+test('deleted Auth identity cannot establish a media session',async()=>{
+ const app=setup();const response=await route(app,'media/session').POST(request('/media/session','deleted-user','POST'));assert.equal(response.status,403);assert.equal((await response.json()).code,'ACCOUNT_DISABLED');assert.equal(app.sessions.size,0);
 });

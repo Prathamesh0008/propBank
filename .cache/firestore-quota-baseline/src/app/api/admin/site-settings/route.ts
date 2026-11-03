@@ -1,0 +1,11 @@
+import { handle, OPTIONS, unsupported } from '@/lib/server/http';
+import { siteSettings } from '@/lib/server/services/migration-remainder';
+export { OPTIONS };
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const GET = handle(async (request: Request) => siteSettings(request), 'Failed to get site settings', false);
+export const POST = unsupported;
+export const PUT = handle(async (request: Request) => siteSettings(request), 'Failed to update site settings', false);
+export const PATCH = handle(async (request: Request) => siteSettings(request), 'Failed to update site settings', false);
+export const DELETE = unsupported;
+export const HEAD = unsupported;

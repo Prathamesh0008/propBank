@@ -1,0 +1,40 @@
+/* Scoped editorial styling for the owner listing and editing workflows. */
+.page{min-height:85vh;background:var(--pb-chalk,#f8f6f0);color:var(--pb-ink,#242b28);font-family:var(--pb-sans,Manrope,Arial,sans-serif);padding:54px 24px 110px}
+.shell{max-width:1090px;margin-inline:auto}
+.pageIntro{border-bottom:1px solid #cecabe;margin-bottom:38px;padding-bottom:34px}
+.pageIntro>button:first-child{color:#5c625a;padding-left:0;margin-bottom:26px;font-size:13px}
+.pageIntro>div{gap:18px;align-items:flex-start}
+.introIcon{display:grid;place-items:center;background:#e6e1d6;color:#a25c42;width:52px;height:52px;flex-shrink:0;border-radius:2px}
+.introIcon svg{height:24px;width:24px;color:inherit}
+.title{font-size:clamp(35px,4vw,57px);font-weight:500;letter-spacing:-.048em;line-height:1.12;margin-bottom:9px}
+.pageIntro p{font-size:14px;color:#565c56;line-height:1.65}
+.formPanel{background:transparent;border:0;box-shadow:none;border-radius:0}
+.formPanel>[class*="CardHeader"],.formPanel>[class*="CardContent"]{padding-inline:0}
+.formPanel h3{font-size:clamp(20px,2vw,26px);font-weight:550;letter-spacing:-.025em;color:#242b28}
+.formPanel :is(input,textarea,button[role="combobox"]){border-radius:3px;box-shadow:none}
+.formPanel :is(input,textarea,button[role="combobox"]):focus-visible{outline:2px solid #a25c42;outline-offset:1px}
+.formPanel label{color:#404a42;font-size:13px;font-weight:600}
+.formBody>div[class*="border"][class*="rounded"],.formBody>div[class*="grid"][class*="border"]{background:transparent;border:0;border-top:1px solid #d2d0c5;border-radius:0;padding:34px 0 12px;box-shadow:none}
+.formBody button[type="submit"]{background:#242b28;color:#fff;border-radius:2px;min-height:49px;letter-spacing:.04em}
+.formBody button[type="submit"]:hover{background:#a25c42}
+.formBody button:focus-visible{outline:2px solid #a25c42;outline-offset:3px}
+@media(max-width:700px){.page{padding:30px 17px 78px}.pageIntro{margin-bottom:24px;padding-bottom:24px}.pageIntro>div{gap:12px}.introIcon{width:42px;height:42px}.title{font-size:clamp(30px,8vw,43px)}.formBody>div[class*="border"][class*="rounded"],.formBody>div[class*="grid"][class*="border"]{padding-top:24px}.formPanel h3{font-size:21px}}
+@media(prefers-reduced-motion:reduce){.formBody button{transition:none}}
+
+/* Batch 3 Part 2: legible field groups, inline errors and touch-friendly media actions. */
+.formBody{--form-rule:#d2d0c5;--form-quiet:#656a61;min-width:0}
+.formBody :is(input,textarea,[role="combobox"]){min-width:0;max-width:100%;background:#fffefa;border-color:#c7c7bd;min-height:43px;color:var(--pb-ink,#242b28)}
+.formBody textarea{min-height:102px;line-height:1.55;padding-block:12px}
+.formBody :is(input,textarea,[role="combobox"]):disabled{background:#e9e7e0;color:#63685e;cursor:not-allowed}
+.formBody [aria-invalid="true"]{border-color:#a13931;background:#fff9f7}
+.formBody [data-slot="form-message"],.formBody p.text-destructive{font-weight:500;font-size:12px;line-height:1.5}
+.formBody :is(input,textarea,[role="combobox"]):focus-visible{outline:2px solid #a25c42;outline-offset:2px}
+.formBody :is(button,input,textarea,[role="combobox"]){transition:border-color .18s ease,background-color .18s ease}
+.formBody label{line-height:1.45}
+.formBody h3{font-size:clamp(20px,2.3vw,27px);font-weight:600;letter-spacing:-.035em;margin-bottom:4px}
+.formBody h4{color:var(--pb-ink,#242b28);font-weight:600}
+.formBody img{max-width:100%}
+.imageRemoveButton{position:absolute;top:7px;right:7px;min-width:38px;min-height:38px;display:flex;align-items:center;justify-content:center;padding:7px;border-radius:3px;opacity:1;box-shadow:0 2px 7px #0003}
+.imageRemoveButton:focus-visible{outline:3px solid #a25c42;outline-offset:2px}
+@media(max-width:700px){.formBody{overflow-wrap:anywhere}.formBody :is(input,textarea,[role="combobox"]){font-size:16px}.formBody button[type="submit"]{width:100%;min-height:48px}.formBody>div:last-of-type{flex-wrap:wrap;gap:12px}.formBody>div:last-of-type>button{flex:1 1 180px}.formBody [class*="grid-cols-2"]{min-width:0}}
+@media(prefers-reduced-motion:reduce){.formBody :is(button,input,textarea,[role="combobox"]){transition:none}}

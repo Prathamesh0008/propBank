@@ -1,0 +1,32 @@
+/* Scoped PropBank Mineral & Oxide workspace. No global cascade or hero dependency. */
+.workspace {
+  --pw-ink: #242b28; --pw-muted: #565c56; --pw-rule: #d9d5ca;
+  --pw-clay: #a25c42; --pw-chalk: #f8f6f0;
+  font-family: var(--font-manrope), Manrope, sans-serif;
+  color: var(--pw-ink);
+  min-width: 0;
+}
+.workspace h1 { font-size: clamp(2rem, 3.7vw, 3.2rem); font-weight: 600; line-height: 1.13; letter-spacing: -.055em; }
+.workspace h2 { letter-spacing: -.035em; }
+.workspace h3 { letter-spacing: -.018em; }
+.workspace input, .workspace select, .workspace textarea { border-color: var(--pw-rule); background-color: #fffefa; color: var(--pw-ink); border-radius: 4px; min-width: 0; }
+.workspace input:focus-visible, .workspace select:focus-visible, .workspace textarea:focus-visible, .workspace button:focus-visible, .workspace a:focus-visible { outline: 2px solid var(--pw-clay); outline-offset: 3px; }
+.workspace input[type="file"] { max-width: 100%; height: auto; min-height: 44px; padding: 10px; }
+.workspace a:not([class]) { color: #86503c; text-underline-offset: 4px; }
+.workspace form { min-width: 0; }
+.workspace form label { display: block; color: #424941; font-size: .89rem; font-weight: 500; }
+.workspace form button { min-height: 42px; }
+.workspace button { transition: background-color .18s ease, border-color .18s ease; }
+.workspace [role="alert"] { padding: 11px 14px; border-left: 3px solid #ab503d; background: #fff0e9; color: #71372d; }
+.workspace [role="status"] { padding: 9px 0; color: #45564c; }
+.workspace details { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--pw-rule); }
+.workspace summary { cursor: pointer; font-weight: 600; color: #86503c; }
+.workspace :is(img, iframe) { max-width: 100%; }
+@media(max-width: 650px) { .workspace { padding-left: 16px; padding-right: 16px; } .workspace h1 { font-size: 2rem; } .workspace button { max-width: 100%; } .workspace form { overflow-wrap: anywhere; } }
+@media(prefers-reduced-motion: reduce) { .workspace button { transition: none; } }
+
+.back { display: inline-flex; align-items: center; color: #86503c; text-underline-offset: 4px; width: fit-content; }
+.panel { border: none; border-top: 1px solid var(--pw-rule); border-bottom: 1px solid var(--pw-rule); border-radius: 0; background: transparent; box-shadow: none; }
+.panel h3 { font-size: clamp(1.35rem, 2vw, 1.7rem); }
+.notice { border-left: 3px solid #a25c42; background: #ece7dc; color: #354035; padding: 14px 17px; }
+.panel ol > li { background: #fffefa; border-radius: 3px; }

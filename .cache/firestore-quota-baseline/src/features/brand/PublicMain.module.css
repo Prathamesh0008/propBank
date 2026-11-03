@@ -1,0 +1,4 @@
+.main { flex: 1; }
+.publicMain { flex: 1; font-family: var(--pb-ui); color: var(--pb-ink); background: var(--pb-chalk); }
+.publicMain :where(input, button, select, textarea) { font-family: inherit; }
+.publicMain :where(h1) { font-family: var(--pb-editorial); font-weight: 500; text-wrap: balance; }

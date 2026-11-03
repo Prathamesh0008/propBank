@@ -1,0 +1,20 @@
+/* Shared admin/agent inbox presentation; behaviour remains in EnquiryInbox.tsx. */
+.inbox { margin: 30px 0; padding: 18px 0 28px; border-top: 1px solid #d8d5cd; display: grid; gap: 16px; font-family: var(--font-manrope), Manrope, sans-serif; color: #242b28; }
+.heading { font-size: clamp(1.45rem,2.8vw,2rem); letter-spacing: -.045em; font-weight: 600; }
+.inbox > p { font-size: .92rem; line-height: 1.65; color: #5e645c; max-width: 72ch; }
+.inbox > button { justify-self: start; border-radius: 3px; }
+.enquiry { border: 0; border-top: 1px solid #d8d5cd; border-radius: 0; background: transparent; box-shadow: none; }
+.enquiryHeader { padding: 22px 0 8px; }
+.enquiryTitle { font-size: 1.18rem; font-weight: 600; letter-spacing: -.025em; }
+.enquiryBody { padding: 0 0 26px; display: grid; gap: 14px; }
+.address { font-size: .92rem; color: #626860; overflow-wrap: anywhere; }
+.customer { font-size: .88rem; color: #3d4741; overflow-wrap: anywhere; }
+.message { padding: 12px 0; border-top: 1px solid #e2ded6; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.enquiryBody label { display: grid; gap: 5px; font-size: .86rem; font-weight: 500; }
+.enquiryBody select, .enquiryBody textarea { border: 1px solid #cbc9c0; border-radius: 3px; background: #fffdf8; color: #242b28; }
+.enquiryBody select:focus-visible, .enquiryBody textarea:focus-visible { outline: 2px solid #a25c42; outline-offset: 2px; }
+.enquiryBody button { border-radius: 3px; }
+.history { padding: 12px 0; border-top: 1px solid #d8d5cd; font-size: .89rem; }
+.history summary { cursor: pointer; font-weight: 600; }
+.history li { padding: 8px 0; border-bottom: 1px solid #e2ded6; line-height: 1.5; }
+@media (min-width: 800px) { .enquiryBody > .message { max-width: 76ch; } }

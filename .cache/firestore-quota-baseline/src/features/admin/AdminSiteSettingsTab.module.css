@@ -1,0 +1,6 @@
+/* Configuration fields remain functional and visually consistent. */
+.settings{font-family:var(--font-manrope),sans-serif;color:#242b28;background:transparent;border:0;border-radius:0;box-shadow:none}
+.settings label{color:#414943;line-height:1.6}.settings input,.settings textarea,.settings select{accent-color:#a25c42}
+.input{background:#fffefa;border:1px solid #c9c7bc;border-radius:5px;min-height:44px;color:#242b28;outline-offset:2px}
+.input:focus-visible{outline:2px solid #a25c42;border-color:#a25c42}
+@media(max-width:650px){.settings{min-width:0}.settings input{max-width:100%}}

@@ -1,0 +1,327 @@
+TAP version 13
+# Subtest: both invitation directions and property notifications send from care while preserving the configured website origin
+not ok 1 - both invitation directions and property notifications send from care while preserving the configured website origin
+  ---
+  duration_ms: 1786.5773
+  type: 'test'
+  location: 'C:\\Users\\Nova Tech\\Desktop\\propBank\\tests\\email-sender.test.cjs:16:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    400 !== 200
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 200
+  actual: 400
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Nova Tech\Desktop\propBank\tests\email-sender.test.cjs:17:462)
+    async Test.run (node:internal/test_runner/test:1113:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3)
+  ...
+# Subtest: tenant intake atomically queues normalized owner invitation for an unregistered recipient without granting access
+not ok 2 - tenant intake atomically queues normalized owner invitation for an unregistered recipient without granting access
+  ---
+  duration_ms: 1792.1256
+  type: 'test'
+  location: 'C:\\Users\\Nova Tech\\Desktop\\propBank\\tests\\relationship-invitation-email.test.cjs:15:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    {"success":false,"message":"Invalid property data: Select a valid residential BHK layout"}
+    
+    
+    400 !== 200
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 200
+  actual: 400
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Nova Tech\Desktop\propBank\tests\relationship-invitation-email.test.cjs:16:54)
+    async Test.run (node:internal/test_runner/test:1113:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3)
+  ...
+# Subtest: owner property intake queues tenant invitation only after the original property and tenancy persist
+not ok 3 - owner property intake queues tenant invitation only after the original property and tenancy persist
+  ---
+  duration_ms: 901.5055
+  type: 'test'
+  location: 'C:\\Users\\Nova Tech\\Desktop\\propBank\\tests\\relationship-invitation-email.test.cjs:20:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    {"success":false,"message":"Invalid property data: Select a valid residential BHK layout"}
+    
+    
+    400 !== 200
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 200
+  actual: 400
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Nova Tech\Desktop\propBank\tests\relationship-invitation-email.test.cjs:22:55)
+    async Test.run (node:internal/test_runner/test:1113:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+  ...
+# Subtest: missing optional owner email preserves pending relationship without mail; invalid email rejects either intake
+not ok 4 - missing optional owner email preserves pending relationship without mail; invalid email rejects either intake
+  ---
+  duration_ms: 651.2168
+  type: 'test'
+  location: 'C:\\Users\\Nova Tech\\Desktop\\propBank\\tests\\relationship-invitation-email.test.cjs:27:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    400 !== 200
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 200
+  actual: 400
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Nova Tech\Desktop\propBank\tests\relationship-invitation-email.test.cjs:28:27)
+    async Test.run (node:internal/test_runner/test:1113:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+  ...
+# Subtest: repeated and concurrent property submissions produce one property, connection and invitation
+not ok 5 - repeated and concurrent property submissions produce one property, connection and invitation
+  ---
+  duration_ms: 454.4653
+  type: 'test'
+  location: 'C:\\Users\\Nova Tech\\Desktop\\propBank\\tests\\relationship-invitation-email.test.cjs:34:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The expression evaluated to a falsy value:
+    
+      assert.ok(responses.every(r=>r.status===200))
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Nova Tech\Desktop\propBank\tests\relationship-invitation-email.test.cjs:35:88)
+    async Test.run (node:internal/test_runner/test:1113:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+  ...
+# Subtest: email templates and links contain no submitted private data, account identifiers or authorization tokens
+not ok 6 - email templates and links contain no submitted private data, account identifiers or authorization tokens
+  ---
+  duration_ms: 486.1069
+  type: 'test'
+  location: 'C:\\Users\\Nova Tech\\Desktop\\propBank\\tests\\relationship-invitation-email.test.cjs:40:1'
+  failureType: 'testCodeFailure'
+  error: 'Cannot convert undefined or null to object'
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    Object.values (<anonymous>)
+    TestContext.<anonymous> (C:\Users\Nova Tech\Desktop\propBank\tests\relationship-invitation-email.test.cjs:41:729)
+    async Test.run (node:internal/test_runner/test:1113:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+  ...
+# Subtest: verified email discovery exposes only a generic claim, never private property access, and rejection cancels mail
+not ok 7 - verified email discovery exposes only a generic claim, never private property access, and rejection cancels mail
+  ---
+  duration_ms: 916.5425
+  type: 'test'
+  location: 'C:\\Users\\Nova Tech\\Desktop\\propBank\\tests\\relationship-invitation-email.test.cjs:43:1'
+  failureType: 'testCodeFailure'
+  error: 'Cannot convert undefined or null to object'
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    Object.values (<anonymous>)
+    TestContext.<anonymous> (C:\Users\Nova Tech\Desktop\propBank\tests\relationship-invitation-email.test.cjs:44:57)
+    async Test.run (node:internal/test_runner/test:1113:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+  ...
+# Subtest: provider failures preserve the property and retry uses the same immutable Resend key
+not ok 8 - provider failures preserve the property and retry uses the same immutable Resend key
+  ---
+  duration_ms: 668.4868
+  type: 'test'
+  location: 'C:\\Users\\Nova Tech\\Desktop\\propBank\\tests\\relationship-invitation-email.test.cjs:46:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    400 !== 200
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 200
+  actual: 400
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Nova Tech\Desktop\propBank\tests\relationship-invitation-email.test.cjs:47:54)
+    async Test.run (node:internal/test_runner/test:1113:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+  ...
+# Subtest: obsolete rejected, expired and linked invitations cannot be retried
+not ok 9 - obsolete rejected, expired and linked invitations cannot be retried
+  ---
+  duration_ms: 507.6815
+  type: 'test'
+  location: 'C:\\Users\\Nova Tech\\Desktop\\propBank\\tests\\relationship-invitation-email.test.cjs:49:1'
+  failureType: 'testCodeFailure'
+  error: "Cannot read properties of undefined (reading 'invitationClaimId')"
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Nova Tech\Desktop\propBank\tests\relationship-invitation-email.test.cjs:50:196)
+    async Test.run (node:internal/test_runner/test:1113:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+  ...
+# Subtest: recipient quota suppresses excess mail while preserving all property and claim records
+not ok 10 - recipient quota suppresses excess mail while preserving all property and claim records
+  ---
+  duration_ms: 335.3986
+  type: 'test'
+  location: 'C:\\Users\\Nova Tech\\Desktop\\propBank\\tests\\relationship-invitation-email.test.cjs:52:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    400 !== 200
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 200
+  actual: 400
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Nova Tech\Desktop\propBank\tests\relationship-invitation-email.test.cjs:53:47)
+    async Test.run (node:internal/test_runner/test:1113:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+  ...
+# Subtest: sender hourly quota also applies across different recipients
+not ok 11 - sender hourly quota also applies across different recipients
+  ---
+  duration_ms: 366.8257
+  type: 'test'
+  location: 'C:\\Users\\Nova Tech\\Desktop\\propBank\\tests\\relationship-invitation-email.test.cjs:55:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    400 !== 200
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 200
+  actual: 400
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Nova Tech\Desktop\propBank\tests\relationship-invitation-email.test.cjs:56:48)
+    async Test.run (node:internal/test_runner/test:1113:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+  ...
+# Subtest: discovery, registration and refresh do not repeat invitation events
+not ok 12 - discovery, registration and refresh do not repeat invitation events
+  ---
+  duration_ms: 352.2996
+  type: 'test'
+  location: 'C:\\Users\\Nova Tech\\Desktop\\propBank\\tests\\relationship-invitation-email.test.cjs:61:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    0 !== 1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Nova Tech\Desktop\propBank\tests\relationship-invitation-email.test.cjs:62:221)
+    async Test.run (node:internal/test_runner/test:1113:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+  ...
+# Subtest: deployment URLs are constrained and unsafe configuration suppresses sending without breaking intake
+not ok 13 - deployment URLs are constrained and unsafe configuration suppresses sending without breaking intake
+  ---
+  duration_ms: 413.7909
+  type: 'test'
+  location: 'C:\\Users\\Nova Tech\\Desktop\\propBank\\tests\\relationship-invitation-email.test.cjs:64:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    400 !== 200
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 200
+  actual: 400
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Nova Tech\Desktop\propBank\tests\relationship-invitation-email.test.cjs:65:65)
+    async Test.run (node:internal/test_runner/test:1113:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+  ...
+# Subtest: property base64 upload failure aborts the property instead of silently skipping photos
+not ok 14 - property base64 upload failure aborts the property instead of silently skipping photos
+  ---
+  duration_ms: 1883.5948
+  type: 'test'
+  location: 'C:\\Users\\Nova Tech\\Desktop\\propBank\\tests\\storage-security.test.cjs:62:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    400 !== 502
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 502
+  actual: 400
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Nova Tech\Desktop\propBank\tests\storage-security.test.cjs:63:269)
+    async Test.run (node:internal/test_runner/test:1113:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3)
+  ...
+# Subtest: new-user media session does not grant access before active profile registration
+not ok 15 - new-user media session does not grant access before active profile registration
+  ---
+  duration_ms: 1022.7871
+  type: 'test'
+  location: 'C:\\Users\\Nova Tech\\Desktop\\propBank\\tests\\storage-security.test.cjs:130:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'ACCOUNT_DISABLED'
+    - 'ACCOUNT_PROFILE_REQUIRED'
+               ^
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ACCOUNT_PROFILE_REQUIRED'
+  actual: 'ACCOUNT_DISABLED'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Nova Tech\Desktop\propBank\tests\storage-security.test.cjs:131:175)
+    async Test.run (node:internal/test_runner/test:1113:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:788:7)
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 0
+# fail 15
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 8496.2224
+

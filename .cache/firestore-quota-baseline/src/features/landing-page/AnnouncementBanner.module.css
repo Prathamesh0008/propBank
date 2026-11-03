@@ -1,0 +1,2 @@
+.banner { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 11px 24px; background: var(--pb-forest); color: var(--pb-chalk); font-family: var(--pb-ui); font-size: 12px; line-height: 1.6; text-align: center; }
+.banner svg { flex-shrink: 0; }
