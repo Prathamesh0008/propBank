@@ -18,6 +18,7 @@ import styles from "./VisitPlanner.module.css";
 import {useAuth} from '@/contexts/AuthContext';
 import { indiaCalendarDate, indiaDateTimeParts, indiaLocalDateTime } from '@/lib/form-validation';
 import {useDataRefresh} from '@/lib/data-refresh';
+import {useQuery} from '@tanstack/react-query';
 
 
 const VisitPlanner = () => {
@@ -31,10 +32,17 @@ const VisitPlanner = () => {
   const [submitting, setSubmitting] = useState(false);
   const [editingVisit,setEditingVisit]=useState<Visit|null>(null);
   const [changingVisit,setChangingVisit]=useState('');
-  const [properties,setProperties]=useState<Property[]>([]);
   const [propertySearch,setPropertySearch]=useState('');
-  const [propertiesLoading,setPropertiesLoading]=useState(false);
-  const [propertiesError,setPropertiesError]=useState('');
+  const propertyOptions=useQuery({
+    queryKey:['publicProperties','home'],
+    queryFn:()=>propertyService.getAllPropertiesWithSettings(),
+    enabled:isAddingVisit,
+    staleTime:60_000,
+    retry:false,
+  });
+  const properties=propertyOptions.data?.properties||[];
+  const propertiesLoading=isAddingVisit&&propertyOptions.isPending;
+  const propertiesError=propertyOptions.error?'Properties could not be loaded. You can still schedule a general visit.':'';
   const requestRef=useRef<AbortController|null>(null);
   const requestGeneration=useRef(0);
   const {user,loading:authLoading}=useAuth();
@@ -73,7 +81,6 @@ const VisitPlanner = () => {
     }
   },[toast]);
   useDataRefresh(['visits'],()=>{if(user)void loadVisits();});
-  useDataRefresh(['properties'],()=>{void propertyService.getAllProperties().then(setProperties).catch(()=>{});});
 
   useEffect(()=>{
     if(authLoading)return;
@@ -82,12 +89,7 @@ const VisitPlanner = () => {
     return ()=>requestRef.current?.abort();
   },[authLoading,user,loadVisits]);
 
-  useEffect(()=>{
-    let active=true;
-    setPropertiesLoading(true);setPropertiesError('');
-    propertyService.getAllProperties().then(rows=>{if(active)setProperties(rows);}).catch(()=>{if(active)setPropertiesError('Properties could not be loaded. You can still schedule a general visit.');}).finally(()=>{if(active)setPropertiesLoading(false);});
-    return()=>{active=false;};
-  },[]);
+
 
   const handleInputChange = (field: string, value: string | number) => {
     setFormData(prev => ({ ...prev, [field]: value }));

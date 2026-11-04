@@ -1,6 +1,7 @@
 "use client";
 
 import { apiFetch } from '@/lib/api-client';
+import {useQueryClient} from '@tanstack/react-query';
 
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams, Link, useNavigate } from "@/lib/navigation";
@@ -28,6 +29,7 @@ const getPlaceholderImage = (propertyType?: string): string => {
 };
 
 const SearchResults = () => {
+  const queryClient=useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(false);
@@ -66,18 +68,15 @@ const SearchResults = () => {
         listingType = selectedListingTypes[0] as 'buy' | 'rent';
       }
       
-      let results = await propertyService.searchProperties(
-        query,
-        listingType,
-        condition
-      );
+      const search=(kind:'buy'|'rent'|undefined)=>queryClient.fetchQuery({queryKey:['publicProperties','search',query,kind,condition],queryFn:()=>propertyService.searchProperties(query,kind,condition),staleTime:60_000,retry:false});
+      let results = selectedListingTypes.length>1?[]:await search(listingType);
       
       // Client-side filtering by multiple listing types if needed
       if (selectedListingTypes.length > 1) {
         // If multiple listing types are selected, we need to search for each and combine
         const allResults = await Promise.all(
           selectedListingTypes.map(type => 
-            propertyService.searchProperties(query, type as 'buy' | 'rent', condition)
+            search(type as 'buy' | 'rent')
           )
         );
         

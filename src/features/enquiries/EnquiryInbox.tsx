@@ -35,7 +35,7 @@ function EnquiryRow({enquiry,admin,agents,onSave}:{enquiry:ManagedEnquiry;admin:
 }
 export default function EnquiryInbox({admin=false,agents=[]}:{admin?:boolean;agents?:Agent[]}) {
  const {user,loading}=useAuth(),[error,setError]=useState('');
- const query=useQuery({queryKey:['enquiries',user?.uid],queryFn:()=>workflowRequest<{enquiries:ManagedEnquiry[]}>('enquiries'),enabled:!!user&&!loading,staleTime:0});
+ const query=useQuery({queryKey:['enquiries',user?.uid],queryFn:()=>workflowRequest<{enquiries:ManagedEnquiry[]}>('enquiries'),enabled:!!user&&!loading,staleTime:60_000});
  async function save(enquiry:ManagedEnquiry,body:Record<string,unknown>){setError('');try{await workflowRequest(`enquiries/${enquiry.id}`,body,'PATCH');}catch(e){setError(e instanceof Error?e.message:'Could not update enquiry');}finally{await query.refetch();}}
  return <section className={styles.inbox} aria-label={admin?'Property enquiry inbox':'Assigned property enquiries'}>
   <h2 className={styles.heading}>{admin?'Property enquiry inbox':'Your assigned property enquiries'}</h2>
@@ -47,6 +47,6 @@ export default function EnquiryInbox({admin=false,agents=[]}:{admin?:boolean;age
 }
 export function BrokerEnquiries(){
  const {user,loading}=useAuth();
- const profile=useQuery({queryKey:['enquiryInboxRole',user?.uid],queryFn:()=>workflowRequest<{user?:{role:string}}>(`users/${user!.uid}`),enabled:!!user&&!loading,staleTime:0});
+ const profile=useQuery({queryKey:['enquiryInboxRole',user?.uid],queryFn:()=>workflowRequest<{user?:{role:string}}>(`users/${user!.uid}?summary=true`),enabled:!!user&&!loading,staleTime:60_000});
  return profile.data?.user?.role==='agent'?<EnquiryInbox/>:null;
 }

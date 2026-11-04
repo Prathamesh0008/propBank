@@ -1,4 +1,5 @@
 "use client";
+import {useAuth} from '@/contexts/AuthContext';
 import {useState} from 'react';
 import {useQuery} from '@tanstack/react-query';
 import {workflowRequest} from '@/lib/client-workflows';
@@ -27,7 +28,8 @@ function VisitCard({visit,onSave}:{visit:VisitRow;onSave:(status:string)=>Promis
 }
 export default function AdminVisits({notifications,onMarkRead}:{notifications:AdminNotification[];onMarkRead:(id:string,read:boolean)=>Promise<void>}){
  const [filters,setFilters]=useState({status:'',dateFrom:'',dateTo:'',propertyId:''}),[error,setError]=useState('');
- const query=useQuery({queryKey:['adminVisits',filters],queryFn:()=>workflowRequest<{visits:VisitRow[]}>(`admin/visits?status=${filters.status}&dateFrom=${filters.dateFrom}&dateTo=${filters.dateTo}&propertyId=${encodeURIComponent(filters.propertyId)}`),staleTime:0});
+ const {user,loading}=useAuth();
+ const query=useQuery({queryKey:['adminVisits',user?.uid,filters],enabled:!!user&&!loading,queryFn:()=>workflowRequest<{visits:VisitRow[]}>(`admin/visits?status=${filters.status}&dateFrom=${filters.dateFrom}&dateTo=${filters.dateTo}&propertyId=${encodeURIComponent(filters.propertyId)}`),staleTime:60_000});
  async function save(visit:VisitRow,status:string){setError('');try{await workflowRequest(`visits/${visit.id}`,{status,expectedVersion:visit.managementVersion},'PUT');}catch(e){setError(e instanceof Error?e.message:'Could not update visit');}finally{await query.refetch();}}
  const propertyOptions=Array.from(new Map((query.data?.visits||[]).filter(row=>row.property).map(row=>[row.property!.id,row.property!])).values());
  return <section className={styles.visits} aria-label="Admin visits"><header className={styles.heading}><span className={styles.kicker}>SCHEDULE & FOLLOW-UP</span><h2>Visit requests</h2><p>Review appointments, filter the authorized result set and update visit progress.</p></header>

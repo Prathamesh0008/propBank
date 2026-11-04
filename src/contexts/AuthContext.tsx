@@ -18,6 +18,7 @@ export const useAuth=()=>useContext(AuthContext);
 export const AuthProvider=({children}:{children:ReactNode})=>{
   const queryClient=useQueryClient(),{toast,dismiss}=useToast();
   const previousUID=useRef<string|undefined>(undefined),publishedUID=useRef<string|undefined>(undefined);
+  const discoveredIdentity=useRef<string|undefined>(undefined);
   const [user,setUser]=useState<User|null>(null),[loading,setLoading]=useState(true),[profileStatus,setProfileStatus]=useState<ProfileStatus>('checking'),[profileError,setProfileError]=useState(''),[profileRevision,setProfileRevision]=useState(0);
   const [fileAccess,setFileAccess]=useState(privateFileSession.snapshot);
   const notice=useRef<string|undefined>(undefined),readyRevision=useRef(-1);
@@ -25,7 +26,7 @@ export const AuthProvider=({children}:{children:ReactNode})=>{
   const refreshProfile=useCallback(async()=>{setProfileRevision(value=>value+1);},[]);
 
   useEffect(()=>privateFileSession.subscribe(setFileAccess),[]);
-  useEffect(()=>subscribeDataRefresh(event=>{const keys=[...new Set(event.domains.flatMap(domain=>queryKeysByDomain[domain]))];void Promise.all(keys.map(key=>queryClient.invalidateQueries({queryKey:[key]})));}),[queryClient]);
+  useEffect(()=>subscribeDataRefresh(event=>{const keys=[...new Set(event.domains.flatMap(domain=>queryKeysByDomain[domain]))];void Promise.all(keys.map(key=>queryClient.invalidateQueries({queryKey:[key],refetchType:document.visibilityState==='hidden'?'none':'active'},{cancelRefetch:false})));}),[queryClient]);
   useEffect(()=>{const refresh=()=>setProfileRevision(value=>value+1);window.addEventListener('propbank:profile-completed',refresh);return()=>window.removeEventListener('propbank:profile-completed',refresh);},[]);
   useEffect(()=>{
     let generation=0;
@@ -33,7 +34,7 @@ export const AuthProvider=({children}:{children:ReactNode})=>{
     const unsubscribe=onIdTokenChanged(auth,identity=>{
       const firebaseUser=identity?.emailVerified===true?identity:null,current=++generation;
       const identityChanged=previousUID.current!==firebaseUser?.uid;
-      if(identityChanged)queryClient.clear();
+      if(identityChanged){queryClient.clear();discoveredIdentity.current=undefined;}
       previousUID.current=firebaseUser?.uid;
       if(!firebaseUser){void privateFileSession.setUser(null);publishedUID.current=undefined;setUser(null);setProfileError('');setProfileStatus(identity?'incomplete':'anonymous');setLoading(false);return;}
       if(publishedUID.current!==firebaseUser.uid)setLoading(true);
@@ -45,7 +46,11 @@ export const AuthProvider=({children}:{children:ReactNode})=>{
         await privateFileSession.setUser(firebaseUser);
         if(current!==generation||auth.currentUser?.uid!==firebaseUser.uid)return;
         publishedUID.current=firebaseUser.uid;setUser(firebaseUser);setProfileStatus('complete');setLoading(false);
-        void apiFetch('/api/relationship-links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'discover'})}).catch(()=>{});
+        const discoveryKey=`${firebaseUser.uid}:${firebaseUser.email}`;
+        if(discoveredIdentity.current!==discoveryKey){
+          discoveredIdentity.current=discoveryKey;
+          void apiFetch('/api/relationship-links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'discover'})}).catch(()=>{if(discoveredIdentity.current===discoveryKey)discoveredIdentity.current=undefined;});
+        }
       }).catch(()=>{if(current===generation){publishedUID.current=undefined;setUser(null);setProfileError('Unable to load your account right now. Please try again.');setProfileStatus('unavailable');setLoading(false);}});
     });
     const renew=()=>{void privateFileSession.renew();};

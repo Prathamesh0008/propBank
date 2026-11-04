@@ -116,6 +116,9 @@ export async function readUser(request:Request,uid:string) {
   const user=uid===identity.token.uid?identity.existing:await getUser(uid);
   if(user && !identity.admin && uid!==identity.token.uid)return jsonResponse({success:true,message:'User fetched successfully',user:{uid:user.uid,name:user.name,photoURL:user.photoURL,role:user.role}});
   if(!user)return jsonResponse({success:false,message:'User not registered'});
+  // Role-only consumers still pass fresh identity/profile checks, without loading
+  // the administrator's entire property relationship and activity dossier.
+  if(new URL(request.url).searchParams.get('summary')==='true')return success('User fetched successfully',user);
   if(identity.admin){let authentication:RecordData={};try{authentication=authMetadata(await getFirebaseAdminAuth().getUser(uid));}catch{authentication={accountStatus:'missing_auth_account',providerIds:[],emailVerified:false};}const properties=await getDatabase().collection(COLLECTIONS.properties).get(),owned:string[]=[],rented:string[]=[];for(const doc of properties.docs){const property=doc.data();if(property.ownerUID===uid)owned.push(doc.id);if(Array.isArray(property.tenants)&&property.tenants.some((tenant:RecordData)=>tenant.isActive===true&&tenant.userUID===uid))rented.push(doc.id);}const activity=await getDatabase().collection('auth_activity').where('targetUID','==',uid).get();const authActivity=activity.docs.map(doc=>wireValue({...doc.data(),id:doc.id})).sort((a,b)=>+new Date((b as RecordData).createdAt as string)-+new Date((a as RecordData).createdAt as string)).slice(0,100);return jsonResponse({success:true,message:'User fetched successfully',user:{...wireModel('User',user),...authentication,relationships:{ownedPropertyIds:owned,rentedPropertyIds:rented},authActivity}});}
   return success('User fetched successfully',user);
 }

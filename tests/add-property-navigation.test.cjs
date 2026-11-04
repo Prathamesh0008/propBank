@@ -79,3 +79,29 @@ test('legacy tenant route preserves valid categories and sends missing categorie
  const valid=harness('/tenant-property?type=commercial');await assert.rejects(()=>valid.legacyPage(),error=>error.location==='/add-property?as=tenant&type=commercial');
  const missing=harness('/tenant-property');await assert.rejects(()=>missing.legacyPage(),error=>error.location==='/select-property-type?as=tenant');
 });
+
+for(const mode of ['owner','tenant'])test(`${mode} category Back has a fixed destination after direct entry or refresh`,()=>{
+ const url=`/select-property-type?as=${mode}`;
+ for(const initial of [url,'/auth','/','/unrelated']){
+  const h=harness(initial);
+  if(initial!==url)h.router.push(url);
+  // A fresh instance models a reload with no usable prior in-app history.
+  const refreshed=harness(h.current().pathname+h.current().search);
+  for(const current of [h,refreshed]){
+   current.router.back=()=>{throw new Error('The page Back action must not use browser history');};
+   current.button('Back').props.onClick();
+   assert.equal(current.current().pathname,'/manage-property');
+   assert.equal(current.current().search,'');
+  }
+ }
+});
+
+test('category Back after returning from a form goes to Manage Property instead of the form',async()=>{
+ const h=harness('/select-property-type?as=owner&adminOwnerUID=owner%2Bfixture');
+ h.button('Select Residential property').props.onClick();
+ assert.equal(h.current().searchParams.get('as'),'owner');
+ assert.equal(h.current().searchParams.get('adminOwnerUID'),'owner+fixture');
+ h.navigate('/select-property-type?as=owner&adminOwnerUID=owner%2Bfixture');
+ h.button('Back').props.onClick();
+ assert.equal(h.current().pathname,'/manage-property');
+});

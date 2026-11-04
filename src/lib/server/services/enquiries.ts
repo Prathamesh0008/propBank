@@ -31,7 +31,7 @@ export async function listEnquiries(request:Request) {
   const result:RecordData[]=[];
   if(user.role==='admin') {
     // No timestamp orderBy: historical enquiries missing that field must remain visible.
-    const [snapshot,deliverySnapshot]=await Promise.all([notifications().where('type','==','property_enquiry').get(),getDatabase().collection(COLLECTIONS.emailDeliveries||'email_deliveries').get()]);
+    const [snapshot,deliverySnapshot]=await Promise.all([notifications().where('type','==','property_enquiry').get(),getDatabase().collection(COLLECTIONS.emailDeliveries||'email_deliveries').where('eventType','==','enquiry.property_created').get()]);
     const deliveriesByEnquiry=new Map<string,RecordData>();
     for(const doc of deliverySnapshot.docs){const row=doc.data();if(row.eventType!=='enquiry.property_created'||!s(row.recordId))continue;const current=deliveriesByEnquiry.get(s(row.recordId));if(!current||epoch(row.updatedAt)>epoch(current.updatedAt))deliveriesByEnquiry.set(s(row.recordId),row);}
     for(const doc of snapshot.docs){const tracking=await assignments().doc(doc.id).get();result.push(project(doc.id,doc.data(),tracking.data(),deliveriesByEnquiry.get(doc.id)) as RecordData);}

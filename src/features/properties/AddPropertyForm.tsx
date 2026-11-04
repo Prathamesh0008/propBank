@@ -637,7 +637,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
   return (
     <main className={styles.page}>
       <>
-        <title>Add Property — Comprehensive Property Details</title>
+        <title>Add Property â€” Comprehensive Property Details</title>
         <meta name="description" content="Add comprehensive property details including rental terms, tenant information, and agreement details." />
         <link rel="canonical" href="/add-property" />
       </>
@@ -733,8 +733,6 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                           <SelectContent>
                             <SelectItem value="rent">For Rent</SelectItem>
                             <SelectItem value="sell">For Sale</SelectItem>
-                            <SelectItem value="sell_rent">For Sale and Rent</SelectItem>
-                            <SelectItem value="manage">Private Management</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
@@ -801,13 +799,13 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                     <p className="text-sm text-muted-foreground">{['rent','sell_rent'].includes(listingType||'')&&form.watch('rentalStatus')==='rented'?'Record the finalized rental amounts and the separate sale asking price.':'Enter the asking price shown with this listing.'}</p>
                   </div>
                   {['rent','sell_rent'].includes(listingType||'')&&<>
-                    <FormField control={form.control} name={form.watch('rentalStatus')==='rented'?"monthlyRent":"expectedRent"} render={({field})=><FormItem><FormLabel>{form.watch('rentalStatus')==='rented'?'Finalized Monthly Rent':'Expected Monthly Rent'} (₹) *</FormLabel><FormControl><Input placeholder="e.g., 25000" type="number" min="0" step="0.01" {...field}/></FormControl><AmountInWords amount={field.value}/><FormMessage/></FormItem>}/>
-                    <FormField control={form.control} name="securityDeposit" render={({field})=><FormItem><FormLabel>{form.watch('rentalStatus')==='rented'?'Finalized Security Deposit':'Expected Security Deposit'} (₹) *</FormLabel><FormControl><Input placeholder="e.g., 75000" type="number" min="0" step="0.01" {...field}/></FormControl><AmountInWords amount={field.value}/><FormMessage/></FormItem>}/>
+                    <FormField control={form.control} name={form.watch('rentalStatus')==='rented'?"monthlyRent":"expectedRent"} render={({field})=><FormItem><FormLabel>{form.watch('rentalStatus')==='rented'?'Finalized Monthly Rent':'Expected Monthly Rent'} (â‚¹) *</FormLabel><FormControl><Input placeholder="e.g., 25000" type="number" min="0" step="0.01" {...field}/></FormControl><AmountInWords amount={field.value}/><FormMessage/></FormItem>}/>
+                    <FormField control={form.control} name="securityDeposit" render={({field})=><FormItem><FormLabel>{form.watch('rentalStatus')==='rented'?'Finalized Security Deposit':'Expected Security Deposit'} (â‚¹) *</FormLabel><FormControl><Input placeholder="e.g., 75000" type="number" min="0" step="0.01" {...field}/></FormControl><AmountInWords amount={field.value}/><FormMessage/></FormItem>}/>
                   </>}
                   {['sell','sell_rent'].includes(listingType||'')&&<FormField
                     control={form.control}
                     name="sellingPrice"
-                    render={({field})=><FormItem><FormLabel>Expected Selling Price (₹) *</FormLabel><FormControl><Input placeholder="e.g., 5000000" type="number" min="0" step="0.01" {...field}/></FormControl><AmountInWords amount={field.value}/><FormMessage/></FormItem>}
+                    render={({field})=><FormItem><FormLabel>Expected Selling Price (â‚¹) *</FormLabel><FormControl><Input placeholder="e.g., 5000000" type="number" min="0" step="0.01" {...field}/></FormControl><AmountInWords amount={field.value}/><FormMessage/></FormItem>}
                   />}
                 </div>}
 

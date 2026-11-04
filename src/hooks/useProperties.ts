@@ -28,16 +28,14 @@ export const useUserProperties = (currentUser: User | null) => {
       }
 
       if(!ownedResponse.ok)throw new Error(ownedData.message||'Could not load properties');
-      const tenantResponse=await apiFetch(API_BASE_URL+'/properties/tenant?tenantUID='+encodeURIComponent(ownerUID));
-      const tenantData=await tenantResponse.json();
-      if(!tenantResponse.ok)throw new Error(tenantData.message||'Could not load rented properties');
-      const tenant=(tenantData.properties||[]).filter((p:any)=>p.ownerUID!==ownerUID&&p.isActive!==false&&p.status!=='inactive').map((p:any)=>({...p,userRole:'tenant'}));
+      // The owner endpoint already includes authorized tenant relationships.
+      const tenant=(ownedData.properties||[]).filter((p:any)=>p.userRole==='tenant'&&p.ownerUID!==ownerUID&&p.isActive!==false&&p.status!=='inactive').map((p:any)=>({...p,userRole:'tenant'}));
 
       return { owned, tenant };
     },
     enabled: !!currentUser, // Only run the query if we have a user
-    staleTime: 0,
-    refetchOnWindowFocus: 'always',
+    staleTime: 60_000,
+    retry: false,
   });
 };
 
@@ -55,9 +53,8 @@ export const useAllProperties = (active=true) => {
       }
       return [];
     },
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: 'always',
+    staleTime: 60_000,
+    retry: false,
   });
 };
 

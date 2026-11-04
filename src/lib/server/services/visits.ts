@@ -156,7 +156,7 @@ export async function listAdminVisits(request:Request) {
  if(status&&!['scheduled','completed','cancelled'].includes(status)||propertyId.includes('/'))throw new ApiError(400,'Invalid visit filter');
  for(const date of [from,to])if(date&&(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!parseRFC3339(date+'T00:00:00Z')))throw new ApiError(400,'Invalid visit date filter');
  if(from&&to&&from>to)throw new ApiError(400,'Visit date range is reversed');
- const snapshot=await collection().get(),visits:RecordData[]=[];
+ const snapshot=await (propertyId?collection().where('propertyId','==',propertyId):collection()).get(),visits:RecordData[]=[];
  const profiles=new Map<string,Awaited<ReturnType<typeof getUser>>>(),properties=new Map<string,Awaited<ReturnType<typeof getProperty>>>();
  for(const doc of snapshot.docs) {
   const raw=doc.data();let visit:RecordData;try{visit=model('Visit',raw);}catch{continue;}visit.id=doc.id;

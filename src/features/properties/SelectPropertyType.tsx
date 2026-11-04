@@ -48,7 +48,7 @@ const SelectPropertyType = () => {
         </section>
       ) : (
         <section className={styles.inner} aria-label="Select the property category">
-          <button type="button" className={styles.back} onClick={() => navigate(-1)}>
+          <button type="button" className={styles.back} onClick={() => navigate('/manage-property')}>
             <ArrowLeft size={16} aria-hidden="true" /> Back
           </button>
           <PropertyTypeSelector

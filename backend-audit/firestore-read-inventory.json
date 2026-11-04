@@ -1,0 +1,2562 @@
+{
+  "mode": "static; no Firebase traffic",
+  "note": "Conservative call-site inventory. Generic get calls include non-Firestore receivers. Query/transaction helpers require caller inspection. Generated artifacts, caches, history and dependencies are not executable consumers.",
+  "rows": [
+    {
+      "file": "src/app/api/documents/route.ts",
+      "line": 8,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/admin/AdminPortal.tsx",
+      "line": 119,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/admin/AdminPortal.tsx",
+      "line": 122,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/admin/AdminVisits.tsx",
+      "line": 37,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/admin/AdminVisits.tsx",
+      "line": 37,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/admin/AdminVisits.tsx",
+      "line": 37,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/admin/AdminVisits.tsx",
+      "line": 37,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/admin/OwnerVerification.tsx",
+      "line": 22,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/admin/OwnerVerification.tsx",
+      "line": 22,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/admin/OwnerVerification.tsx",
+      "line": 22,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/admin/OwnerVerification.tsx",
+      "line": 22,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/auth/GoogleAuth.tsx",
+      "line": 19,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/navbar/SiteHeader.tsx",
+      "line": 51,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/properties/AddPropertyForm.tsx",
+      "line": 118,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/properties/AddPropertyForm.tsx",
+      "line": 118,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/properties/AddPropertyForm.tsx",
+      "line": 119,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/properties/EditProperty.tsx",
+      "line": 160,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/properties/ManageProperty.tsx",
+      "line": 190,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/properties/property-response.ts",
+      "line": 5,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/properties/PropertyHub.tsx",
+      "line": 279,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/properties/PropertyHub.tsx",
+      "line": 284,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/properties/PropertyHub.tsx",
+      "line": 285,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/properties/PropertyHub.tsx",
+      "line": 286,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/properties/PropertyHub.tsx",
+      "line": 287,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/properties/PropertyHub.tsx",
+      "line": 288,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/properties/PropertyHub.tsx",
+      "line": 289,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/properties/SelectPropertyType.tsx",
+      "line": 11,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/properties/SelectPropertyType.tsx",
+      "line": 23,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/search/SearchResults.tsx",
+      "line": 36,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/search/SearchResults.tsx",
+      "line": 38,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/search/SearchResults.tsx",
+      "line": 41,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/search/SearchResults.tsx",
+      "line": 44,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/search/SearchResults.tsx",
+      "line": 47,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/services/AddTenant.tsx",
+      "line": 91,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/services/AddTenant.tsx",
+      "line": 92,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/services/AddTenant.tsx",
+      "line": 93,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/services/AttachDocuments.tsx",
+      "line": 65,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/services/AttachDocuments.tsx",
+      "line": 66,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/services/ServiceRequestWorkflow.tsx",
+      "line": 23,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/services/ServiceRequestWorkflow.tsx",
+      "line": 29,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/services/ServiceRequestWorkflow.tsx",
+      "line": 29,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/services/ServiceRequestWorkflow.tsx",
+      "line": 29,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/features/visit-planner/VisitPlanner.tsx",
+      "line": 26,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/lib/api-client.ts",
+      "line": 39,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/lib/api-client.ts",
+      "line": 52,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "src/lib/server/auth.ts",
+      "line": 38,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/auth.ts",
+      "line": 67,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/read-budget.ts",
+      "line": 9,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/account.ts",
+      "line": 33,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/account.ts",
+      "line": 47,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/account.ts",
+      "line": 68,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/agreements.ts",
+      "line": 50,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/agreements.ts",
+      "line": 51,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/agreements.ts",
+      "line": 110,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/auth-activity.ts",
+      "line": 18,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/auth-activity.ts",
+      "line": 25,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/documents.ts",
+      "line": 38,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/documents.ts",
+      "line": 48,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/documents.ts",
+      "line": 53,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/documents.ts",
+      "line": 65,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/documents.ts",
+      "line": 65,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/documents.ts",
+      "line": 66,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/documents.ts",
+      "line": 70,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/documents.ts",
+      "line": 79,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/documents.ts",
+      "line": 79,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/documents.ts",
+      "line": 90,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/documents.ts",
+      "line": 91,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/documents.ts",
+      "line": 92,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/domain-contracts.ts",
+      "line": 52,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/domain-contracts.ts",
+      "line": 57,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/domain-contracts.ts",
+      "line": 90,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/domain-contracts.ts",
+      "line": 90,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/enquiries.ts",
+      "line": 34,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/enquiries.ts",
+      "line": 34,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/enquiries.ts",
+      "line": 36,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/enquiries.ts",
+      "line": 37,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/enquiries.ts",
+      "line": 37,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/enquiries.ts",
+      "line": 40,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/enquiries.ts",
+      "line": 41,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/enquiries.ts",
+      "line": 62,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/enquiries.ts",
+      "line": 63,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/enquiries.ts",
+      "line": 65,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/enquiries.ts",
+      "line": 66,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/enquiries.ts",
+      "line": 73,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/enquiry-protection.ts",
+      "line": 14,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/enquiry-protection.ts",
+      "line": 18,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/enquiry-protection.ts",
+      "line": 22,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/enquiry-protection.ts",
+      "line": 24,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/enquiry-protection.ts",
+      "line": 25,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/enquiry-protection.ts",
+      "line": 26,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 62,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 86,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 87,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 103,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 110,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 128,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 135,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 158,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 175,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 192,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 192,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 192,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 192,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 194,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 211,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 223,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 224,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 227,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 235,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 235,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 235,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 236,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 236,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 240,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 241,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 241,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 245,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 259,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/media.ts",
+      "line": 262,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/migration-remainder.ts",
+      "line": 46,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/migration-remainder.ts",
+      "line": 61,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/migration-remainder.ts",
+      "line": 61,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/migration-remainder.ts",
+      "line": 61,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/migration-remainder.ts",
+      "line": 62,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/migration-remainder.ts",
+      "line": 63,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/migration-remainder.ts",
+      "line": 63,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/migration-remainder.ts",
+      "line": 63,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/migration-remainder.ts",
+      "line": 65,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/migration-remainder.ts",
+      "line": 66,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/migration-remainder.ts",
+      "line": 66,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/migration-remainder.ts",
+      "line": 105,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/migration-remainder.ts",
+      "line": 108,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/migration-remainder.ts",
+      "line": 109,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/migration-remainder.ts",
+      "line": 189,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/migration-remainder.ts",
+      "line": 199,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/negotiations.ts",
+      "line": 173,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/negotiations.ts",
+      "line": 192,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/negotiations.ts",
+      "line": 199,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/negotiations.ts",
+      "line": 266,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/negotiations.ts",
+      "line": 269,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/negotiations.ts",
+      "line": 293,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/negotiations.ts",
+      "line": 400,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/notifications.ts",
+      "line": 31,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/notifications.ts",
+      "line": 31,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/notifications.ts",
+      "line": 37,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/notifications.ts",
+      "line": 94,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/notifications.ts",
+      "line": 97,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/notifications.ts",
+      "line": 97,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/notifications.ts",
+      "line": 98,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/notifications.ts",
+      "line": 105,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/notifications.ts",
+      "line": 114,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/owner-verification.ts",
+      "line": 32,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/owner-verification.ts",
+      "line": 37,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/owner-verification.ts",
+      "line": 38,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/owner-verification.ts",
+      "line": 46,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/owner-verification.ts",
+      "line": 56,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/owner-verification.ts",
+      "line": 57,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/owner-verification.ts",
+      "line": 59,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 44,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 53,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 68,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 83,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 97,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 101,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 110,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 111,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 112,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 128,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 129,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 130,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 166,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 258,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 300,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 387,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 392,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 394,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 395,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 412,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 421,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 460,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 461,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/properties.ts",
+      "line": 483,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/property-hub.ts",
+      "line": 14,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/property-hub.ts",
+      "line": 18,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/property-hub.ts",
+      "line": 19,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/property-hub.ts",
+      "line": 24,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/property-hub.ts",
+      "line": 34,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/property-hub.ts",
+      "line": 71,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/property-hub.ts",
+      "line": 85,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/property-hub.ts",
+      "line": 86,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/property-hub.ts",
+      "line": 97,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-invitation-email.ts",
+      "line": 78,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-invitation-email.ts",
+      "line": 80,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-invitation-email.ts",
+      "line": 83,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-invitation-email.ts",
+      "line": 94,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-invitation-email.ts",
+      "line": 97,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 58,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 59,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 60,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 66,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 96,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 112,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 135,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 144,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 145,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 168,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 169,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 173,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 185,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 186,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 189,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 196,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 197,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 223,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 226,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 238,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 239,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 254,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 288,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 290,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 292,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 293,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 312,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/relationship-links.ts",
+      "line": 337,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/reminders.ts",
+      "line": 15,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/reminders.ts",
+      "line": 30,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/reminders.ts",
+      "line": 49,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/reminders.ts",
+      "line": 50,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/reminders.ts",
+      "line": 64,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/reminders.ts",
+      "line": 79,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/reminders.ts",
+      "line": 80,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/reminders.ts",
+      "line": 92,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/reminders.ts",
+      "line": 152,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/tenants.ts",
+      "line": 24,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/tenants.ts",
+      "line": 41,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/tenants.ts",
+      "line": 43,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/tenants.ts",
+      "line": 77,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/tenants.ts",
+      "line": 91,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/tenants.ts",
+      "line": 137,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/tenants.ts",
+      "line": 138,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/tenants.ts",
+      "line": 147,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/tenants.ts",
+      "line": 160,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/tenants.ts",
+      "line": 169,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/tenants.ts",
+      "line": 189,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/tenants.ts",
+      "line": 190,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/tenants.ts",
+      "line": 194,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/transactional-email.ts",
+      "line": 43,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/transactional-email.ts",
+      "line": 68,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/transactional-email.ts",
+      "line": 68,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/transactional-email.ts",
+      "line": 103,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/transactional-email.ts",
+      "line": 103,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/transactional-email.ts",
+      "line": 117,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/transactional-email.ts",
+      "line": 143,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/transactional-email.ts",
+      "line": 143,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/transactional-email.ts",
+      "line": 144,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/transactional-email.ts",
+      "line": 144,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/transactional-email.ts",
+      "line": 145,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/transactional-email.ts",
+      "line": 150,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/transactional-email.ts",
+      "line": 151,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/transactional-email.ts",
+      "line": 164,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/transactional-email.ts",
+      "line": 166,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/transactional-email.ts",
+      "line": 168,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/transactional-email.ts",
+      "line": 173,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/transactional-email.ts",
+      "line": 178,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/transactional-email.ts",
+      "line": 195,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/transactional-email.ts",
+      "line": 196,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/transactional-email.ts",
+      "line": 196,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/uploads.ts",
+      "line": 34,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/uploads.ts",
+      "line": 50,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/uploads.ts",
+      "line": 52,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/uploads.ts",
+      "line": 53,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/uploads.ts",
+      "line": 54,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/users.ts",
+      "line": 17,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/users.ts",
+      "line": 25,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/users.ts",
+      "line": 88,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/users.ts",
+      "line": 98,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/users.ts",
+      "line": 101,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/users.ts",
+      "line": 121,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/users.ts",
+      "line": 122,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/users.ts",
+      "line": 122,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/users.ts",
+      "line": 129,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/users.ts",
+      "line": 187,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/users.ts",
+      "line": 189,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/visits.ts",
+      "line": 28,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/visits.ts",
+      "line": 82,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/visits.ts",
+      "line": 85,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/visits.ts",
+      "line": 89,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/visits.ts",
+      "line": 100,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/visits.ts",
+      "line": 124,
+      "operation": "runTransaction",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/visits.ts",
+      "line": 125,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/visits.ts",
+      "line": 126,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/visits.ts",
+      "line": 143,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/visits.ts",
+      "line": 155,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/visits.ts",
+      "line": 155,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/visits.ts",
+      "line": 155,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/visits.ts",
+      "line": 155,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/visits.ts",
+      "line": 159,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/visits.ts",
+      "line": 168,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/lib/server/services/visits.ts",
+      "line": 168,
+      "operation": "get",
+      "classification": "server candidate"
+    },
+    {
+      "file": "src/services/visitService.ts",
+      "line": 56,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "scripts/audit-active-api.cjs",
+      "line": 21,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "scripts/audit-active-api.cjs",
+      "line": 107,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "scripts/audit-backend-current.cjs",
+      "line": 21,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "scripts/audit-backend-current.cjs",
+      "line": 91,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "scripts/auth-emulator-fixtures.cjs",
+      "line": 22,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "scripts/auth-emulator-fixtures.cjs",
+      "line": 23,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "scripts/auth-emulator-fixtures.cjs",
+      "line": 23,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "scripts/check-migration-readonly.cjs",
+      "line": 7,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "scripts/check-migration-readonly.cjs",
+      "line": 14,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "scripts/firebase-fresh-start.cjs",
+      "line": 41,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "scripts/firebase-fresh-start.cjs",
+      "line": 41,
+      "operation": "count",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "scripts/storage-migration-inventory.cjs",
+      "line": 21,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "scripts/verify-property-runtime.cjs",
+      "line": 19,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "scripts/verify-property-runtime.cjs",
+      "line": 23,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "scripts/verify-property-runtime.cjs",
+      "line": 29,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "scripts/verify-property-runtime.cjs",
+      "line": 29,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "scripts/verify-property-runtime.cjs",
+      "line": 31,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "scripts/verify-property-runtime.cjs",
+      "line": 32,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "scripts/verify-property-runtime.cjs",
+      "line": 33,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "scripts/verify-property-runtime.cjs",
+      "line": 36,
+      "operation": "get",
+      "classification": "candidate; verify receiver (Map/Headers/URL are not Firestore)"
+    },
+    {
+      "file": "tests/acceptance.spec.ts",
+      "line": 7,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/acceptance.spec.ts",
+      "line": 85,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/acceptance.spec.ts",
+      "line": 92,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/acceptance.spec.ts",
+      "line": 94,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/acceptance.spec.ts",
+      "line": 112,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/add-property-navigation.test.cjs",
+      "line": 11,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/add-property-navigation.test.cjs",
+      "line": 45,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/add-property-navigation.test.cjs",
+      "line": 45,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/add-property-navigation.test.cjs",
+      "line": 45,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/add-property-navigation.test.cjs",
+      "line": 48,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/add-property-navigation.test.cjs",
+      "line": 48,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/add-property-navigation.test.cjs",
+      "line": 54,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/add-property-navigation.test.cjs",
+      "line": 60,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/add-property-navigation.test.cjs",
+      "line": 60,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/add-property-navigation.test.cjs",
+      "line": 61,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/add-property-navigation.test.cjs",
+      "line": 67,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/add-property-navigation.test.cjs",
+      "line": 68,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/add-property-navigation.test.cjs",
+      "line": 68,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/add-property-navigation.test.cjs",
+      "line": 102,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/add-property-navigation.test.cjs",
+      "line": 103,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/brand-lock.spec.ts",
+      "line": 4,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/brand-navigation.spec.ts",
+      "line": 6,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/brand-navigation.spec.ts",
+      "line": 26,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/brand-navigation.spec.ts",
+      "line": 26,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/brand-navigation.spec.ts",
+      "line": 26,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/client-workflows.spec.ts",
+      "line": 3,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/client-workflows.spec.ts",
+      "line": 95,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/fixtures/native-server.cjs",
+      "line": 32,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/fixtures/native-server.cjs",
+      "line": 39,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/fixtures/native-server.cjs",
+      "line": 45,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/fixtures/native-server.cjs",
+      "line": 45,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/fixtures/native-server.cjs",
+      "line": 45,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/fixtures/native-server.cjs",
+      "line": 50,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/functional-audit.spec.ts",
+      "line": 4,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/functional-audit.spec.ts",
+      "line": 17,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/functional-audit.spec.ts",
+      "line": 28,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/functional-audit.spec.ts",
+      "line": 41,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/functional-audit.spec.ts",
+      "line": 54,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/functional-audit.spec.ts",
+      "line": 66,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/functional-audit.spec.ts",
+      "line": 74,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/functional-audit.spec.ts",
+      "line": 76,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/functional-audit.spec.ts",
+      "line": 87,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/functional-audit.spec.ts",
+      "line": 87,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/group2-routing.spec.ts",
+      "line": 11,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/group2-routing.spec.ts",
+      "line": 12,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/group2-routing.spec.ts",
+      "line": 15,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/group2-routing.spec.ts",
+      "line": 16,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/listing-approval.test.cjs",
+      "line": 176,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/listing-approval.test.cjs",
+      "line": 193,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/native-group1.test.cjs",
+      "line": 118,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/native-group1.test.cjs",
+      "line": 118,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/native-group1.test.cjs",
+      "line": 120,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/native-group1.test.cjs",
+      "line": 122,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/native-group1.test.cjs",
+      "line": 122,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/native-group1.test.cjs",
+      "line": 122,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/native-group2.test.cjs",
+      "line": 13,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/native-group2.test.cjs",
+      "line": 15,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/parity.spec.ts",
+      "line": 23,
+      "operation": "count",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/parity.spec.ts",
+      "line": 23,
+      "operation": "count",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/pending-connections-ui.test.cjs",
+      "line": 14,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/pending-connections.test.cjs",
+      "line": 13,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/pending-connections.test.cjs",
+      "line": 15,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/pending-connections.test.cjs",
+      "line": 19,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/pending-connections.test.cjs",
+      "line": 25,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/pending-connections.test.cjs",
+      "line": 25,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/pending-connections.test.cjs",
+      "line": 27,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/pending-connections.test.cjs",
+      "line": 27,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/pending-connections.test.cjs",
+      "line": 29,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/pending-connections.test.cjs",
+      "line": 29,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/pending-connections.test.cjs",
+      "line": 31,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/pending-connections.test.cjs",
+      "line": 33,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/pending-connections.test.cjs",
+      "line": 35,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/pending-connections.test.cjs",
+      "line": 35,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/pending-connections.test.cjs",
+      "line": 35,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/private-file-auth-lifecycle.test.cjs",
+      "line": 16,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/private-file-auth-lifecycle.test.cjs",
+      "line": 16,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/private-file-auth-lifecycle.test.cjs",
+      "line": 29,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/private-file-auth-lifecycle.test.cjs",
+      "line": 52,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/private-file-session-api.test.cjs",
+      "line": 5,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/private-file-session-api.test.cjs",
+      "line": 11,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/private-file-session-api.test.cjs",
+      "line": 11,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/private-file-session-api.test.cjs",
+      "line": 17,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/private-file-session-api.test.cjs",
+      "line": 17,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/private-file-session-api.test.cjs",
+      "line": 29,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/property-category-ui.test.cjs",
+      "line": 9,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/registration-mobile-ui.test.cjs",
+      "line": 12,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/routes.spec.ts",
+      "line": 41,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/storage-security.spec.ts",
+      "line": 4,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/storage-security.spec.ts",
+      "line": 20,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/storage-security.spec.ts",
+      "line": 30,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/storage-security.test.cjs",
+      "line": 14,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/storage-security.test.cjs",
+      "line": 16,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/storage-security.test.cjs",
+      "line": 16,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/storage-security.test.cjs",
+      "line": 16,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/storage-security.test.cjs",
+      "line": 19,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/storage-security.test.cjs",
+      "line": 30,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/storage-security.test.cjs",
+      "line": 33,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/storage-security.test.cjs",
+      "line": 39,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/storage-security.test.cjs",
+      "line": 41,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/storage-security.test.cjs",
+      "line": 41,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/storage-security.test.cjs",
+      "line": 42,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/storage-security.test.cjs",
+      "line": 43,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/storage-security.test.cjs",
+      "line": 47,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/storage-security.test.cjs",
+      "line": 67,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/storage-security.test.cjs",
+      "line": 68,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    },
+    {
+      "file": "tests/storage-security.test.cjs",
+      "line": 102,
+      "operation": "get",
+      "classification": "isolated fixture/test candidate"
+    }
+  ]
+}

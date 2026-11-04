@@ -62,7 +62,7 @@ export async function listDocuments(request:Request,propertyId:string) {
   if(!propertyId)return failure('Property ID is required',400);
   const user=await identity(request);if(!await propertyMember(user,propertyId))return failure('Property not found: property not found',404);
   let documents:RecordData[];
-  try{const snapshot=await collection().where('propertyId','==',propertyId).get();documents=snapshot.docs.map(doc=>({...doc.data(),id:doc.id}));}catch{return jsonResponse({success:false,message:'Failed to fetch documents',documents:[]},500);}
+  try{const type=new URL(request.url).searchParams.get('documentType');const base=collection().where('propertyId','==',propertyId);const snapshot=await (type?base.where('documentType','==',type):base).get();documents=snapshot.docs.map(doc=>({...doc.data(),id:doc.id}));}catch{return jsonResponse({success:false,message:'Failed to fetch documents',documents:[]},500);}
   const type=new URL(request.url).searchParams.get('documentType');if(type)documents=documents.filter(d=>d.documentType===type);
   documents.sort((a,b)=>epoch(b.createdAt)-epoch(a.createdAt));return jsonResponse({success:true,documents:documents.length?documents.map(wireValue):null});
 }

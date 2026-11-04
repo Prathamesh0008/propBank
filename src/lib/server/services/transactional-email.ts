@@ -1,4 +1,5 @@
 import 'server-only';
+import {recordRead} from '../read-budget';
 import { getFirebaseAdminAuth } from '../firebase-admin';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Transaction } from 'firebase-admin/firestore';
@@ -140,10 +141,20 @@ export function queueUserEvent(event:UserEvent){after(async()=>{try{await persis
 export async function listEmailDeliveries(request:Request) {
   const user=await identity(request);if(user.role!=='admin')throw new AccessError(403,'Administrator access required');
   const params=new URL(request.url).searchParams;const status=params.get('status')||'',eventType=params.get('eventType')||'';
-  const snapshot=await deliveries().get();let rows:RecordData[]=snapshot.docs.map(doc=>({id:doc.id,...doc.data()}));
+  const pageSize=Number(params.get('pageSize')||100),after=params.get('after')||'';
+  const legacy=params.get('legacy')==='true';
+  if(!Number.isInteger(pageSize)||pageSize<1||pageSize>200||after.includes('/')||after.length>1500)throw new ApiError(400,'Invalid delivery page');
+  // Staged deliveries have createdAt. Snapshot cursors disambiguate equal timestamps.
+  // Filter bounded pages locally to avoid requiring new composite indexes.
+  let query:FirebaseFirestore.Query=deliveries().orderBy(legacy?'__name__':'createdAt','desc').limit(pageSize+1);
+  if(after){const cursor=await deliveries().doc(after).get();if(!cursor.exists||!legacy&&cursor.data()?.createdAt===undefined)throw new ApiError(409,'Delivery page changed; refresh history');query=query.startAfter(cursor);}
+  const snapshot=await query.get(),page=snapshot.docs.slice(0,pageSize);
+  recordRead('delivery_page',snapshot.docs.length);
+  let rows:RecordData[]=page.map(doc=>({id:doc.id,...doc.data()}));
+  if(legacy)rows=rows.filter(row=>row.createdAt===undefined||row.createdAt===null);
   if(status)rows=rows.filter(row=>row.status===status);if(eventType)rows=rows.filter(row=>row.eventType===eventType);
   rows.sort((a,b)=>+new Date(b.createdAt as string)-+new Date(a.createdAt as string));
-  return jsonResponse({success:true,deliveries:wireValue(rows.slice(0,200).map(row=>({...row,html:undefined,text:undefined,subject:s(row.subject),recipientEmail:s(row.recipientEmail).replace(/(^.).*(@.*$)/,'$1***$2')})))});
+  return jsonResponse({success:true,deliveries:wireValue(rows.map(row=>({...row,html:undefined,text:undefined,subject:s(row.subject),recipientEmail:s(row.recipientEmail).replace(/(^.).*(@.*$)/,'$1***$2')}))),nextCursor:snapshot.docs.length>pageSize?page.at(-1)?.id:null});
 }
 
 function reminderDate(value:unknown){const match=/^(\d{4})-(\d{2})-(\d{2})/.exec(s(value));return match?`${match[1]}-${match[2]}-${match[3]}`:'';}

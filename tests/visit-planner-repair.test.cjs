@@ -70,7 +70,7 @@ test('unapproved and malicious property references are rejected without creating
 });
 
 test('overlapping requester, owner and administrator addresses receive one delivery',async()=>{
- const app=setup();app.state.users.owner.email='admin@test.invalid';app.state.properties.P.ownerUID='owner';
+ const app=setup();app.state.users.owner.email='admin@test.invalid';app.claims.owner={email:'admin@test.invalid'};app.state.properties.P.ownerUID='owner';
  const response=await route(app,'visits').POST(request('/visits','owner','POST',{title:'Own listing visit',propertyId:'P',visitDate:future}));assert.equal(response.status,201);
  const rows=Object.values(app.state.email_deliveries).filter(row=>row.eventType==='visit.scheduled');assert.equal(rows.length,1);assert.equal(rows[0].recipientUID,'owner');
 });

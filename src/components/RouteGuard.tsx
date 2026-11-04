@@ -27,7 +27,7 @@ export default function RouteGuard({ children, admin = false }: { children: Reac
     if (!admin) return;
     const controller = new AbortController();
     setVerifiedUid(null);
-    void apiFetch(`${API_BASE_URL}/users/${user.uid}`, { signal: controller.signal })
+    void apiFetch(`${API_BASE_URL}/users/${user.uid}?summary=true`, { signal: controller.signal })
       .then(async response => {
         if (!response.ok) throw new Error("Access denied");
         const data = await response.json();

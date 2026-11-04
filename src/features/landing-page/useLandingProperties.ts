@@ -10,10 +10,12 @@ import { API_BASE_URL } from "@/utils/config";
 
 import { filterProperties } from "./landingUtils";
 import {useDataRefresh} from '@/lib/data-refresh';
+import {useQueryClient} from '@tanstack/react-query';
 
 const ITEMS_PER_PAGE = 12;
 
 export const useLandingProperties = () => {
+  const queryClient=useQueryClient();
   const navigate = useNavigate();
   const { toast } = useToast();
   
@@ -62,7 +64,7 @@ export const useLandingProperties = () => {
     const generation=++loadGeneration.current;
     try {
       setLoading(true);
-      const response = await propertyService.getAllPropertiesWithSettings();
+      const response = await queryClient.fetchQuery({queryKey:['publicProperties','home'],queryFn:()=>propertyService.getAllPropertiesWithSettings(),staleTime:60_000,retry:false});
       if(generation!==loadGeneration.current)return;
       const fetchedProperties = response.properties || [];
 
@@ -101,7 +103,7 @@ export const useLandingProperties = () => {
     } finally {
       if(generation===loadGeneration.current)setLoading(false);
     }
-  },[toast]);
+  },[toast,queryClient]);
   useDataRefresh(['properties','settings'],()=>{void loadAllProperties();});
 
   const getFilteredProperties = useCallback(() => {
@@ -167,7 +169,7 @@ export const useLandingProperties = () => {
       setUser(firebaseUser);
       if (firebaseUser) {
         try {
-          const response = await apiFetch(`${API_BASE_URL}/users/${firebaseUser.uid}`);
+          const response = await apiFetch(`${API_BASE_URL}/users/${firebaseUser.uid}?summary=true`);
           if (response.ok) {
             const data = await response.json();
             if (data.user && data.user.phoneNumber) {

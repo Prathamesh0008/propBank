@@ -6,6 +6,7 @@ import {apiFetch} from '@/lib/api-client';
 import {Button} from '@/ui/button';
 import {Textarea} from '@/ui/textarea';
 import {Badge} from '@/ui/badge';
+import {replaceReviewedProperty} from '@/lib/admin-property-directory';
 
 export interface ListingReview {
   id:string; createdAs?:string; listingType?:string;
@@ -23,7 +24,9 @@ export default function ListingModeration({property,admin=false}:{property:Listi
       const response=await apiFetch(`/api/properties/${current.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({moderationAction:action,reason,expectedRevision:current.moderationRevision||0})});
       const result=await response.json();
       if(!response.ok||!result.success)throw new Error(result.message||result.error||'Listing decision failed; refresh and retry.');
-      setCurrent(result.property);setReason('');await Promise.all(['property','userProperties','allProperties','productHub'].map(key=>queries.invalidateQueries({queryKey:[key]})));
+      setCurrent(result.property);setReason('');
+      queries.setQueriesData<ListingReview[]>({queryKey:['allProperties']},rows=>replaceReviewedProperty(rows,result.property));
+      await Promise.all(['property','userProperties','allProperties','productHub'].map(key=>queries.invalidateQueries({queryKey:[key]})));
     }catch(e){setError(e instanceof Error?e.message:'Listing decision failed');}finally{setBusy(false);}
   }
   return <div className="space-y-2 mt-2">

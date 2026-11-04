@@ -1,4 +1,5 @@
 import 'server-only';
+import {recordRead} from '../read-budget';
 import { normalizeEmailAddress } from '@/lib/email-address';
 import {normalizeNextAgreementDraft,sameNextAgreementDraft,validateNextAgreementDraft} from '@/lib/next-agreement-draft';
 import {propertyCategory as parsePropertyCategory,PROPERTY_CONFIGURATIONS,PROPERTY_STRUCTURES,LEGACY_PROPERTY_STRUCTURES,structureUsesPlotArea} from '@/lib/property-category';
@@ -41,6 +42,7 @@ function fromDocument(doc:DocumentSnapshot,defaults=true):RecordData {
 }
 async function queryProperties(query:Query,defaults=true):Promise<Array<{property:RecordData;raw:RecordData}>> {
   const snapshot=await query.get();
+  recordRead('property_list',snapshot.docs.length);
   const result:Array<{property:RecordData;raw:RecordData}>=[];
   for (const doc of snapshot.docs) {
     try { result.push({property:fromDocument(doc,defaults),raw:doc.data()}); } catch { /* Go skips invalid documents. */ }
@@ -49,6 +51,7 @@ async function queryProperties(query:Query,defaults=true):Promise<Array<{propert
 }
 export async function getProperty(id:string):Promise<RecordData|null> {
   const doc=await properties().doc(id).get();
+  recordRead('property_detail',doc.exists?1:0);
   return doc.exists?fromDocument(doc):null;
 }
 const listResponse=(rows:RecordData[],extra:RecordData={})=>jsonResponse({success:true,properties:rows.length?rows:null,count:rows.length,...extra});
@@ -86,7 +89,9 @@ export async function listProperties(request:Request) {
     const rented=await tenantProperties(ownerUID,user.uid===ownerUID&&user.token.email_verified===true?user.token.email||'':'');
     const merged=new Map(own.map(({property})=>[s(property.id),propertyResponse(property,'normal','owner')]));
     for(const {property} of submitted)merged.set(s(property.id),propertyResponse(property,'normal','agent'));
-    for (const property of rented) if(!merged.has(s(property.id))) merged.set(s(property.id),propertyResponse(property,'tenant','tenant'));
+    // Match the dedicated tenant endpoint so the combined response can replace
+    // its duplicate request without losing fields such as the displayed price.
+    for (const property of rented) if(!merged.has(s(property.id))) merged.set(s(property.id),propertyResponse(property,'normal','tenant'));
     return listResponse([...merged.values()],{ownerUID});
   }
   if(params.get('admin')==='true') {
@@ -94,7 +99,7 @@ export async function listProperties(request:Request) {
     const rows=await queryProperties(properties());return listResponse(rows.map(row=>propertyResponse(row.property,'normal','admin')));
   }
   const listingType=params.get('listingType')||'';
-  let query:Query=properties().where('isActive','==',true);
+  let query:Query=properties().where('isActive','==',true).where('moderationStatus','==','approved');
   if (listingType&&!['rent','sell'].includes(listingType)) query=query.where('listingType','==',listingType);
   const rows=await queryProperties(query);
   const filtered=rows.filter(row=>available(row.property,row.raw)&&!(listingType==='rent'&&row.property.rentalStatus==='rented')&&(!listingType||row.property.listingType===listingType||row.property.listingType==='sell_rent'&&['rent','sell'].includes(listingType))).map(row=>publicPropertyResponse(listingType&&row.property.listingType==='sell_rent'?{...row.property,listingType}:row.property));
@@ -105,7 +110,7 @@ export async function searchProperties(request:Request) {
   const term=params.get('q')||'';
   const listingType=params.get('listingType')||'';
   const projectCondition=params.get('projectCondition')||'';
-  let query:Query=properties().where('isActive','==',true);
+  let query:Query=properties().where('isActive','==',true).where('moderationStatus','==','approved');
   if (listingType&&!['rent','sell'].includes(listingType)) query=query.where('listingType','==',listingType);
   if (projectCondition) query=query.where('projectCondition','==',projectCondition);
   const rows=await queryProperties(query,false);

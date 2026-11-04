@@ -38,7 +38,7 @@ const AdminPortal = () => {
   const { data: propertiesData, isLoading: loadingProperties,error:propertiesError } = useAllProperties(activeTab==='properties');
   const allProperties = propertiesData || [];
 
-  const { data: usersData, isLoading: loadingUsers,refetch:refetchUsers } = useAllUsers();
+  const { data: usersData, isLoading: loadingUsers } = useAllUsers(activeTab==='agents');
   const agents = usersData || [];
 
   const [loading, setLoading] = useState(true);
@@ -81,8 +81,6 @@ const AdminPortal = () => {
     try {
       if (activeTab === "service-requests" || activeTab === "visits") {
         await fetchNotifications();
-      } else if (activeTab === "agents") {
-        await refetchUsers();
       } else if (activeTab === "archive") {
         await fetchArchivedNotifications();
       } else if (activeTab === "settings") {
@@ -149,7 +147,7 @@ const AdminPortal = () => {
 
   const fetchArchivedNotifications = async () => {
     try {
-      const response = await apiFetch(`${API_BASE_URL}/admin/notifications`);
+      const response = await apiFetch(`${API_BASE_URL}/admin/notifications?unread=false`);
       if (response.ok) {
         const data = await response.json();
         const archived = Array.isArray(data)
@@ -182,8 +180,10 @@ const AdminPortal = () => {
       }
     } catch (error) { /* Preserve existing best-effort behavior. */ }
   };
-  useDataRefresh(['notifications','settings','properties','users'],()=>{
+  useDataRefresh(activeTab==='settings'?['settings']:activeTab==='archive'||activeTab==='service-requests'||activeTab==='visits'?['notifications']:[],()=>{
     void fetchData();
+  });
+  useDataRefresh(['properties'],()=>{
     if(isPropertyDialogOpen&&selectedProperty?.id)void handleViewPropertyDetails(selectedProperty.id);
   });
 

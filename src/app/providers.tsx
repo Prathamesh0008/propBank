@@ -10,7 +10,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import PwaRegistration from "@/components/PwaRegistration";
 
 export default function Providers({ children }: { children: ReactNode }) {
-  const [queryClient] = useState(() => new QueryClient());
+  const [queryClient] = useState(() => new QueryClient({defaultOptions:{queries:{staleTime:60_000,retry:false}}}));
   return <QueryClientProvider client={queryClient}><AuthProvider><TooltipProvider><SearchProvider>
     <Toaster /><Sonner /><PwaRegistration />{children}
   </SearchProvider></TooltipProvider></AuthProvider></QueryClientProvider>;
