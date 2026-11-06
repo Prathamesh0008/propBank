@@ -4,6 +4,7 @@ import { AccessError, completedProfile, requireUser, verifyFirebaseIdentity } fr
 import { COLLECTIONS, getDatabase } from '../firestore';
 import { getFirebaseAdminAuth } from '../firebase-admin';
 import { ApiError, dependencyDiagnostic, jsonResponse } from '../http';
+import { canonicalMobile, writeUserWithMobile } from '../mobile-registry';
 import {indianMobile} from '@/lib/indian-phone';
 import { persistUserEvent } from './transactional-email';
 import { authMetadata, recordAuthActivity } from './auth-activity';
@@ -11,7 +12,6 @@ import { model, storeModel, stringValue, wireModel, wireValue, type RecordData, 
 import { discoverFor, verifiedMobile, validContact, throttleRelationshipAction } from './relationship-links';
 
 export const normalizePhone = (phone: string) => phone.replace(/[^0-9+]/g,'');
-const duplicateMessage = 'This phone number is already registered with another account';
 const userCollection = () => getDatabase().collection(COLLECTIONS.users);
 export async function getUser(uid: string): Promise<RecordData | null> {
   const doc = await userCollection().doc(uid).get();
@@ -29,7 +29,11 @@ export async function findUser(field: 'phoneNumber' | 'email', value: string): P
   return user;
 }
 export async function saveUser(user: RecordData) {
-  await userCollection().doc(stringValue(user.uid)).set({...user,...storeModel('User',user)},{merge:true});
+  // Relationship/effect metadata saves must not replay a stale registered phone.
+  // Profile creation/phone edits exclusively use writeUserWithMobile.
+  const data={...user,...storeModel('User',user)};
+  delete data.phoneNumber;
+  await userCollection().doc(stringValue(user.uid)).set(data,{merge:true});
 }
 // Resolve tenant links against Firebase Auth, never editable profile contacts.
 export async function resolveTenantIdentity(email:string,uid=''):Promise<string> {
@@ -67,14 +71,11 @@ async function parseUser(request: Request): Promise<RecordData | null> {
       if (value != null && typeof value !== 'string') return null;
       result[key] = value ?? '';
     }
+    result.hasPhoneNumber=Object.keys(data||{}).some(key=>key.toLowerCase()==='phonenumber');
     const activeKey=Object.keys(data||{}).find(key=>key.toLowerCase()==='isactive');
     if(activeKey){if(typeof (data as RecordData)[activeKey]!=='boolean')return null;result.isActive=(data as RecordData)[activeKey];}
     return result;
   } catch { return null; }
-}
-async function checkPhone(uid:string,phone:string) {
-  const other = await findUser('phoneNumber',phone);
-  return !!other && other.uid !== uid;
 }
 function checkRole(admin:boolean,requested:unknown,existing:RecordData|null,initialRegistration=false) {
   if (!admin && requested === 'agent' && existing?.role !== 'agent' && !initialRegistration) throw new AccessError(403,'Agent role may only be selected during initial registration');
@@ -172,23 +173,23 @@ export async function createUser(request:Request,authRegistration=false) {
   checkRole(identity.admin,req.role,existing,authRegistration&&!existing?.role);
   if(identity.admin&&uid===identity.token.uid&&(req.role&&req.role!==existing?.role||'isActive' in req&&req.isActive!==existing?.isActive))throw new AccessError(403,'Use another administrator to change your own role or account status');
   if(uid===identity.token.uid && stringValue(req.email).toLowerCase()!==identity.token.email?.toLowerCase())return fail('Email must match Firebase identity',400);
+  if(identity.admin&&uid!==identity.token.uid&&!existing){
+    const target=await getFirebaseAdminAuth().getUser(uid);
+    if(target.disabled||target.email?.toLowerCase()!==stringValue(req.email).toLowerCase())return fail('Email must match Firebase identity',400);
+  }
+  if(req.hasPhoneNumber&&!indianMobile(req.phoneNumber))canonicalMobile(req.phoneNumber);
   const phone=indianMobile(stringValue(existing?.phoneNumber))||indianMobile(req.phoneNumber);
-  if(!phone&&(req.role!=='admin'||req.phoneNumber))return jsonResponse({success:false,message:'Enter a valid 10-digit Indian mobile number starting with 6, 7, 8 or 9',fieldErrors:{phoneNumber:'Mobile number is required and must contain 10 digits starting with 6, 7, 8 or 9'}},400);
-  if (phone && await checkPhone(uid,phone)) return fail(duplicateMessage,409);
+  if(!phone)return jsonResponse({success:false,message:'Enter a valid 10-digit Indian mobile number starting with 6, 7, 8 or 9',fieldErrors:{phoneNumber:'Mobile number is required and must contain 10 digits starting with 6, 7, 8 or 9'}},400);
   const now=new Date();
   let metadata:RecordData={};try{metadata=authMetadata(await getFirebaseAdminAuth().getUser(uid));}catch{/* Identity token validation remains authoritative. */}
   const user={...existing,...metadata,...model('User',{...req,phoneNumber:phone,isActive:existing?.isActive!==false,createdAt:existing?.createdAt||now,updatedAt:now})};
   if(!identity.admin && existing?.role)user.role=existing.role;
   if (authRegistration && existing) {
     user.createdAt=existing.createdAt;
-    if (existing.phoneNumber && existing.role) { user.phoneNumber=existing.phoneNumber; user.role=existing.role; }
+    if (existing.phoneNumber && existing.role) { user.phoneNumber=phone; user.role=existing.role; }
     else if (existing.role && req.role==='individual') user.role=existing.role;
   }
-  if(!existing)await getDatabase().runTransaction(async tx=>{
-    const ref=userCollection().doc(uid);
-    if((await tx.get(ref)).exists)throw new ApiError(409,'Account profile already exists. Please sign in again.');
-    tx.create(ref,{...user,...storeModel('User',user)});
-  });else await saveUser(user);
+  await writeUserWithMobile(uid,{...user,...storeModel('User',user)}, {createOnly:!existing,expectedPhone:existing?.phoneNumber});
   if(uid===identity.token.uid && identity.token.email_verified===true)await discoverFor({uid,token:identity.token,role:user.role as 'admin'|'agent'|'individual',email:stringValue(user.email),phoneNumber:''});
   if(authRegistration&&!existing)await recordAuthActivity({eventType:'registration',actorUID:uid,targetUID:uid,context:{providerIds:metadata.providerIds||[],emailVerified:metadata.emailVerified===true,source:'firebase'}}).catch(()=>null);
   if(authRegistration&&!existing)await persistUserEvent({eventType:'user.registration_welcome',eventId:`user:${uid}:registered`,recipients:[{uid,role:'user'}],recordId:uid,templateId:'registration-welcome',subject:'Welcome to PropBank',title:'Welcome to PropBank',bodyHtml:'<p>Your PropBank account is ready. You can now manage property and rental activity from your secure account.</p>',bodyText:'Your PropBank account is ready. You can now manage property and rental activity from your secure account.',action:{label:'Open your account',path:'/manage-property'}}).catch(()=>null);
@@ -202,25 +203,30 @@ export async function updateUser(request:Request,uid:string) {
   if (req.role && !['admin','agent','individual'].includes(stringValue(req.role))) return fail("Invalid role. Must be 'admin', 'agent', or 'individual'",400);
   const existing=await getUser(uid);
   checkRole(identity.admin,req.role,existing);
-  if(req.email && (uid!==identity.token.uid || stringValue(req.email).toLowerCase()!==identity.token.email?.toLowerCase()))return fail('Email must match Firebase identity',400);
+  const expectedPhone=existing?.phoneNumber;
+  if(req.email){
+    if(!existing&&identity.admin&&uid!==identity.token.uid){
+      const target=await getFirebaseAdminAuth().getUser(uid);
+      if(target.disabled||target.email?.toLowerCase()!==stringValue(req.email).toLowerCase())return fail('Email must match Firebase identity',400);
+    }else if(uid!==identity.token.uid||stringValue(req.email).toLowerCase()!==identity.token.email?.toLowerCase())return fail('Email must match Firebase identity',400);
+  }
   if (!existing) {
     if (!req.name) return fail('Creating new user requires a name',400);
     if (!req.email) return fail('Creating new user requires an email',400);
     const phone=indianMobile(req.phoneNumber);
-    if(!phone&&(req.role!=='admin'||req.phoneNumber))return fail('A valid 10-digit Indian mobile number is required for a new profile',400);
+    if(!phone)return fail('A valid 10-digit Indian mobile number is required for a new profile',400);
     const now=new Date();
     const user=model('User',{...req,uid,role:req.role||'individual',phoneNumber:phone,isActive:true,createdAt:now,updatedAt:now});
-    await saveUser(user);
+    await writeUserWithMobile(uid,{...user,...storeModel('User',user)}, {createOnly:true,expectedPhone:undefined});
     return success('User created successfully',user,201);
   }
   const previousRole=stringValue(existing.role),previousStatus=existing.isActive!==false;let phoneChanged=false;
   for (const key of ['name','photoURL','email']) if(req[key]) existing[key]=req[key];
-  if (req.phoneNumber) {
-    const phone=normalizePhone(stringValue(req.phoneNumber));
-    if (await checkPhone(uid,phone)) return fail(duplicateMessage,409);
-    if(phone!==normalizePhone(stringValue(existing.phoneNumber))){
+  if (req.hasPhoneNumber) {
+    const phone=canonicalMobile(req.phoneNumber);
+    if(phone!==indianMobile(existing.phoneNumber)){
       if(uid!==identity.token.uid)return fail('Only the account owner can change the registered mobile number',403);
-      const authenticatedAt=Number(identity.token.auth_time||0),verifiedPhone=normalizePhone(stringValue(identity.token.phone_number));
+      const authenticatedAt=Number(identity.token.auth_time||0),verifiedPhone=indianMobile(identity.token.phone_number);
       if(!authenticatedAt||Date.now()/1000-authenticatedAt>300)return fail('Recent authentication is required to change the mobile number',403);
       validContact(phone);
       if(!verifiedPhone||verifiedPhone!==phone||await verifiedMobile({uid,token:identity.token,role:existing.role as 'admin'|'agent'|'individual',email:stringValue(existing.email),phoneNumber:''})!==phone)return fail('Verified phone ownership is not configured or the new number has not been verified',503);
@@ -229,9 +235,11 @@ export async function updateUser(request:Request,uid:string) {
     existing.phoneNumber=phone;
   }
   if (['admin','agent','individual'].includes(stringValue(req.role))) existing.role=req.role;
-  if('isActive' in req){if(!identity.admin)throw new AccessError(403,'Administrator access required to change account status');existing.isActive=req.isActive;await getFirebaseAdminAuth().updateUser(uid,{disabled:req.isActive===false});}
+  if('isActive' in req){if(!identity.admin)throw new AccessError(403,'Administrator access required to change account status');existing.isActive=req.isActive;}
   existing.updatedAt=new Date();
-  await saveUser(existing);
+  existing.phoneNumber=canonicalMobile(existing.phoneNumber);
+  await writeUserWithMobile(uid,{...existing,...storeModel('User',existing)}, {expectedPhone});
+  if('isActive' in req)await getFirebaseAdminAuth().updateUser(uid,{disabled:req.isActive===false});
   if(previousRole!==existing.role)await recordAuthActivity({eventType:'role_changed',actorUID:identity.token.uid,targetUID:uid,context:{previousRole,role:existing.role,source:'admin'}}).catch(()=>null);
   if(previousStatus!==(existing.isActive!==false))await recordAuthActivity({eventType:'account_status_changed',actorUID:identity.token.uid,targetUID:uid,context:{previousStatus:previousStatus?'active':'inactive',status:existing.isActive===false?'inactive':'active',source:'admin'}}).catch(()=>null);
   if(['name','photoURL','email'].some(key=>req[key]))await recordAuthActivity({eventType:'profile_changed',actorUID:identity.token.uid,targetUID:uid,context:{source:identity.admin?'admin':'self'}}).catch(()=>null);

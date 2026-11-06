@@ -1,6 +1,7 @@
 import 'server-only';
 import {verifiedMobile,validContact,discoverFor} from './relationship-links';
 import {indianMobile} from '@/lib/indian-phone';
+import {canonicalMobile,writeUserWithMobile} from '../mobile-registry';
 import {AccessError,requireUser} from '../auth';
 import {COLLECTIONS,getDatabase} from '../firestore';
 import {getFirebaseAdminAuth} from '../firebase-admin';
@@ -58,21 +59,20 @@ export async function updateMyAccount(request:Request){
   const allowed=new Set(['name','phoneNumber','photoURL','bio','agencyName','agencyPhone','agencyWebsite','notificationPreferences']);
   if(Object.keys(body).some(key=>!allowed.has(key)))throw new ApiError(400,'Account role, status and email cannot be changed through profile settings');
   const name=clean(body.name,100);if(name.length<2)throw new ApiError(400,'Enter a valid full name');
-  const phone=clean(body.phoneNumber,20).replace(/[^0-9+]/g,'');
+  const phone=canonicalMobile('phoneNumber' in body?body.phoneNumber:profile.phoneNumber);
   const oldPhone=s(profile.phoneNumber),phoneChanged=phone!==oldPhone&&(!indianMobile(phone)||indianMobile(phone)!==indianMobile(oldPhone));
   if(phoneChanged){
     const authenticatedAt=Number(identity.token.auth_time||0),verifiedPhone=clean(identity.token.phone_number,20).replace(/[^0-9+]/g,'');
     if(!authenticatedAt||Date.now()/1000-authenticatedAt>300)throw new AccessError(403,'Recent authentication is required to change the mobile number');
     validContact(phone);
     if(!verifiedPhone||indianMobile(verifiedPhone)!==indianMobile(phone)||await verifiedMobile(identity)!==indianMobile(phone))throw new ApiError(503,'Phone verification is not configured or the new number has not been verified');
-    if(phone){const duplicate=await users().where('phoneNumber','==',phone).limit(1).get();if(duplicate.docs.some(doc=>doc.id!==uid))throw new ApiError(409,'This phone number is already registered with another account');}
   }
   const preferences=isRecord(body.notificationPreferences)?{productUpdates:body.notificationPreferences.productUpdates!==false,activitySummaries:body.notificationPreferences.activitySummaries!==false,security:true}:isRecord(profile.notificationPreferences)?profile.notificationPreferences:{productUpdates:true,activitySummaries:true,security:true};
   const updates:RecordData={name,phoneNumber:phone,photoURL:url(body.photoURL),bio:clean(body.bio,500),notificationPreferences:preferences,updatedAt:new Date()};
   if(s(profile.role)==='agent')Object.assign(updates,{agencyName:clean(body.agencyName,120),agencyPhone:clean(body.agencyPhone,20).replace(/[^0-9+]/g,''),agencyWebsite:url(body.agencyWebsite)});
   const changed=Object.keys(updates).filter(key=>key!=='updatedAt'&&JSON.stringify(updates[key])!==JSON.stringify(profile[key]));
   if(!changed.length)return jsonResponse({success:true,message:'No account changes were needed'});
-  await ref.set(updates,{merge:true});
+  await writeUserWithMobile(uid,updates,{expectedPhone:profile.phoneNumber});
   try{if(name!==account.displayName||updates.photoURL!==account.photoURL)await getFirebaseAdminAuth().updateUser(uid,{displayName:name,photoURL:s(updates.photoURL)||null});}
   catch(error){await ref.set({name:profile.name||'',photoURL:profile.photoURL||'',updatedAt:profile.updatedAt||new Date()},{merge:true});throw error;}
   await recordAuthActivity({eventType:phoneChanged?'phone_changed':changed.length===1&&changed[0]==='notificationPreferences'?'notification_preferences_changed':'profile_changed',actorUID:uid,targetUID:uid,context:{source:'self'}}).catch(()=>null);
