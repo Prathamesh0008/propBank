@@ -1,7 +1,8 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {isolated,users,request,route,context}=require('./fixtures/native-server.cjs');
-const setup=()=>{const app=isolated({users:structuredClone(users),properties:{},tenants:{}});app.claims.newuser={email:'newuser@test.invalid',email_verified:false,emailVerified:false,providerData:[{providerId:'password'}]};return app;};
+const {registrySeed}=require('./fixtures/mobile-registry.cjs');
+const setup=()=>{const app=isolated({...registrySeed(users),properties:{},tenants:{}});app.env.TEST_STRICT_TRANSACTIONS='1';app.claims.newuser={email:'newuser@test.invalid',email_verified:false,emailVerified:false,providerData:[{providerId:'password'}]};return app;};
 const body={uid:'newuser',email:'newuser@test.invalid',name:'New User',role:'individual'};
 const create=(app,phoneNumber,extra={})=>route(app,'auth/user').POST(request('/auth/user','newuser','POST',{...body,...(phoneNumber===undefined?{}:{phoneNumber}),...extra}));
 

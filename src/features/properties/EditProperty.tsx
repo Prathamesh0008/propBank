@@ -1,4 +1,7 @@
 "use client";
+import PropertyPurposeFields,{purposeFormSchema} from "./PropertyPurposeFields";
+import {uploadSupportingDocument,validateSupportingDocuments} from "@/lib/supporting-documents";
+import {normalizePurpose} from "@/lib/property-purpose";
 
 import styles from "./PropertyForm.module.css";
 
@@ -33,6 +36,7 @@ import {activeFurnishedItems,supportsFurnishedChecklist} from '@/lib/property-fu
 
 
 const formSchema = z.object({
+  ...purposeFormSchema,
   ...clientPropertySchema,
   propertyTitle: z.string().min(1, "Property title is required"),
   propertyType: z.string().min(1, "Property type is required"),
@@ -90,6 +94,7 @@ const formSchema = z.object({
 type FormData = z.infer<typeof formSchema>;
 
 interface Property {
+  preLeased?: any;managementServices?:string[];managementDescription?:string;investment?:{monthlyRentalIncome:number;annualRentalIncome:number;grossYield:number;leaseEndDate:string;leaseReviewRequired:boolean;verificationStatus:string};
   userRole?:string;
   id: string;
   title: string;
@@ -155,6 +160,8 @@ interface Property {
 const EditProperty = () => {
   const { propertyId } = useParams();
   const navigate = useNavigate();
+  const [leaseFiles,setLeaseFiles]=useState<Partial<Record<"lease"|"proof",File>>>({});
+  const evidenceKeys=useRef({lease:crypto.randomUUID(),proof:crypto.randomUUID()});
   const location = useLocation();
   const queryClient = useQueryClient();
   const isRenewalMode = new URLSearchParams(location.search).get('mode') === 'renewal';
@@ -235,6 +242,7 @@ const EditProperty = () => {
         ...Object.fromEntries(Object.keys(clientPropertySchema).map(key=>[key,propertyData[key]|| (key==="propertyCategory"?propertyData.propertyType:"")])),
         configuration: propertyData.configuration || "",
         listingType: propertyData.listingType || "",
+        preLeased: propertyData.preLeased || null,
         unitNumber: propertyData.unitNumber || "",
         floor: propertyData.floor || "",
         location: propertyData.location || propertyData.address || "",
@@ -532,12 +540,17 @@ const EditProperty = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(updateData)
+        body: JSON.stringify(normalizePurpose(updateData,property as any))
       });
 
       const result = await response.json();
 
       if (result.success) {
+        if(data.listingType==='pre_leased'){
+          try{for(const kind of ['lease','proof'] as const){const file=leaseFiles[kind];if(file)await uploadSupportingDocument(String(propertyId),file,kind==='lease'?'rental_agreement':'rent_receipt',evidenceKeys.current[kind]);}}
+          catch(error){toast({title:'Property saved; evidence upload incomplete',description:'Open private Documents to retry the failed upload. No tenant records were created.',variant:'destructive'});navigate(`/attach-documents/${String(propertyId)}?supporting=1`);return;}
+        }
+
         toast({
           title: "Property Updated!",
           description: result.property?.moderationStatus==='pending_review'?'Changes saved and submitted for admin review.':`${data.propertyTitle} has been successfully updated.`,
@@ -712,6 +725,7 @@ const EditProperty = () => {
                           <SelectContent>
                             <SelectItem value="rent">For Rent</SelectItem>
                             <SelectItem value="sell">For Sale</SelectItem>
+                            <SelectItem value="pre_leased">Pre-Leased Sale</SelectItem>
                             <SelectItem value="manage">To Manage</SelectItem>
                           </SelectContent>
                         </Select>
@@ -719,6 +733,7 @@ const EditProperty = () => {
                       </FormItem>
                     )}
                   />
+                  <PropertyPurposeFields form={form} onEvidence={(kind,file)=>{if(file){const error=validateSupportingDocuments([file]);if(error){setLeaseFiles(previous=>({...previous,[kind]:undefined}));toast({title:"Invalid evidence",description:error,variant:"destructive"});return;}}setLeaseFiles(previous=>({...previous,[kind]:file||undefined}));}}/>
                   {/* Sale Status - Only show for sale properties */}
                   {form.watch("listingType") === "sell" && (
                     <FormField
@@ -1048,7 +1063,7 @@ const EditProperty = () => {
                     )}
                   />}
 
-                  {form.watch("listingType") !== "sell" && (
+                  {['rent','sell_rent'].includes(form.watch('listingType')||'') && (
                     <FormField
                       control={form.control}
                       name="maintenanceToBePaidBy"
@@ -1143,7 +1158,7 @@ const EditProperty = () => {
                     <h3 className="text-lg font-semibold mb-6">Additional Comments</h3>
                   </div>
 
-                  <FormField
+                  {form.watch('listingType')!=='manage'&&<FormField
                     control={form.control}
                     name="specificComments"
                     render={({ field }) => (
@@ -1159,7 +1174,7 @@ const EditProperty = () => {
                         <FormMessage />
                       </FormItem>
                     )}
-                  />
+                  />}
                 </div>
 
                 {/* Status Alert */}

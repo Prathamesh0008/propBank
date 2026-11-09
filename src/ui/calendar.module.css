@@ -1,0 +1,42 @@
+.field { position:relative;width:100%;font-family:var(--pb-ui); }
+.field .input { width:100%;height:2.5rem;padding:.5rem 2.8rem .5rem .75rem;border:1px solid var(--pb-line,#d4d0c5);border-radius:6px;background:var(--pb-chalk,#f8f6f0);color:var(--pb-ink,#242b28);font-size:.875rem;outline:none;transition:border-color .15s,box-shadow .15s; }
+.field .input:focus-visible { border-color:var(--pb-forest,#183c32);box-shadow:0 0 0 3px #183c321c; }
+.field .input:disabled { opacity:.55;cursor:not-allowed; }
+.field .input[aria-invalid=true] { border-color:var(--pb-danger,#9c3530); }
+.trigger { position:absolute;right:3px;top:3px;display:grid;place-items:center;width:34px;height:34px;border:0;border-radius:4px;color:var(--pb-forest,#183c32);background:transparent; }
+.trigger:hover { background:#183c3210; }
+.trigger:focus-visible,.footer button:focus-visible,.caption button:focus-visible,.months button:focus-visible { outline:2px solid var(--pb-forest,#183c32);outline-offset:2px; }
+.popover { width:min(288px,calc(100vw - 24px));max-height:min(520px,var(--radix-popover-content-available-height));overflow:auto;padding:10px!important;border-radius:12px!important;border:1px solid var(--pb-line,#d4d0c5)!important;background:var(--pb-chalk,#f8f6f0)!important;box-shadow:0 12px 36px #183c321a!important;z-index:100!important;color:var(--pb-ink,#242b28);font-family:var(--pb-ui); }
+.calendar { padding:0;width:100%;font-size:.875rem; }
+.caption { display:flex;align-items:center;justify-content:space-between;gap:4px;padding:0 0 8px; }
+.caption button { display:grid;place-items:center;width:28px;height:30px;border-radius:6px;border:1px solid var(--pb-line,#d4d0c5);background:transparent;color:var(--pb-forest,#183c32); }
+.caption button:disabled { opacity:.3; }
+.caption select,.caption input { border:0;background:transparent;font:inherit;font-weight:600;color:inherit;min-height:30px;padding:2px; }
+.caption select { max-width:116px; }
+.caption input { width:58px; }
+.table { width:100%;border-collapse:separate;border-spacing:0 2px;table-layout:fixed; }
+.weekday { height:24px;font-size:.7rem;font-weight:500;color:var(--pb-slate,#565c56);text-align:center; }
+.cell { padding:0;text-align:center;position:relative; }
+.day { border:0;border-radius:7px;width:100%;height:32px;display:grid;place-items:center;background:transparent;color:inherit;font-size:.8125rem;transition:background .12s; }
+.day:hover:not(:disabled) { background:#183c3210; }
+.day:focus-visible { outline:2px solid var(--pb-forest,#183c32);outline-offset:-2px; }
+.today { box-shadow:inset 0 0 0 1px var(--pb-sage,#858d76);font-weight:600; }
+.selected,.selected:hover:not(:disabled) { background:var(--pb-forest,#183c32);color:#fff; }
+.outside { opacity:.4; }
+.unavailable { color:#999e97;opacity:.45;cursor:not-allowed; }
+.hidden { visibility:hidden; }
+.middle { background:#183c3210;border-radius:0; }
+.footer { display:flex;justify-content:space-between;gap:12px;border-top:1px solid var(--pb-line,#d4d0c5);margin-top:8px;padding-top:6px; }
+.footer button { border:0;border-radius:5px;background:transparent;color:var(--pb-forest,#183c32);font:inherit;font-size:.8125rem;padding:5px 8px; }
+.footer button:disabled { opacity:.4; }
+.error { display:block;font-size:.75rem;color:var(--pb-danger,#9c3530);margin-top:4px; }
+.range { display:grid;grid-template-columns:1fr 1fr;gap:12px; }
+.range label { display:grid;gap:6px;font-size:.8125rem; }
+.months { display:grid;grid-template-columns:repeat(3,1fr);gap:6px; }
+.months button { min-height:40px;border:0;border-radius:7px;background:transparent;color:inherit;font:inherit;font-size:.8125rem; }
+.months button[aria-pressed=true] { background:var(--pb-forest,#183c32);color:white; }
+.months button:disabled { opacity:.35; }
+@media(max-width:400px) { .range { grid-template-columns:1fr; }.day { height:36px; } }
+@media(prefers-reduced-motion:reduce) { .input,.day { transition:none; }.popover { animation:none!important; } }
+
+.srOnly { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0; }

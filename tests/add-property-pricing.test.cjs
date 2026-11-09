@@ -12,7 +12,7 @@ test('owner pricing appears once beside property purpose with amount-in-words he
  for(const label of ['Expected Monthly Rent','Expected Security Deposit','Expected Selling Price','Finalized Monthly Rent','Finalized Security Deposit'])assert.match(text,new RegExp(label));
  assert.equal((text.match(/name="sellingPrice"/g)||[]).length,1);
  assert.equal((text.match(/name="securityDeposit"/g)||[]).length,1);
- assert.match(text,/For Sale and Rent/);
+ assert.match(text,/Pre-Leased Sale/);assert.match(text,/To Manage/);
  assert.match(text,/\['rent','sell','sell_rent'\]\.includes\(listingType\|\|''\)/);
  assert.match(text,/private-management properties remain private/);
  assert.ok((text.match(/<AmountInWords amount=\{field\.value\}\/\>/g)||[]).length>=3);
@@ -23,9 +23,9 @@ test('sale, rental and private-management prices retain their distinct stored ma
   {...base('residential','Apartment'),listingType:'sell',sellingPrice:'8500000'},
   {...base('commercial','Office'),listingType:'rent',rentalStatus:'available',expectedRent:'55000',securityDeposit:'165000'},
   {...base('commercial','Showroom'),listingType:'sell_rent',rentalStatus:'available',expectedRent:'65000',securityDeposit:'195000',sellingPrice:'12500000'},
-  {...base('industrial','Warehouse'),listingType:'manage'},
+  {...base('industrial','Unit'),listingType:'manage'},
  ];
-  for(const payload of cases){const app=isolated({users}),response=await route(app,'properties').POST(request('/properties','owner','POST',payload));assert.equal(response.status,200,await response.clone().text());const saved=Object.values(app.state.properties)[0];assert.equal(saved.listingType,payload.listingType);if(payload.sellingPrice)assert.equal(saved.sellingPrice,payload.sellingPrice);if(payload.expectedRent){assert.equal(saved.expectedRent,payload.expectedRent);assert.equal(saved.securityDeposit,payload.securityDeposit);}if(payload.listingType==='manage'){assert.equal(saved.sellingPrice,'');assert.equal(saved.expectedRent,undefined);}}
+  for(const payload of cases){const app=isolated({users}),response=await route(app,'properties').POST(request('/properties','owner','POST',payload));assert.equal(response.status,200,await response.clone().text());const saved=Object.values(app.state.properties)[0];assert.equal(saved.listingType,payload.listingType);if(payload.sellingPrice)assert.equal(saved.sellingPrice,payload.sellingPrice);if(payload.expectedRent){assert.equal(saved.expectedRent,payload.expectedRent);assert.equal(saved.securityDeposit,payload.securityDeposit);}if(payload.listingType==='manage'){assert.equal(saved.sellingPrice,'');assert.equal(saved.expectedRent,'');}}
 });
 
 test('occupied rental keeps finalized rent separate from asking rent',async()=>{

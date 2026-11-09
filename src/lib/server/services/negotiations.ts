@@ -92,7 +92,7 @@ export async function createNegotiation(
 
   if (
     !property || !publicListing(property) ||
-    !['rent', 'sell'].includes(
+    !['rent', 'sell', 'pre_leased'].includes(
       stringValue(property.listingType)
     ) ||
     property.isActive !== true ||

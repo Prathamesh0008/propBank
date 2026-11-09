@@ -2,12 +2,12 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),ts=require('typescript'),React=require('react');
 const {renderToStaticMarkup}=require('react-dom/server');
-function harness({existing=false,googleName='Google User',failOnce=false}={}){
+function harness({existing=false,googleName='Google User',failOnce=false,profileStatus=503,profileMessage='Profile save failed'}={}){
  const state=[],calls=[],cache=new Map();let index=0,created=0,profileFailures=failOnce?1:0;
  const user={uid:'firebase-fixture',email:'person@example.invalid',displayName:googleName,emailVerified:true,photoURL:'',getIdToken:async()=> 'isolated-token',reload:async()=>{}};
  const auth={currentUser:null};const navigation=[];
  class FirebaseError extends Error{}
- const apiFetch=async(url,init={})=>{const body=init.body?JSON.parse(init.body):undefined;calls.push({url,method:init.method||'GET',body});if(url==='/api/auth/user'&&!init.method)return new Response(JSON.stringify({profileExists:existing,profileComplete:existing}),{status:200});if(url==='/api/auth/user'&&init.method==='POST'&&profileFailures-- >0)return new Response(JSON.stringify({message:'Profile save failed'}),{status:503});if(url==='/api/auth/login')return new Response(JSON.stringify({user:{role:'individual'}}));return new Response(JSON.stringify({success:true}));};
+ const apiFetch=async(url,init={})=>{const body=init.body?JSON.parse(init.body):undefined;calls.push({url,method:init.method||'GET',body});if(url==='/api/auth/user'&&!init.method)return new Response(JSON.stringify({profileExists:existing,profileComplete:existing}),{status:200});if(url==='/api/auth/user'&&init.method==='POST'&&profileFailures-- >0)return new Response(JSON.stringify({message:profileMessage,code:profileStatus===409?'MOBILE_ALREADY_REGISTERED':undefined}),{status:profileStatus});if(url==='/api/auth/login')return new Response(JSON.stringify({user:{role:'individual'}}));return new Response(JSON.stringify({success:true}));};
  const fakeReact={...React,useState:initial=>{const key=index++;if(!(key in state))state[key]=initial;return [state[key],value=>{state[key]=typeof value==='function'?value(state[key]):value;}];},useEffect:()=>{},useMemo:fn=>fn(),useId:()=> 'registration-mobile'};
  const load=file=>{if(cache.has(file))return cache.get(file);const output={};cache.set(file,output);const code=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;const scoped=name=>{
   if(name==='react')return fakeReact;if(name==='firebase/app')return {FirebaseError};
@@ -48,4 +48,14 @@ test('existing password login requires no mobile and never calls registration',a
 });
 test('failed profile persistence retries completion using the already created Firebase account',async()=>{
  const h=harness({failOnce:true});h.button('Create account').props.onClick();h.change(h.input('text'),'New Person');h.change(h.input('email'),'person@example.invalid');h.change(h.input('password'),'fixture-password');h.change(h.input('tel'),'9876543210');await h.submit();assert.equal(h.created(),1);assert.match(h.html(),/Profile save failed/);assert.equal(h.input('password'),undefined);await h.submit();assert.equal(h.created(),1);assert.equal(h.calls.filter(call=>call.url==='/api/auth/user'&&call.method==='POST').length,2);
+});
+
+for(const provider of ['password','google'])test(`${provider} duplicate mobile keeps entered values and permits retry with same Firebase UID`,async()=>{
+ const message='This mobile number is already registered. Please use a different mobile number.';
+ const h=harness({failOnce:true,profileStatus:409,profileMessage:message});
+ if(provider==='google')await h.click('Continue with Google');
+ else {h.button('Create account').props.onClick();h.change(h.input('text'),'New Person');h.change(h.input('email'),'person@example.invalid');h.change(h.input('password'),'fixture-password');}
+ h.change(h.input('tel'),'9876543210');const name=h.input('text').props.value,email=h.input('email').props.value;
+ await h.submit();assert.ok(h.html().includes(message));assert.equal(h.input('tel').props.value,'9876543210');assert.equal(h.input('text').props.value,name);assert.equal(h.input('email').props.value,email);assert.deepEqual(h.navigation,[]);
+ h.change(h.input('tel'),'9988776655');await h.submit();assert.equal(h.created(),provider==='google'?0:1);const attempts=h.calls.filter(call=>call.url==='/api/auth/user'&&call.method==='POST');assert.equal(attempts.length,2);assert.equal(attempts[0].body.uid,attempts[1].body.uid);assert.equal(attempts[1].body.phoneNumber,'+919988776655');
 });

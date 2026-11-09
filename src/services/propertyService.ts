@@ -2,6 +2,7 @@ import { apiFetch } from '@/lib/api-client';
 import { API_BASE_URL } from '../utils/config';
 
 interface Property {
+  preLeased?: any;managementServices?:string[];managementDescription?:string;investment?:{monthlyRentalIncome:number;annualRentalIncome:number;grossYield:number;leaseEndDate:string;leaseReviewRequired:boolean;verificationStatus:string};
   moderationStatus?: string;
   moderationRevision?: number;
   moderationReason?: string;

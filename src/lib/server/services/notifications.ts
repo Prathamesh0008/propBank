@@ -44,7 +44,7 @@ export async function postNotification(request:Request) {
     if(req.propertyId&&['want_to_sell','want_to_sell_cancelled'].includes(s(req.type))) {const property=await getProperty(s(req.propertyId));requireOwnerOrAdmin(user,{ownerUID:s(property?.ownerUID)});}
     if(req.propertyId&&['service_request','document_upload','other_service_request','legal_service_request'].includes(s(req.type))&&!await propertyMember(user,s(req.propertyId)))throw new ApiError(404,'Property not found');
   }
-  if(req.type==='property_enquiry'&&req.propertyId) {const property=await getProperty(s(req.propertyId));if(!property)throw new ApiError(404,'Available property not found');if(!publicListing(property)&&actor)await propertyMember(actor,s(req.propertyId));}
+  if(req.type==='property_enquiry'&&req.propertyId) {const property=await getProperty(s(req.propertyId));if(!property||property.listingType==='manage')throw new ApiError(404,'Available property not found');if(!publicListing(property)&&actor)await propertyMember(actor,s(req.propertyId));}
   if(req.type==='general_inquiry') {
     req.userName=s(req.userName).trim();req.userEmail=s(req.userEmail).trim().toLowerCase();
     const normalizedPhone=indianMobile(s(req.userPhone));if(!normalizedPhone)throw new ApiError(400,'Enter a valid Indian mobile number');req.userPhone=normalizedPhone;

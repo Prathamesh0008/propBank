@@ -47,7 +47,7 @@ export async function login(request:Request) {
 }
 
 const clientServices=Object.fromEntries([
-  ['plumbing','Plumbing Issue','maintenance'],['leakage','Leakage / Seepage Issue','maintenance'],['fixtures','Fixtures Issue','maintenance'],['painting','Painting Work','maintenance'],['electrical','Electrical Issue','maintenance'],['other','Any Other','maintenance'],
+  ['cleaning','Cleaning','maintenance'],['general-repairs','General repairs','maintenance'],['appliance-maintenance','Appliance maintenance','maintenance'],['plumbing','Plumbing Issue','maintenance'],['leakage','Leakage / Seepage Issue','maintenance'],['fixtures','Fixtures Issue','maintenance'],['painting','Painting Work','maintenance'],['electrical','Electrical Issue','maintenance'],['other','Any Other','maintenance'],
   ['rent-agreement-registration','Rent Agreement Registration','legal'],['sale-agreement-procedure','Sale Agreement Procedure','legal'],['legal-consultation','Other Legal Work / Consultation','legal'],['society-procedure','Society Procedure / Service','related'],['pre-rental','Pre-rental Services','related'],
 ].map(([id,name,category])=>[id,model('Service',{id,name,category,isActive:true})]));
 export async function listServices() {

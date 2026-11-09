@@ -1,3 +1,4 @@
+import {purposeFields,leaseSummary,leaseExpired} from '@/lib/property-purpose';
 import 'server-only';
 import { schemas, projections } from './go-contracts';
 
@@ -10,8 +11,9 @@ const zeroDate = '0001-01-01T00:00:00Z';
 const tenantLinkFields = {linkConfirmationRequired: 'bool', phoneE164: 'string'};
 function tenantLinkValues(name: string, input: RecordData): RecordData {
   if (!['Tenant', 'TenantInfo'].includes(name)) return {};
-  return Object.fromEntries(Object.entries(tenantLinkFields).filter(([key]) => key in input)
-    .map(([key, type]) => [key, typedValue(type, input[key], true, key)]));
+  const inventory=Object.fromEntries(['agreementInventory','inventoryHistory'].filter(key=>key in input).map(key=>[key,input[key]]));
+  return {...inventory,...Object.fromEntries(Object.entries(tenantLinkFields).filter(([key]) => key in input)
+    .map(([key, type]) => [key, typedValue(type, input[key], true, key)]))};
 }
 
 function defaultValue(type: string): unknown {
@@ -97,7 +99,7 @@ export function wireModel(name: string, input: RecordData): RecordData {
     if (field.omit && empty(input[field.name])) continue;
     result[field.name] = nestedModel(field.type,input[field.name],false);
   }
-  return {...result, ...tenantLinkValues(name, input)};
+  return {...result, ...wireValue(tenantLinkValues(name, input)) as RecordData};
 }
 
 export function parsePrice(value: unknown) { return Number.parseFloat(stringValue(value).replace(/[₹,]/g,'').trim()); }
@@ -107,7 +109,7 @@ export function propertyResponse(property: RecordData, projection = 'normal', us
   if (projection === 'normal') {
     result.price = property.price;
     if (property.price === 0) {
-      const fallback = property.listingType === 'rent' ? property.expectedRent||property.monthlyRent : ['sell','sell_rent'].includes(String(property.listingType)) ? property.sellingPrice : '';
+      const fallback = property.listingType === 'rent' ? property.expectedRent||property.monthlyRent : ['sell','sell_rent','pre_leased'].includes(String(property.listingType)) ? property.sellingPrice : '';
       const price = parsePrice(fallback);
       if (Number.isFinite(price)) result.price = price;
     }
@@ -120,6 +122,9 @@ export function propertyResponse(property: RecordData, projection = 'normal', us
   if(userRole==='admin'||userRole==='tenant')for(const key of ['ownershipVerificationReason','ownershipVerificationVersion'])if(key in property)response[key]=wireValue(property[key]);
   if(userRole==='admin')for(const key of ['ownershipVerificationReviewerUID','ownershipVerificationReviewedAt','ownershipVerificationHistory','ownershipVerificationAudit'])if(key in property)response[key]=wireValue(property[key]);
   if(Array.isArray(property.rentSchedule))response.rentSchedule=wireValue(property.rentSchedule);
+  if(userRole)for(const key of purposeFields)if(key in property)response[key]=wireValue(property[key]);
+  if(isRecord(response.preLeased)&&!['owner','admin'].includes(userRole||'')){const {existingTenant:privateTenant,...lease}=response.preLeased;response.preLeased=lease;}
+  if(property.listingType==='pre_leased'){response.investment=leaseSummary(property);response.leaseReviewRequired=leaseExpired(property);}
   return response;
 }
 
@@ -130,6 +135,7 @@ export function publicPropertyResponse(property:RecordData) {
   // Retain empty legacy keys so existing screens can safely render their defaults.
   for(const key of ['ownerEmail','ownerPhone','tenantName','personName','mobileNumber','primaryNo','ultNo','tenantDetails','specificComments','agreementStartDate','agreementEndDate','agreementPeriod','securityDeposit','paymentDueDate'])result[key]='';
   for(const key of ['tenants','buyers','internalImages','rentSchedule'])result[key]=null;
+  if(property.listingType==='pre_leased')result.investment=leaseSummary(property);
   result.images=Array.isArray(full.images)?full.images.slice(0,1):[];
   return result;
 }

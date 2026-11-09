@@ -1,4 +1,5 @@
 "use client";
+import {purposeLabel} from "@/lib/property-purpose";
 
 import workspaceStyles from './ManageProperty.module.css';
 import {OwnerVerificationStatus} from '@/features/admin/OwnerVerification';
@@ -94,6 +95,7 @@ interface BuyerInfo {
 }
 
 interface Property {
+  preLeased?: any;managementServices?:string[];managementDescription?:string;investment?:{monthlyRentalIncome:number;annualRentalIncome:number;grossYield:number;leaseEndDate:string;leaseReviewRequired:boolean;verificationStatus:string};
   moderationStatus?: string;
   moderationRevision?: number;
   moderationReason?: string;
@@ -282,6 +284,7 @@ const ManageProperty = () => {
   }, [filteredTenantProperties]);
 
   const formatPrice = (property: any) => {
+    if(property.listingType==='manage')return 'Private management';
     // Helper function to get a valid price value
     const getValidPrice = (value: any): number => {
 
@@ -312,7 +315,7 @@ const ManageProperty = () => {
       if (monthlyRent > 0) {
         return `₹${monthlyRent.toLocaleString()}/month`;
       }
-    } else if (property.listingType === 'sell') {
+    } else if (['sell','pre_leased'].includes(property.listingType)) {
       // Try multiple possible field names for selling price
       const sellingPrice = getValidPrice(property.sellingPrice) ||
         getValidPrice(property.selling_price) ||
@@ -335,6 +338,8 @@ const ManageProperty = () => {
   };
 
   const getListingTypeBadge = (listingType: string) => {
+    if(listingType==='manage')return <Badge variant="outline">To Manage ? Private</Badge>;
+    if(listingType==='pre_leased')return <Badge variant="outline">Pre-Leased</Badge>;
     if (listingType === 'rent') {
       return <Badge variant="secondary" className="bg-blue-100 text-blue-800">For Rent</Badge>;
     } else if (listingType === 'sell') {
@@ -731,7 +736,7 @@ const ManageProperty = () => {
                        <SelectItem value="available">Available For Rent</SelectItem>
                        <SelectItem value="rented">Already Rented Out</SelectItem>
                        <SelectItem value="manage">To Manage</SelectItem>
-                       <SelectItem value="sell">For Sale</SelectItem>
+                       <SelectItem value="sell">For Sale</SelectItem><SelectItem value="pre_leased">Pre-Leased Sale</SelectItem><SelectItem value="manage">To Manage</SelectItem>
                      </SelectContent>
                    </Select>
                  </div>
@@ -763,7 +768,7 @@ const ManageProperty = () => {
                     )}
                     {selectedListingType && selectedListingType !== "all" && (
                       <Badge variant="secondary" className="text-xs capitalize">
-                        {selectedListingType === "rent" ? "For Rent" : "For Sale"}
+                        {purposeLabel(selectedListingType)}
                       </Badge>
                     )}
                   </div>

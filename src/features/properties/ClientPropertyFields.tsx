@@ -13,6 +13,7 @@ export default function ClientPropertyFields<T extends FieldValues>({form,disabl
   const selectedCategory=propertyCategory(fixedCategory||(typeof form.watch==='function'?form.watch('propertyCategory' as Path<T>):''));
   const plotStructure=structureUsesPlotArea(typeof form.watch==='function'?form.watch('structure' as Path<T>):'');
   const visibleFields=fields.filter(([key])=>{
+    if(key==='expectedRent'&&!['rent','sell_rent'].includes(form.watch('listingType' as Path<T>)))return false;
     if(fixedCategory&&key==='propertyCategory')return false;
     if(creation&&['expectedRent','areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit'].includes(key))return false;
     if(!creation&&selectedCategory&&plotStructure&&['carpetAreaUnit','constructedAreaUnit'].includes(key))return false;

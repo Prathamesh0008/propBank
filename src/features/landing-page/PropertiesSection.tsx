@@ -1,5 +1,8 @@
 "use client";
 
+import PropertyPurposeSummary from "@/features/properties/PropertyPurposeSummary";
+import {purposeLabel} from "@/lib/property-purpose";
+
 import React from "react";
 import { Link } from "@/lib/navigation";
 import { Loader2, Home, MapPin, ArrowUpRight } from "lucide-react";
@@ -68,14 +71,14 @@ export const PropertiesSection: React.FC<PropertiesSectionProps> = ({
                 return <article key={property.id} className={styles.listing}>
                   <div className={styles.photo}>
                     <img src={property.images?.[0] || fallback} alt={property.title || "Available property"} loading="lazy" onError={(event) => { const image = event.currentTarget; if(image.getAttribute("src") !== fallback) image.src = fallback; else image.style.opacity = "0"; }}/>
-                    <span className={styles.listingTag}>{property.listingType === "rent" ? "For rent" : "For sale"}</span>
+                    <span className={styles.listingTag}>{purposeLabel(property.listingType||"")}</span>
                   </div>
                   <div className={styles.listingBody}>
                     <div className={styles.listingMeta}><span>{property.propertyType || "Property"}</span>{property.configuration && <span>{property.configuration}</span>}</div>
                     <h3>{property.title || "Available property"}</h3>
                     {(property.address || property.city) && <p className={styles.location}><MapPin size={15} aria-hidden="true"/>{property.address || property.city}</p>}
                     <div className={styles.listingBottom}>
-                      <div className={styles.price}>{price > 0 ? `₹${price.toLocaleString("en-IN")}` : "Price on request"}{price > 0 && property.listingType === "rent" && <span> / month</span>}</div>
+                      <PropertyPurposeSummary property={property}/><div className={styles.price}>{price > 0 ? `₹${price.toLocaleString("en-IN")}` : "Price on request"}{price > 0 && property.listingType === "rent" && <span> / month</span>}</div>
                       <div className={styles.actions}><PropertyDetailsDialog property={property} /><Button size="sm" disabled={sendingEnquiry === property.id} onClick={()=>handleEnquireProperty(property)}>{sendingEnquiry === property.id ? "Sending…" : "Enquire"}</Button></div>
                     </div>
                   </div>

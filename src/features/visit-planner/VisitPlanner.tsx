@@ -401,7 +401,7 @@ const VisitPlanner = () => {
 
                     <div className="space-y-1 sm:space-y-2">
                       <Label htmlFor="date" className="text-xs sm:text-sm">Visit Date *</Label>
-                      <DatePicker value={formData.date} className="text-sm"
+                      <DatePicker id="date" required value={formData.date} className="text-sm"
                         onChange={(value) => handleInputChange('date', value)} min={indiaCalendarDate()}
                       />
                     </div>

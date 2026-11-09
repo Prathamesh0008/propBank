@@ -33,7 +33,7 @@ export async function createDocument(request:Request) {
   const profile=await getUser(user.uid);if(!profile)return failure('User not found: user not found',404);
   const property=await propertyMember(user,s(req.propertyId));if(!property)return failure('Property not found: property not found',404);
   if(req.status&&!['submitted','verified','rejected'].includes(s(req.status)))return failure('Invalid document status',400);
-  if(user.role!=='admin')req.status='submitted';
+  if(user.role!=='admin'||property.listingType==='pre_leased'&&supportingTypes.includes(s(req.documentType)))req.status='submitted';
   const documentId=idempotencyKey?createHash('sha256').update(`${user.uid}:${s(req.propertyId)}:${idempotencyKey}`).digest('hex'):randomUUID();
   const prior=await collection().doc(documentId).get();
   if(prior.exists){

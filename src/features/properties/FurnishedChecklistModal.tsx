@@ -307,37 +307,23 @@ export const FurnishedChecklistModal: React.FC<FurnishedChecklistModalProps> = (
   };
 
   const handleSave = () => {
-    // Add any pending custom items before saving
-    const itemsToAdd: string[] = [];
-    customItems.forEach(item => {
-      if (item.trim()) {
-        itemsToAdd.push(item.trim());
-      }
-    });
-    
-    // Add all pending custom items first
-    itemsToAdd.forEach(itemName => {
-      const newItem: FurnishedItem = {
-        id: `custom-${Date.now()}-${Math.random()}`,
-        name: itemName,
+    // Build one snapshot in the click handler. React may replay state updaters,
+    // so callbacks that update the parent must never run inside an updater.
+    const pendingItems: FurnishedItem[] = customItems
+      .map(name => name.trim())
+      .filter(Boolean)
+      .map((name, index) => ({
+        id: `custom-${Date.now()}-${index}-${Math.random()}`,
+        name,
         checked: false,
         quantity: 1,
-        category: 'other'
-      };
-      setChecklist(prev => [...prev, newItem]);
-    });
-    
-    // Clear custom items input
+        category: 'other',
+      }));
+    const savedChecklist = [...checklist, ...pendingItems];
+    setChecklist(savedChecklist);
     setCustomItems(['']);
-    
-    // Save the checklist (including newly added custom items)
-    setTimeout(() => {
-      setChecklist(currentChecklist => {
-        onSave(currentChecklist);
-        return currentChecklist;
-      });
-      onClose();
-    }, 50);
+    onSave(savedChecklist);
+    onClose();
   };
 
   const groupedItems = checklist.reduce((acc, item) => {

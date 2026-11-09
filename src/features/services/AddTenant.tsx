@@ -1,4 +1,7 @@
 "use client";
+import AgreementInventoryPanel from './AgreementInventoryPanel';
+import {InventoryEditor} from "./InventoryEditor";
+import {propertyInventory,inventoryError,type InventoryItem,type AgreementInventory} from "@/lib/agreement-inventory";
 import {indianMobile} from '@/lib/indian-phone';
 import styles from "./TenantWorkspace.module.css";
 
@@ -44,6 +47,7 @@ interface UserInfo {
 }
 
 interface TenantData {
+  inventory:InventoryItem[];inventoryVersion:number;agreementInventory?:AgreementInventory;inventoryTouched?:boolean;
   id: string;
   firstName: string;
   lastName: string;
@@ -95,11 +99,13 @@ const AddTenant = () => {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [propertyOwner,setPropertyOwner]=useState("");
   const [existingTenants, setExistingTenants] = useState<TenantData[]>([]);
+  const [baselineInventory,setBaselineInventory]=useState<InventoryItem[]>([]);
   const [propertyTitle, setPropertyTitle] = useState<string>('');
   const [propertyRentSchedule, setPropertyRentSchedule] = useState<any[]>([]);
   const [propertyUpdatedAt,setPropertyUpdatedAt]=useState('');
   const [editingTenantId,setEditingTenantId]=useState('');
   const [tenancyRevision,setTenancyRevision]=useState(0);
+  const [inventoryLoaded,setInventoryLoaded]=useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
@@ -130,7 +136,7 @@ const AddTenant = () => {
       lockInPeriod: '',
       addNextAgreementManually: false,
       nextAgreementDraft: emptyNextAgreementDraft(),
-      notes: '',
+      notes: '',inventory:[],inventoryVersion:0,
       searchError: undefined,
       searchingUser: false,
       rentSchedule: [{ year: "1st Year", amount: "", fromDate: "", toDate: "", months: "11" }]
@@ -154,6 +160,8 @@ const AddTenant = () => {
 
         if (data.success) {
           const property = data.property;
+          const baseline=propertyInventory(property.furnishedChecklist);setBaselineInventory(baseline);setInventoryLoaded(true);
+          setTenants(current=>current.map(tenant=>tenant.inventoryTouched?tenant:{...tenant,inventory:baseline.map(item=>({...item}))}));
           setPropertyTitle(property.title);
           setPropertyOwner(property.ownerUID);
           setTenancyRevision(Number(property.tenancyRevision||0));
@@ -188,7 +196,7 @@ const AddTenant = () => {
               lockInPeriod: tenant.lockInPeriod || property.lockInPeriod || '',
               addNextAgreementManually: !!(tenant.nextAgreementDraft||property.nextAgreementDraft),
               nextAgreementDraft: tenant.nextAgreementDraft||property.nextAgreementDraft||emptyNextAgreementDraft(),
-              notes: tenant.notes || '',
+              notes: tenant.notes || '',inventory:(tenant.agreementInventory?.items??baseline).map((item:InventoryItem)=>({...item})),inventoryVersion:Number(tenant.agreementInventory?.version||0),agreementInventory:tenant.agreementInventory,
               rentSchedule: tenant.rentSchedule?.length ? tenant.rentSchedule : property.rentSchedule || []
             }));
             setExistingTenants(activeTenants);
@@ -390,12 +398,13 @@ const AddTenant = () => {
       lockInPeriod: '',
       addNextAgreementManually: false,
       nextAgreementDraft: emptyNextAgreementDraft(),
-      notes: '',
+      notes: '',inventory:baselineInventory.map(item=>({...item})),inventoryVersion:0,
       searchError: undefined,
       searchingUser: false,
       rentSchedule: [{ year: "1st Year", months: "11", amount: "", fromDate: "", toDate: "" }]
     };
-    setTenants(prev => [...prev, newTenant]);
+    setTenants(prev => editingTenantId?[newTenant]:[...prev,newTenant]);
+    setEditingTenantId('');
   };
 
   const removeTenant = (tenantId: string) => {
@@ -416,6 +425,7 @@ const AddTenant = () => {
 
   const handleSubmit = async () => {
     if (isSubmitting) return;
+    if(!inventoryLoaded){toast({title:'Property inventory not loaded',description:'Reload this page before saving tenant details.',variant:'destructive'});return;}
 
     const invalidTenants = tenants.filter(tenant => !validateTenant(tenant));
     if (invalidTenants.length > 0) {
@@ -455,6 +465,7 @@ const AddTenant = () => {
     const invalidNextAgreement=tenants.map(tenant=>tenant.addNextAgreementManually?validateNextAgreementDraft(tenant.nextAgreementDraft,tenant.leaseEndDate):'').find(Boolean);
     if(invalidNextAgreement){toast({title:'Check next agreement details',description:invalidNextAgreement,variant:'destructive'});return;}
 
+    const invalidInventory=tenants.map(tenant=>inventoryError(tenant.inventory)).find(Boolean);if(invalidInventory){toast({title:'Check inventory',description:invalidInventory,variant:'destructive'});return;}
     setIsSubmitting(true);
     try {
       const propertyResponse = await apiFetch(`${API_BASE_URL}/properties/${propertyId}`);
@@ -490,6 +501,7 @@ const AddTenant = () => {
         noticePeriod: tenant.noticePeriod,
         lockInPeriod: tenant.lockInPeriod,
         nextAgreementDraft: tenant.addNextAgreementManually ? tenant.nextAgreementDraft : null,
+        inventory:tenant.agreementInventory?.status==='agreed'||(editingTenantId&&!tenant.inventoryTouched)?undefined:tenant.inventory,expectedInventoryVersion:tenant.inventoryVersion,
         notes: tenant.notes,
         rentSchedule: tenant.rentSchedule,
         isActive: true
@@ -513,7 +525,7 @@ const AddTenant = () => {
           expectedPropertyUpdatedAt:propertyUpdatedAt
         })})
         : await apiFetch(`${API_BASE_URL}/tenants`,{method:'POST',headers,body:JSON.stringify({
-          propertyId: propertyId,
+          propertyId: propertyId,expectedPropertyUpdatedAt:propertyUpdatedAt,
           ownerUID: property.ownerUID,
           tenants: newTenantInfos
         })});
@@ -645,6 +657,7 @@ const AddTenant = () => {
                       </div>
                     </div>
 
+                    {tenant.id&&<AgreementInventoryPanel tenantId={tenant.id} owner={adminMode||user?.uid===propertyOwner} label={tenant.firstName||'Tenant'} initialItems={baselineInventory}/>}
                     {tenant.emergencyContact && (
                       <div>
                         <h3 className="text-md font-semibold text-gray-700 mb-3 border-b pb-1">Emergency Contact</h3>
@@ -750,7 +763,7 @@ const AddTenant = () => {
                       </div>
                     </div>
 
-                    <div>
+                  <div>
                       <h3 className="text-md font-semibold text-gray-700 mb-3 border-b pb-1">Background Information</h3>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                         <div className="md:col-span-3">
@@ -1014,6 +1027,8 @@ const AddTenant = () => {
                     </div>
                   )}
 
+                  <InventoryEditor items={tenant.inventory} disabled={tenant.agreementInventory?.status==='agreed'} onChange={items=>setTenants(current=>current.map(row=>row.id===tenant.id?{...row,inventory:items,inventoryTouched:true}:row))}/>
+                  {tenant.agreementInventory?.status==='agreed'&&<p className="text-sm text-muted-foreground">Confirmed inventory is immutable. Prepare an explicit amendment or renewal from the agreement workspace.</p>}
                   <div>
                     <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
                       <FileText className="h-4 w-4" />
@@ -1089,7 +1104,7 @@ const AddTenant = () => {
                               <div className="w-full md:flex-1 min-w-[150px]">
                                 <Label className="text-xs font-medium text-slate-500 mb-1.5 block">From</Label>
                                 <div className="w-full">
-                                  <DatePicker
+                                  <DatePicker aria-label="Rent period from date"
                                     value={item.fromDate}
                                     onChange={(value) => handleRentScheduleChange(tenant.id, index, 'fromDate', value)}
                                     className="bg-white shadow-sm w-full"
@@ -1099,7 +1114,7 @@ const AddTenant = () => {
                               <div className="w-full md:flex-1 min-w-[150px]">
                                 <Label className="text-xs font-medium text-slate-500 mb-1.5 block">To</Label>
                                 <div className="w-full">
-                                  <DatePicker
+                                  <DatePicker aria-label="Rent period to date"
                                     value={item.toDate}
                                     onChange={(value) => handleRentScheduleChange(tenant.id, index, 'toDate', value)}
                                     className="bg-white shadow-sm w-full"
@@ -1138,12 +1153,12 @@ const AddTenant = () => {
                       </div>
                       <div className="md:col-span-2 mt-2 border-t pt-4"><h5 className="font-medium">Agreement Details</h5></div>
                       <div>
-                        <Label htmlFor={`leaseStartDate - ${tenant.id} `}>Agreement Start Date</Label>
-                        <DatePicker value={tenant.leaseStartDate} onChange={(value) => handleInputChange(tenant.id, 'leaseStartDate', value)}/>
+                        <Label htmlFor={`leaseStartDate-${tenant.id}`}>Agreement Start Date</Label>
+                        <DatePicker id={`leaseStartDate-${tenant.id}`} value={tenant.leaseStartDate} onChange={(value) => handleInputChange(tenant.id, 'leaseStartDate', value)}/>
                       </div>
                       <div>
-                        <Label htmlFor={`leaseEndDate - ${tenant.id} `}>Agreement End Date</Label>
-                        <DatePicker value={tenant.leaseEndDate} onChange={(value) => handleInputChange(tenant.id, 'leaseEndDate', value)}/>
+                        <Label htmlFor={`leaseEndDate-${tenant.id}`}>Agreement End Date</Label>
+                        <DatePicker id={`leaseEndDate-${tenant.id}`} value={tenant.leaseEndDate} onChange={(value) => handleInputChange(tenant.id, 'leaseEndDate', value)}/>
                       </div>
                       <div>
                         <Label htmlFor={`noticePeriod - ${tenant.id} `}>Notice Period / Early Termination Notice *</Label>

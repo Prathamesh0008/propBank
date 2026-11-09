@@ -4,7 +4,7 @@ import { projectFiles } from './file-projection';
 import {randomUUID} from 'node:crypto';
 
 export class ApiError extends Error {
-  constructor(public readonly status: number, message: string) {
+  constructor(public readonly status: number, message: string, public readonly code?: string) {
     super(message);
     this.name = 'ApiError';
   }
@@ -36,7 +36,7 @@ export function handle<T extends unknown[]>(fn: (...args:T)=>Promise<Response>, 
     const started=Date.now();
     try { return await fn(...args); }
     catch (error) {
-      if (error instanceof AccessError || error instanceof ApiError) {const response=jsonResponse({success:false,message:error.message,...(error instanceof AccessError&&error.code?{code:error.code}:{})},error.status);if(error.status===429)response.headers.set('Retry-After','60');return response;}
+      if (error instanceof AccessError || error instanceof ApiError) {const response=jsonResponse({success:false,message:error.message,...(error.code?{code:error.code}:{})},error.status);if(error.status===429)response.headers.set('Retry-After','60');return response;}
       const code=String((error as {code?:unknown}).code||(error instanceof Error?error.name:'UNKNOWN')),reference=randomUUID();
       const request=args[0] instanceof Request?args[0]:undefined;
       console.error('api_route_failed',JSON.stringify({reference,path:request?new URL(request.url).pathname:'unknown',method:request?.method||'unknown',code,durationMs:Date.now()-started,...dependencyDiagnostic(error)}));

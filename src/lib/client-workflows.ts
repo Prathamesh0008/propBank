@@ -1,3 +1,4 @@
+import type {AgreementInventory} from './agreement-inventory';
 import { apiFetch } from './api-client';
 
 export async function workflowRequest<T>(path:string,body?:unknown,method=body===undefined?'GET':'POST'):Promise<T> {
@@ -7,11 +8,11 @@ export async function workflowRequest<T>(path:string,body?:unknown,method=body==
   return data as T;
 }
 export interface AgreementEvent {action:string;actorUID:string;at:string;previousTerms?:Record<string,string>;noticeStartDate?:string;terminationDate?:string}
-export interface AgreementRequest {id:string;kind:string;status:string;requestedBy:string;proposedTerms?:Record<string,string>;terms?:Record<string,string>;noticePeriod?:string;noticeStartDate?:string;terminationDate?:string}
+export interface AgreementRequest {id:string;kind:string;status:string;requestedBy:string;inventoryProposal?:{tenantId:string;expectedVersion:number;snapshot:AgreementInventory};proposedTerms?:Record<string,string>;terms?:Record<string,string>;noticePeriod?:string;noticeStartDate?:string;terminationDate?:string}
 export interface WorkflowProperty {
   id:string;title:string;ownerUID:string;userRole?:string;agreementStatus?:string;
   agreementRequest?:AgreementRequest;agreementHistory?:AgreementEvent[];
-  tenants?:Array<{userUID?:string;isActive:boolean;leaseStartDate?:string;leaseEndDate?:string;monthlyRent?:string}>;
+  tenants?:Array<{id?:string;firstName?:string;agreementInventory?:AgreementInventory;userUID?:string;isActive:boolean;leaseStartDate?:string;leaseEndDate?:string;monthlyRent?:string}>;
   [key:string]:unknown;
 }
 export const renewalFields=[['monthlyRent','Monthly finalized rent'],['securityDeposit','Security deposit'],['paymentDueDate','Payment due day (1–31)'],['agreementPeriod','Agreement period'],['agreementStartDate','Agreement start date'],['agreementEndDate','Agreement end date'],['noticePeriod','Notice period'],['lockInPeriod','Lock-in period'],['escalationPercentage','Rent escalation percentage'],['escalationAmount','Rent escalation fixed amount'],['unitCondition','Furnishing condition']] as const;

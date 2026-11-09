@@ -94,6 +94,7 @@ export async function identity(request:Request,queryFallback=false):Promise<Auth
 export async function propertyMember(user:AuthenticatedUser,id:string) {
   const property=await getProperty(id);
   if(!property) return null;
+  if(property.listingType==='manage'&&user.role!=='admin'&&property.ownerUID!==user.uid)throw new AccessError(403,'Owner access required');
   // Reuse existing permissions, including Go's historical root tenant fields.
   const tenants=Array.isArray(property.tenants)?property.tenants:[];
   const legacy={email:stringValue(property.tenantEmail),isActive:property.rentalStatus==='rented'};

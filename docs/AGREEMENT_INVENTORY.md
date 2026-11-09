@@ -1,0 +1,13 @@
+﻿# Tenant agreement inventory
+
+The Add Tenant form seeds checked furniture from the property's furnishedChecklist. Each new tenancy starts with that source, including semi-furnished properties; it never inherits another tenant's customized inventory. Owners can add/edit/remove items and undo the last removal without modifying the original property record. Empty inventory is intentional.
+
+Each tenancy document and its matching embedded property entry hold agreementInventory (version, items, proposed status and actor/time). Inventory changes use transactions and expected versions. Generic property/tenant edits cannot replace server-controlled inventory snapshots/history. Limits: 100 items, positive integer quantities up to 10000, unique names, supported optional conditions and remarks up to 1000 characters.
+
+The linked, active, relationship-confirmed tenant must explicitly confirm the exact version through the agreement workspace. Phone/email equality alone does not authorize confirmation. Owner edits and relationship acceptance do not imply inventory acceptance. Confirmation preserves the accepted snapshot in inventoryHistory. Confirmed/finalized inventory changes require the explicit amendment action and fresh confirmation; inactive tenancy inventories cannot be changed.
+
+The owner can prepare an optional new renewal inventory. It stays on the pending renewal request until approval, with version and tenancy checks; approval creates a proposed snapshot only for the selected tenancy. Previous snapshots and agreement history remain intact. Reject and recreate a request if its inventory version becomes stale.
+
+Owners/admins can review/edit via Add Tenant's saved tenancy view. Owners and linked tenants can review/confirm/download via the existing renewal workspace. The private GET /api/tenants/:id/inventory endpoint returns current/history, and ?format=html (&version=N for history) downloads an escaped, printable Furniture & Fixtures annexure. It uses only the specified agreement snapshot, never a property fallback. No existing PDF generator or legal signing workflow was found; this adds a printable annexure, not a signature or handover assertion. Attach it through the existing agreement document workflow when needed.
+
+No collection, index, migration or dependency is required. Existing records without inventory remain valid and display Inventory not recorded. No live database or deployed rule verification was performed. Existing server-only Firestore access must remain enforced; direct client writes must not bypass the API. Local tests use an isolated in-memory Firestore fixture; browser interactions, printing and live tenant confirmation remain manual smoke checks.

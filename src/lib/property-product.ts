@@ -1,3 +1,4 @@
+import {leaseExpired} from './property-purpose';
 export type ProductRecord=Record<string,any>;
 export function dateText(value:unknown):string {
   if(typeof value==='string')return value;
@@ -11,6 +12,8 @@ export function lifecycle(p:ProductRecord,requests:ProductRecord[]=[],visits:Pro
  const result:string[]=[];
  if(p.status==='inactive'||p.isActive===false)return ['Archived'];
  if(p.isSold)return ['Sold'];
+ if(p.listingType==='manage')return ['To Manage',...(requests.some(r=>!r.isArchived&&['pending','in_progress'].includes(r.status))?['Maintenance']:[])];
+ if(p.listingType==='pre_leased')return [leaseExpired(p)?'Lease review required':'Pre-Leased'];
  if(p.agreementStatus==='notice_served')result.push('Notice Period');
  if(p.rentalStatus==='rented')result.push('Rented');
  else if(p.listingType==='sell')result.push('For Sale');
