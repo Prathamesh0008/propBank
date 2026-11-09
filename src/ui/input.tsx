@@ -1,11 +1,13 @@
 "use client";
 
 import * as React from "react"
+import {CalendarInput} from "./date-picker"
 
 import { cn } from "@/lib/utils"
 
 const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
   ({ className, type, ...props }, ref) => {
+    if(type==="date"||type==="month")return <CalendarInput {...props} className={className} type={type} ref={ref}/>;
     return (
       <input
         type={type}

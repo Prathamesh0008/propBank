@@ -1,3 +1,4 @@
+import {inventoryProposal} from '@/lib/agreement-inventory';
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { getDatabase, COLLECTIONS } from '../firestore';
@@ -37,10 +38,11 @@ function readTerms(value:unknown):RecordData {
 async function agreement(request:Request,renew:boolean,tenantRequest:boolean) {
   const user=await identity(request,true);
   let req:RecordData;
-  try{req=await readObject(request,16384);}catch{throw new ApiError(400,'Invalid request body');}
+  try{req=await readObject(request,512000);}catch{throw new ApiError(400,'Invalid request body');}
   for(const key of ['propertyId','action','noticePeriod','noticeStartDate','terminationDate','requestId'])if(key in req&&typeof req[key]!=='string')throw new ApiError(400,'Invalid agreement request field');
   const id=s(req.propertyId);
   if(!id||id.includes('/'))throw new ApiError(400,'Property ID required');
+  if('inventory' in req&&(!renew||tenantRequest||req.action!=='request'))throw new ApiError(403,'Only owner renewal proposals may include inventory');
   const proposed=readTerms(req.terms),action=s(req.action)||'request';
   if(renew&&!['request','approve','complete','reject'].includes(action))throw new ApiError(400,'Invalid renewal action');
   if(!renew&&!['request','terminate','reject'].includes(action))throw new ApiError(400,'Invalid termination action');
@@ -79,12 +81,26 @@ async function agreement(request:Request,renew:boolean,tenantRequest:boolean) {
           if(!values.agreementStartDate||!values.agreementEndDate)throw new ApiError(400,'Renewal start and end dates required');
           Object.assign(updates,values,{agreementStatus:'renewed',agreementRequest:{...current,status:'completed',terms:values,resolvedAt:now,resolvedBy:user.uid}});
           updates.tenants=entries(property.tenants).map(t=>t.isActive===true?{...t,monthlyRent:values.monthlyRent??t.monthlyRent,leaseStartDate:values.agreementStartDate,leaseEndDate:values.agreementEndDate,updatedAt:now}:t);
-          event={...event,terms:values};
+          if(isRecord(current.inventoryProposal)){
+            const proposal=current.inventoryProposal, selected=active.find(t=>t.id===proposal.tenantId);
+            if(!selected||Number((selected.agreementInventory as RecordData|undefined)?.version||0)!==proposal.expectedVersion)throw new ApiError(409,'Renewal inventory changed; reject and prepare a new request');
+            const inventoryHistory=Array.isArray(selected.inventoryHistory)?[...selected.inventoryHistory]:[];
+            if(inventoryHistory.length>=100)throw new ApiError(409,'Inventory history limit reached');
+            if(selected.agreementInventory&&!inventoryHistory.some(v=>v.version===(selected.agreementInventory as RecordData).version))inventoryHistory.push(selected.agreementInventory);
+            updates.tenants=(updates.tenants as RecordData[]).map(t=>t.id===selected.id?{...t,agreementInventory:proposal.snapshot,inventoryHistory}:t);
+          }
+          event={...event,terms:values,inventoryProposal:current.inventoryProposal||null};
         }
       } else {
         if(current?.status==='pending'&&current.kind==='renewal'&&current.requestedBy===user.uid){changed=false;return property;}
         if(current?.status==='pending')throw new ApiError(409,'Resolve the pending agreement request first');
         updates.agreementRequest={id:randomUUID(),kind:'renewal',status:'pending',requestedBy:user.uid,requestedAt:now,terms:{...snapshotTerms,...proposed}};
+        if('inventory' in req){
+          const selected=active.find(t=>t.id===req.inventoryTenantId);
+          if(!selected||!Number.isInteger(req.expectedInventoryVersion)||Number((selected.agreementInventory as RecordData|undefined)?.version||0)!==req.expectedInventoryVersion)throw new ApiError(409,'Select the current tenancy inventory version');
+          let snapshot;try{snapshot=inventoryProposal(req.inventory,user.uid,Number(req.expectedInventoryVersion),now);}catch(error){throw new ApiError(400,error instanceof Error?error.message:'Invalid inventory');}
+          (updates.agreementRequest as RecordData).inventoryProposal={tenantId:selected.id,expectedVersion:req.expectedInventoryVersion,snapshot};
+        }
         updates.agreementStatus='renewal_requested';
       }
     } else if(tenantRequest) {
@@ -108,6 +124,8 @@ async function agreement(request:Request,renew:boolean,tenantRequest:boolean) {
       event={...event,action:notice?'notice_served':'terminated',noticePeriod:s(req.noticePeriod),noticeStartDate:s(req.noticeStartDate),terminationDate:s(req.terminationDate)||now};
     }
     const tenantDocs=await tx.get(db.collection(COLLECTIONS.tenants).where('propertyId','==',id));
+    const inventoryProposalRequest=isRecord(updates.agreementRequest)&&isRecord(updates.agreementRequest.inventoryProposal)?updates.agreementRequest.inventoryProposal:null;
+    if(renew&&action!=='reject'&&inventoryProposalRequest){const linked=tenantDocs.docs.find(doc=>doc.id===inventoryProposalRequest.tenantId);if(!linked||linked.data().ownerUID!==property.ownerUID||Number(linked.data().agreementInventory?.version||0)!==inventoryProposalRequest.expectedVersion)throw new ApiError(409,'Tenancy inventory relationship changed');}
     if(Array.isArray(updates.tenants))for(const doc of tenantDocs.docs) {
       const embedded=(updates.tenants as RecordData[]).find(t=>t.id===doc.id);
       if(embedded)tx.update(doc.ref,{...embedded,propertyId:id,ownerUID:property.ownerUID});

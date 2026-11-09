@@ -1,4 +1,8 @@
 "use client";
+import {calendarToday} from "@/lib/calendar-date";
+
+import PropertyPurposeSummary from "@/features/properties/PropertyPurposeSummary";
+import {purposeLabel} from "@/lib/property-purpose";
 
 import styles from "./PropertyDetails.module.css";
 
@@ -133,6 +137,7 @@ interface BuyerInfo {
 }
 
 interface Property {
+  preLeased?: any;managementServices?:string[];managementDescription?:string;investment?:{monthlyRentalIncome:number;annualRentalIncome:number;grossYield:number;leaseEndDate:string;leaseReviewRequired:boolean;verificationStatus:string};
   userRole?:string;
   isSold?:boolean;
   id: string;
@@ -374,7 +379,7 @@ const PropertyDetails = () => {
   const formatPrice = (property: Property) => {
     if (property.listingType === 'rent') {
       return property.monthlyRent ? `₹${Number(property.monthlyRent).toLocaleString()}/month` : 'Price not set';
-    } else if (property.listingType === 'sell') {
+    } else if (['sell','pre_leased'].includes(property.listingType)) {
       return property.sellingPrice ? `₹${Number(property.sellingPrice).toLocaleString()}` : 'Price not set';
     }
     return 'Price not set';
@@ -510,7 +515,7 @@ const PropertyDetails = () => {
                 {property.propertyType}
               </Badge>
               <Badge variant="outline" className="text-white border-white/30 bg-white/10 backdrop-blur-sm px-3 py-1">
-                {property.listingType === 'rent' ? 'For Rent' : 'For Sale'}
+                {purposeLabel(property.listingType)}
               </Badge>
               <Badge variant="outline" className={`border-white/30 bg-white/10 backdrop-blur-sm px-3 py-1 ${property.rentalStatus === 'rented' ? 'text-amber-300 border-amber-300/50' : 'text-green-300 border-green-300/50'
                 }`}>
@@ -518,7 +523,7 @@ const PropertyDetails = () => {
               </Badge>
             </div>
 
-            <h1 className="text-3xl md:text-5xl font-bold text-white tracking-tight">
+            <PropertyPurposeSummary property={property}/><h1 className="text-3xl md:text-5xl font-bold text-white tracking-tight">
               {property.title}
             </h1>
 
@@ -1351,15 +1356,9 @@ const PropertyDetails = () => {
 
                 <div>
                   <label htmlFor="notice-start-date" className="text-xs font-medium text-muted-foreground">Notice Period Starts From</label>
-                  <DatePicker
+                  <DatePicker aria-label="Notice period start date"
                     value={noticeStartDate}
-                    min={(() => {
-                      const today = new Date();
-                      const year = today.getFullYear();
-                      const month = String(today.getMonth() + 1).padStart(2, '0');
-                      const day = String(today.getDate()).padStart(2, '0');
-                      return `${year}-${month}-${day}`;
-                    })()}
+                    min={calendarToday()}
                     onChange={(val) => setNoticeStartDate(val)}
                     className="mt-1"
                   />

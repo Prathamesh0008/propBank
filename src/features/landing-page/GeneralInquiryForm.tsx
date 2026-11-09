@@ -278,7 +278,7 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="visitDate" className="text-sm font-medium">Date</Label>
-                <DatePicker
+                <DatePicker id="visitDate"
                   value={formData.visitDate}
                   onChange={(value) => handleInputChange("visitDate", value)}
                   min={indiaCalendarDate()}

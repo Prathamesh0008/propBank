@@ -1,4 +1,5 @@
 "use client";
+import PropertyPurposeSummary from "./PropertyPurposeSummary";
 
 import {
     Dialog,
@@ -37,7 +38,7 @@ const PropertyDetailsDialog = ({ property }: PropertyDetailsDialogProps) => {
                 </DialogHeader>
 
                 <div className="grid gap-5 py-4">
-                    {/* Main Info Grid */}
+                    <PropertyPurposeSummary property={property}/>{/* Main Info Grid */}
                     <div className="grid grid-cols-2 gap-4 bg-slate-50/50 p-4 rounded-xl border border-slate-100/80">
                         {/* Configuration */}
                         {property.configuration && (

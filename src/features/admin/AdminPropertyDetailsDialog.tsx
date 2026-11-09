@@ -1,4 +1,7 @@
 "use client";
+
+import PropertyPurposeSummary from "@/features/properties/PropertyPurposeSummary";
+import {purposeLabel} from "@/lib/property-purpose";
 import styles from "./AdminPropertyDetailsDialog.module.css";
 
 import {Link} from '@/lib/navigation';
@@ -223,7 +226,8 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                             <SectionTitle title="Core Details" icon={Info} />
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                 <DataRow label="Property Name" value={propertyName} icon={Home} />
-                                <DataRow label="Property Category" value={property.propertyCategory||property.propertyType} />
+                                <PropertyPurposeSummary property={property}/>
+<DataRow label="Property Category" value={property.propertyCategory||property.propertyType} />
                                 <DataRow label="Property Type / Structure" value={property.structure} />
                                 <DataRow label="Residential Layout" value={property.configuration} />
                                 <DataRow label="Unit Status" value={property.unitCondition} icon={CheckCircle2} />

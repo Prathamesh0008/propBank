@@ -13,7 +13,7 @@ import { Card,CardHeader,CardTitle,CardContent } from '@/ui/card';
 
 interface Service {id:string;name:string;isActive:boolean}
 interface RequestRecord {id:string;propertyId:string;serviceName:string;message:string;image?:string;status:string;isArchived?:boolean;resolutionReport?:string;adminNotes?:string;adminImage?:string;createdAt:string;history?:Array<{status:string;at:string;comment?:string}>}
-const ids={maintenance:['plumbing','leakage','fixtures','painting','electrical','other'],legal:['rent-agreement-registration','sale-agreement-procedure','legal-consultation'],related:['society-procedure','pre-rental','painting','plumbing','electrical','other']};
+const ids={maintenance:['cleaning','general-repairs','appliance-maintenance','plumbing','leakage','fixtures','painting','electrical','other'],legal:['rent-agreement-registration','sale-agreement-procedure','legal-consultation'],related:['society-procedure','pre-rental','painting','plumbing','electrical','other']};
 export function ServiceRequestHistory({propertyId,admin=false}:{propertyId?:string;admin?:boolean}) {
   const {user}=useAuth();const [failure,setFailure]=useState(''),[busy,setBusy]=useState('');
   const query=useQuery({queryKey:['service-requests',user?.uid,propertyId,admin],enabled:!!user&&(admin||!!propertyId),queryFn:()=>workflowRequest<{data:RequestRecord[]}>(`service-requests?${admin?'admin=true':`propertyId=${encodeURIComponent(propertyId!)}`}`)});

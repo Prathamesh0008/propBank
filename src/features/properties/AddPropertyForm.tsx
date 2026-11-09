@@ -1,4 +1,7 @@
 "use client";
+import PropertyPurposeFields,{purposeFormSchema} from "./PropertyPurposeFields";
+import {uploadSupportingDocument,validateSupportingDocuments} from "@/lib/supporting-documents";
+import {normalizePurpose} from "@/lib/property-purpose";
 import { readPropertyResponse, PropertySubmissionError } from "./property-response";
 import {PROPERTY_CONFIGURATIONS,structureUsesPlotArea,type PropertyCategory} from '@/lib/property-category';
 
@@ -37,6 +40,7 @@ import {calculateAgreementEndDate} from '@/lib/rent-schedule';
 import {activeFurnishedItems,supportsFurnishedChecklist} from '@/lib/property-furnishing';
 
 const formSchema = z.object({
+  ...purposeFormSchema,
   ...clientPropertySchema,
   // Property Basic Details
   propertyTitle: z.string().min(1, "Property title is required"),
@@ -113,6 +117,8 @@ interface UserInfo {
 
 const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
   const navigate = useNavigate();
+  const [leaseFiles,setLeaseFiles]=useState<Partial<Record<"lease"|"proof",File>>>({});
+  const evidenceKeys=useRef({lease:crypto.randomUUID(),proof:crypto.randomUUID()});
   const [searchParams] = useSearchParams();
   const selectedPropertyType = category;
   const selectedRole = searchParams.get('as') || searchParams.get('role') || 'owner';
@@ -394,8 +400,9 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
         toast({title:'Missing residential layout',description:'Select the applicable BHK layout.',variant:'destructive'});
         return;
       }
-      if(addNextAgreementManually){const draftError=validateNextAgreementDraft(nextAgreementDraft,data.agreementEndDate||'');if(draftError){toast({title:'Check next agreement details',description:draftError,variant:'destructive'});return;}}
+      if(['rent','sell_rent'].includes(data.listingType)&&addNextAgreementManually){const draftError=validateNextAgreementDraft(nextAgreementDraft,data.agreementEndDate||'');if(draftError){toast({title:'Check next agreement details',description:draftError,variant:'destructive'});return;}}
       // Validate pricing based on listing type
+      let purposeData;try{purposeData=normalizePurpose(data);}catch(error){toast({title:'Check property purpose',description:error instanceof Error?error.message:'Invalid purpose details',variant:'destructive'});return;}
       const includesRent=['rent','sell_rent'].includes(data.listingType),includesSale=['sell','sell_rent'].includes(data.listingType);
       const occupiedRental=includesRent && data.rentalStatus === "rented";
       const rentValue=occupiedRental?data.monthlyRent:data.expectedRent;
@@ -547,7 +554,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
         ...data,
         buildingName: data.propertyTitle,
         nextAgreementDraft:addNextAgreementManually?nextAgreementDraft:undefined,
-        monthlyRent: data.rentalStatus==='rented'?data.monthlyRent:'',
+        monthlyRent: includesRent&&data.rentalStatus==='rented'?data.monthlyRent:'',
         expectedRent: includesRent&&data.rentalStatus!=='rented'?data.expectedRent:'',
         sellingPrice: includesSale?data.sellingPrice:'',
         configuration: selectedPropertyType==='residential'&&!structureUsesPlotArea(data.structure)?data.configuration:'',
@@ -581,12 +588,17 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(propertyData)
+        body: JSON.stringify(normalizePurpose({...propertyData,...(data.listingType==='pre_leased'?{preLeased:purposeData.preLeased,sellingPrice:data.sellingPrice}:{} )}))
       });
 
       const result = await readPropertyResponse(response);
 
       if (result.success) {
+        if(data.listingType==='pre_leased'){
+          try{for(const kind of ['lease','proof'] as const){const file=leaseFiles[kind];if(file)await uploadSupportingDocument(String(result.property?.id||""),file,kind==='lease'?'rental_agreement':'rent_receipt',evidenceKeys.current[kind]);}}
+          catch(error){toast({title:'Property saved; evidence upload incomplete',description:'Open private Documents to retry the failed upload. No tenant records were created.',variant:'destructive'});navigate(`/attach-documents/${String(result.property?.id||"")}?supporting=1`);return;}
+        }
+
         const listingTypeText = data.listingType === "rent" ? "rental property" : data.listingType==='sell_rent'?'sale and rental property':"property for sale";
 
         // Invalidate property queries so they refetch the newly added property
@@ -597,7 +609,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
 
         toast({
           title: `${data.propertyTitle} added successfully!`,
-          description: result.property?.moderationStatus==='pending_review'?'Your listing was submitted for admin review and is not public yet.':`Your ${listingTypeText} has been saved.`,
+          description: data.listingType==='manage'?'Private management property registered. Raise a service request separately when needed.':result.property?.moderationStatus==='pending_review'?'Your listing was submitted for admin review and is not public yet.':`Your ${listingTypeText} has been saved.`,
         });
         navigate("/manage-property");
       } else {
@@ -733,6 +745,8 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                           <SelectContent>
                             <SelectItem value="rent">For Rent</SelectItem>
                             <SelectItem value="sell">For Sale</SelectItem>
+                            <SelectItem value="pre_leased">Pre-Leased Sale</SelectItem>
+                            <SelectItem value="manage">To Manage</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
@@ -765,6 +779,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                     />
                   )}
 
+                  <PropertyPurposeFields form={form} onEvidence={(kind,file)=>{if(file){const error=validateSupportingDocuments([file]);if(error){setLeaseFiles(previous=>({...previous,[kind]:undefined}));toast({title:"Invalid evidence",description:error,variant:"destructive"});return;}}setLeaseFiles(previous=>({...previous,[kind]:file||undefined}));}}/>
                   {/* Sale Status - Only show for sale properties */}
                   {['sell','sell_rent'].includes(listingType||'') && (
                     <FormField
@@ -1213,7 +1228,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                     )}
                   />}
 
-                  {listingType !== "sell" && (
+                  {['rent','sell_rent'].includes(listingType||'') && (
                     <FormField
                       control={form.control}
                       name="maintenanceToBePaidBy"
@@ -1414,7 +1429,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                     )}
                   />
 
-                  <FormField
+                  {form.watch('listingType')!=='manage'&&<FormField
                     control={form.control}
                     name="specificComments"
                     render={({ field }) => (
@@ -1430,7 +1445,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                         <FormMessage />
                       </FormItem>
                     )}
-                  />
+                  />}
 
                 </div>
 

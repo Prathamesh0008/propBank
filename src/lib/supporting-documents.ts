@@ -27,7 +27,7 @@ export async function uploadSupportingDocument(propertyId:string,file:File,docum
   if(!upload.ok||!staged?.success||!staged.url)throw new Error(staged?.message||'The file could not be uploaded. Please retry.');
   const response=await apiFetch('/api/documents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     propertyId,documentName:file.name.slice(0,150),documentType,fileUrl:staged.url,
-    description:'Tenant-submitted supporting evidence for owner verification review.',idempotencyKey,
+    description:'Privately submitted property evidence; verification requires separate review.',idempotencyKey,
   })});
   const result=await response.json().catch(()=>null) as {success?:boolean;message?:string;document?:unknown}|null;
   if(!response.ok||!result?.success){

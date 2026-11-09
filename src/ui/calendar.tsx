@@ -1,66 +1,14 @@
 "use client";
-
-import * as React from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { DayPicker } from "react-day-picker";
-
-import { cn } from "@/lib/utils";
-import { buttonVariants } from "@/ui/button";
-
-export type CalendarProps = React.ComponentProps<typeof DayPicker>;
-
-function Calendar({
-  className,
-  classNames,
-  showOutsideDays = true,
-  ...props
-}: CalendarProps) {
-  return (
-    <DayPicker
-      showOutsideDays={showOutsideDays}
-      className={cn("p-3", className)}
-      classNames={{
-        months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
-        month: "space-y-4",
-        caption: "flex justify-center pt-1 relative items-center",
-        caption_label: "text-sm font-medium",
-        nav: "space-x-1 flex items-center",
-        nav_button: cn(
-          buttonVariants({ variant: "outline" }),
-          "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100"
-        ),
-        nav_button_previous: "absolute left-1",
-        nav_button_next: "absolute right-1",
-        table: "w-full border-collapse space-y-1",
-        head_row: "flex",
-        head_cell:
-          "text-muted-foreground rounded-md w-9 font-normal text-[0.8rem]",
-        row: "flex w-full mt-2",
-        cell: "h-9 w-9 text-center text-sm p-0 relative [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
-        day: cn(
-          buttonVariants({ variant: "ghost" }),
-          "h-9 w-9 p-0 font-normal aria-selected:opacity-100"
-        ),
-        day_range_end: "day-range-end",
-        day_selected:
-          "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
-        day_today: "bg-accent text-accent-foreground",
-        day_outside:
-          "day-outside text-muted-foreground opacity-50 aria-selected:bg-accent/50 aria-selected:text-muted-foreground aria-selected:opacity-30",
-        day_disabled: "text-muted-foreground opacity-50",
-        day_range_middle:
-          "aria-selected:bg-accent aria-selected:text-accent-foreground",
-        day_hidden: "invisible",
-        ...classNames,
-      }}
-      components={{
-        IconLeft: ({ ..._props }) => <ChevronLeft className="h-4 w-4" />,
-        IconRight: ({ ..._props }) => <ChevronRight className="h-4 w-4" />,
-      }}
-      {...props}
-    />
-  );
+import {DayPicker,useNavigation,type CaptionProps} from 'react-day-picker';
+import {enIN} from 'date-fns/locale';
+import {ChevronLeft,ChevronRight} from 'lucide-react';
+import styles from './calendar.module.css';
+export type CalendarProps=React.ComponentProps<typeof DayPicker>;
+function MonthCaption({displayMonth,id}:CaptionProps){
+ const {goToMonth,previousMonth,nextMonth}=useNavigation();
+ const change=(year:number,month:number)=>{if(Number.isInteger(year)&&year>=1&&year<=9999){const next=new Date(displayMonth);next.setDate(1);next.setFullYear(year,month,1);goToMonth(next);}};
+ return <div className={styles.caption}><span id={id} className={styles.srOnly} aria-live="polite">{displayMonth.toLocaleDateString('en-IN',{month:'long',year:'numeric'})}</span><button type="button" aria-label="Previous month" disabled={!previousMonth} onClick={()=>previousMonth&&goToMonth(previousMonth)}><ChevronLeft size={16}/></button><select aria-label="Calendar month" value={displayMonth.getMonth()} onChange={e=>change(displayMonth.getFullYear(),Number(e.target.value))}>{Array.from({length:12},(_,month)=><option key={month} value={month}>{new Date(2000,month,1).toLocaleString('en-IN',{month:'long'})}</option>)}</select><input aria-label="Calendar year" type="number" min={1} max={9999} value={displayMonth.getFullYear()} onChange={e=>change(Number(e.target.value),displayMonth.getMonth())}/><button type="button" aria-label="Next month" disabled={!nextMonth} onClick={()=>nextMonth&&goToMonth(nextMonth)}><ChevronRight size={16}/></button></div>;
 }
-Calendar.displayName = "Calendar";
-
-export { Calendar };
+export function Calendar({className,classNames,components,...props}:CalendarProps){
+ return <DayPicker locale={enIN} showOutsideDays className={[styles.calendar,className].filter(Boolean).join(' ')} classNames={{caption:styles.caption,table:styles.table,head_cell:styles.weekday,cell:styles.cell,day:styles.day,day_selected:styles.selected,day_today:styles.today,day_outside:styles.outside,day_disabled:styles.unavailable,day_hidden:styles.hidden,day_range_middle:styles.middle,...classNames}} components={{Caption:MonthCaption,...components}} {...props}/>;
+}

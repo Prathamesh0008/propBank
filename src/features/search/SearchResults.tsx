@@ -1,5 +1,8 @@
 "use client";
 
+import PropertyPurposeSummary from "@/features/properties/PropertyPurposeSummary";
+import {purposeLabel} from "@/lib/property-purpose";
+
 import { apiFetch } from '@/lib/api-client';
 import {useQueryClient} from '@tanstack/react-query';
 
@@ -286,7 +289,7 @@ const SearchResults = () => {
           {showFilters && <div id="search-advanced-filters" className={styles.filters}>
             <label>Project condition
               <select value={selectedProjectCondition} onChange={(e) => { const condition=e.target.value; setSelectedProjectCondition(condition); void performSearch({condition}); }}>
-                <option value="">All conditions</option><option value="New Project">New project</option><option value="Ready Project">Ready project</option><option value="Preleased">Preleased</option>
+                <option value="">All conditions</option><option value="New Project">New project</option><option value="Ready Project">Ready project</option><option value="Preleased">Pre-Leased investments</option>
               </select>
             </label>
             <fieldset className={styles.filterGroup}><legend>Property category</legend><div className={styles.filterOptions}>{['Residential', 'Commercial', 'Industrial'].map(category => <label key={category} className={styles.checkOption}><input type="checkbox" checked={selectedCategories.includes(category)} onChange={e => setSelectedCategories(current => e.target.checked ? [...current,category] : current.filter(x => x !== category))} /> {category}</label>)}</div></fieldset>
@@ -304,7 +307,7 @@ const SearchResults = () => {
           <div className={styles.resultsGrid}>{visibleProperties.map(property => <article key={property.id} className={styles.property}>
             <Link to={`/property/${property.id}`} className={styles.propertyImageLink} aria-label={`View ${property.title || 'property'} details`}>
               <img src={property.images?.[0] || getPlaceholderImage(property.propertyType)} alt={property.title ? `${property.title} property` : 'Property photograph'} loading="lazy" onError={e => { const img=e.currentTarget; const fallback=getPlaceholderImage(property.propertyType); if (!img.src.includes(fallback)) img.src=fallback; }} />
-              <span className={styles.imageTag}>{property.listingType === 'rent' ? 'FOR RENT' : 'FOR SALE'}</span>
+              <PropertyPurposeSummary property={property}/><span className={styles.imageTag}>{purposeLabel(property.listingType)}</span>
               <span className={styles.imageArrow}><ArrowUpRight size={20}/></span>
             </Link>
             <div className={styles.propertyBody}>

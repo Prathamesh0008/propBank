@@ -1,4 +1,5 @@
 import 'server-only';
+import {normalizePurpose,purposeFields,leaseExpired} from '@/lib/property-purpose';
 import {recordRead} from '../read-budget';
 import { normalizeEmailAddress } from '@/lib/email-address';
 import {normalizeNextAgreementDraft,sameNextAgreementDraft,validateNextAgreementDraft} from '@/lib/next-agreement-draft';
@@ -29,6 +30,7 @@ const propertyError=(message:string,status:number)=>jsonResponse({success:false,
 
 const properties = () => getDatabase().collection(COLLECTIONS.properties);
 function requirePropertyEditor(user:Awaited<ReturnType<typeof requireUser>>,property:RecordData) {
+  if(property.listingType==='manage'&&user.role!=='admin'&&property.ownerUID!==user.uid)throw new AccessError(403,'Owner access required');
   if(user.role==='agent'&&property.submittedByUID===user.uid)return;
   requireOwnerOrAdmin(user,{ownerUID:s(property.ownerUID)});
 }
@@ -60,7 +62,7 @@ function available(property:RecordData,raw:RecordData) {
 }
 async function tenantProperties(uid:string,email='') {
   const rows=await queryProperties(properties());
-  return rows.filter(({property})=>Array.isArray(property.tenants) && property.tenants.some(t=>isRecord(t)&&t.isActive===true&&(t.userUID ? !!uid&&t.userUID===uid : t.linkConfirmationRequired!==true&&!!email&&s(t.email).toLowerCase()===email.toLowerCase()))).map(row=>row.property);
+  return rows.filter(({property})=>property.listingType!=='manage'&&Array.isArray(property.tenants) && property.tenants.some(t=>isRecord(t)&&t.isActive===true&&(t.userUID ? !!uid&&t.userUID===uid : t.linkConfirmationRequired!==true&&!!email&&s(t.email).toLowerCase()===email.toLowerCase()))).map(row=>row.property);
 }
 async function siteSettings():Promise<RecordData|null> {
   const defaults={quote:'Manage your properties and plan visits with ease',quoteAuthor:'',heroTitle:'Your Smart Hub for Property Management',heroSubtitle:'Manage, list your properties and find your dream house— all in one platform',announcementText:'',isAnnouncementActive:false,bannerImages:[]};
@@ -88,7 +90,7 @@ export async function listProperties(request:Request) {
     const submitted=user.role==='agent'&&user.uid===ownerUID?await queryProperties(properties().where('submittedByUID','==',ownerUID)):[];
     const rented=await tenantProperties(ownerUID,user.uid===ownerUID&&user.token.email_verified===true?user.token.email||'':'');
     const merged=new Map(own.map(({property})=>[s(property.id),propertyResponse(property,'normal','owner')]));
-    for(const {property} of submitted)merged.set(s(property.id),propertyResponse(property,'normal','agent'));
+    for(const {property} of submitted.filter(row=>row.property.listingType!=='manage'))merged.set(s(property.id),propertyResponse(property,'normal','agent'));
     // Match the dedicated tenant endpoint so the combined response can replace
     // its duplicate request without losing fields such as the displayed price.
     for (const property of rented) if(!merged.has(s(property.id))) merged.set(s(property.id),propertyResponse(property,'normal','tenant'));
@@ -99,24 +101,27 @@ export async function listProperties(request:Request) {
     const rows=await queryProperties(properties());return listResponse(rows.map(row=>propertyResponse(row.property,'normal','admin')));
   }
   const listingType=params.get('listingType')||'';
+  if(listingType==='manage')return listResponse([],{listingType});
   let query:Query=properties().where('isActive','==',true).where('moderationStatus','==','approved');
-  if (listingType&&!['rent','sell'].includes(listingType)) query=query.where('listingType','==',listingType);
+  if (listingType&&!['rent','sell','pre_leased'].includes(listingType)) query=query.where('listingType','==',listingType);
   const rows=await queryProperties(query);
-  const filtered=rows.filter(row=>available(row.property,row.raw)&&!(listingType==='rent'&&row.property.rentalStatus==='rented')&&(!listingType||row.property.listingType===listingType||row.property.listingType==='sell_rent'&&['rent','sell'].includes(listingType))).map(row=>publicPropertyResponse(listingType&&row.property.listingType==='sell_rent'?{...row.property,listingType}:row.property));
+  const filtered=rows.filter(row=>available(row.property,row.raw)&&!(listingType==='rent'&&row.property.rentalStatus==='rented')&&(!listingType||row.property.listingType===listingType||listingType==='sell'&&row.property.listingType==='pre_leased'||row.property.listingType==='sell_rent'&&['rent','sell'].includes(listingType))).map(row=>publicPropertyResponse(listingType&&row.property.listingType==='sell_rent'?{...row.property,listingType}:row.property));
   return listResponse(filtered,{...(await siteSettings() || {}),...(listingType?{listingType}:{})});
 }
 export async function searchProperties(request:Request) {
   const params=new URL(request.url).searchParams;
   const term=params.get('q')||'';
   const listingType=params.get('listingType')||'';
+  if(listingType==='manage')return listResponse([],{listingType});
   const projectCondition=params.get('projectCondition')||'';
   let query:Query=properties().where('isActive','==',true).where('moderationStatus','==','approved');
-  if (listingType&&!['rent','sell'].includes(listingType)) query=query.where('listingType','==',listingType);
-  if (projectCondition) query=query.where('projectCondition','==',projectCondition);
+  if (listingType&&!['rent','sell','pre_leased'].includes(listingType)) query=query.where('listingType','==',listingType);
+  if (projectCondition&&projectCondition!=='Preleased') query=query.where('projectCondition','==',projectCondition);
   const rows=await queryProperties(query,false);
   const search=term.trim().toLowerCase();
   const filtered=rows.filter(({property,raw})=>{
-    if (!available(property,raw)||listingType==='rent'&&property.rentalStatus==='rented'||listingType&&property.listingType!==listingType&&!(property.listingType==='sell_rent'&&['rent','sell'].includes(listingType))) return false;
+    if(projectCondition==='Preleased'&&property.listingType!=='pre_leased'&&property.projectCondition!=='Preleased')return false;
+    if (!available(property,raw)||listingType==='rent'&&property.rentalStatus==='rented'||listingType&&property.listingType!==listingType&&!(listingType==='sell'&&property.listingType==='pre_leased')&&!(property.listingType==='sell_rent'&&['rent','sell'].includes(listingType))) return false;
     if (!term) return true;
     const fields=['location','address','city','state','title','propertyType','configuration','unitNumber','floor'];
     return fields.some(key=>!!s(property[key])&&s(property[key]).toLowerCase().includes(search)) || ['bhk','rk'].some(tag=>search.includes(tag)&&s(property.configuration).toLowerCase().includes(tag));
@@ -145,16 +150,17 @@ export async function readProperty(request:Request,id:string) {
     const tenants=Array.isArray(property.tenants)?property.tenants:[];
     const relationships={ownerUID:s(property.ownerUID),tenants:(tenants.length?tenants:[{email:s(property.tenantEmail),isActive:property.rentalStatus==='rented'}]) as Parameters<typeof isPropertyTenant>[1]['tenants']};
     const role=user.role==='admin'?'admin':user.uid===property.ownerUID?'owner':user.role==='agent'&&user.uid===property.submittedByUID?'agent':isPropertyTenant(user,relationships)?'tenant':'';
+    if(property.listingType==='manage'&&!['owner','admin'].includes(role))throw new AccessError(403,'Owner access required');
     if(role)return jsonResponse({success:true,property:propertyResponse(property,'normal',role)});
   }
   if(!available(property,property))return propertyError('Property not found',404);
   return jsonResponse({success:true,property:publicPropertyResponse(property)});
 }
-const additiveFields=['propertyCategory','buildingName','plotArea','areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit','expectedRent','structure'];
+const additiveFields=[...purposeFields,'propertyCategory','buildingName','plotArea','areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit','expectedRent','structure'];
 function validateProperty(input:RecordData) {
   for(const key of Object.keys(input))if(key.includes('.')||key.includes('/')||key.startsWith('__'))throw new Error('Invalid property field');
-  for(const key of additiveFields)if(key in input&&typeof input[key]!=='string')throw new Error('Invalid property field');
-  for(const [key,values] of Object.entries({listingType:['rent','sell','sell_rent','manage'],rentalStatus:['available','rented'],status:['active','inactive'],maintenanceToBePaidBy:['owner','tenant'],propertyCategory:['residential','commercial','industrial']}))if(input[key]) {const normalized=s(input[key]).toLowerCase();if(!values.includes(normalized))throw new Error(`Invalid ${key}`);input[key]=normalized;}
+  for(const key of additiveFields)if(!purposeFields.includes(key as typeof purposeFields[number])&&key in input&&typeof input[key]!=='string')throw new Error('Invalid property field');
+  for(const [key,values] of Object.entries({listingType:['rent','sell','sell_rent','pre_leased','manage'],rentalStatus:['available','rented'],status:['active','inactive'],maintenanceToBePaidBy:['owner','tenant'],propertyCategory:['residential','commercial','industrial']}))if(input[key]) {const normalized=s(input[key]).toLowerCase();if(!values.includes(normalized))throw new Error(`Invalid ${key}`);input[key]=normalized;}
   for(const key of ['isActive','isSold','isRented'])if(key in input&&typeof input[key]!=='boolean')throw new Error(`Invalid ${key}`);
   if(input.paymentDueDate&&(!/^\d{1,2}$/.test(s(input.paymentDueDate))||Number(input.paymentDueDate)<1||Number(input.paymentDueDate)>31))throw new Error('Invalid payment due day');
   if(input.nextAgreementDraft!==undefined&&input.nextAgreementDraft!==null){const error=validateNextAgreementDraft(input.nextAgreementDraft,s(input.agreementEndDate));if(error)throw new Error(error);}
@@ -190,7 +196,10 @@ async function createPropertyRecord(request:Request) {
   try {body=await readObject(request,20<<20);}catch {return propertyError('Invalid JSON request body',400);}
   try {
     if (body!==null&&!isRecord(body)) throw new Error('invalid request object');
-    const raw=(body||{}) as RecordData;
+    const raw=normalizePurpose((body||{}) as RecordData);
+    if(Array.isArray(raw.tenants)&&raw.tenants.some(t=>isRecord(t)&&Object.keys(t).some(key=>['agreementinventory','inventoryhistory'].includes(key.toLowerCase()))))throw new Error('Inventory snapshots are server controlled');
+    if(raw.listingType==='pre_leased'&&raw.createdAs==='tenant')throw new Error('Pre-leased sales must be submitted by an owner or authorized agent');
+    if(raw.listingType==='manage' && (user.role==='agent'||raw.createdAs==='tenant'))throw new Error('Only owners and administrators may register management properties');
     if(Object.keys(raw).some(key=>key.startsWith('moderation')))throw new Error('Moderation fields are server controlled');
     if(raw.nextAgreementDraft!==undefined&&raw.nextAgreementDraft!==null)raw.nextAgreementDraft=normalizeNextAgreementDraft(raw.nextAgreementDraft,s(raw.agreementEndDate));
     raw.furnishedChecklist=activeFurnishedItems(raw.furnishedChecklist,raw.unitCondition,raw.structure);
@@ -248,6 +257,7 @@ async function createPropertyRecord(request:Request) {
   }
   if (!req.propertyTitle||!req.propertyType||!req.location||(!tenantCreated&&!req.ownerUID)) return propertyError('Missing required fields: propertyTitle, propertyType, location, ownerUID',400);
   if(!tenantCreated&&user.role!=='agent')requireSelfOrAdmin(user,s(req.ownerUID));
+  if(req.listingType==='pre_leased'&&user.role!=='admin'&&user.uid!==req.ownerUID)return propertyError('Only the owner or an administrator may register existing tenant details',403);
   const owner=await getUser(tenantCreated?user.uid:s(req.ownerUID));
   if (!owner||owner.isActive===false) return propertyError('Owner must have an active profile',400);
   if(!tenantCreated&&user.role==='admin'&&user.uid!==s(req.ownerUID)){
@@ -268,7 +278,7 @@ async function createPropertyRecord(request:Request) {
   for(const [to,from] of projections.request) property[to]=req[from];
   property.rentSchedule=req.rentSchedule;
   property.internalImages=await uploadPropertyImages((req.internalImages as string[]|null)||[],id,user,true);
-  Object.assign(property,{id,title:req.propertyTitle,address:req.location,tenantName:`${s(req.tenantFirstName)} ${s(req.tenantLastName)}`,images:await uploadPropertyImages((req.images as string[]|null)||[],id,user,tenantCreated),ownerUID:req.ownerUID,ownerName:owner.name,ownerEmail:owner.email,ownerPhone:owner.phoneNumber,ownerRole:owner.role,status:'active',isActive:true});
+  Object.assign(property,{id,title:req.propertyTitle,address:req.location,tenantName:`${s(req.tenantFirstName)} ${s(req.tenantLastName)}`,images:await uploadPropertyImages((req.images as string[]|null)||[],id,user,tenantCreated||req.listingType==='manage'),ownerUID:req.ownerUID,ownerName:owner.name,ownerEmail:owner.email,ownerPhone:owner.phoneNumber,ownerRole:owner.role,status:'active',isActive:true});
   if(tenantCreated) {
     Object.assign(property,{createdAs:'tenant',submittedByUID:user.uid,ownershipVerification:'pending',reportedOwner:req.reportedOwner,ownerUID:'',ownerName:'',ownerEmail:'',ownerPhone:'',ownerRole:'',listingType:'rent',rentalStatus:'rented',isSold:false});
     req.rentalStatus='rented';req.isSold=false;req.tenantEmail=user.token.email||'';
@@ -310,6 +320,7 @@ export async function updateProperty(request:Request,id:string) {
   const existing=await getProperty(id);
   if(!existing) return propertyError('Property not found',404);
   requirePropertyEditor(user,existing);
+  if(user.role!=='admin'&&user.uid!==existing.ownerUID&&isRecord(req.preLeased)&&'existingTenant' in req.preLeased)return propertyError('Only the owner or an administrator may edit existing tenant details',403);
   if(user.role==='agent'&&existing.submittedByUID===user.uid) {
     const agentAllowed=new Set([...listingContentFields,'ownerUID','moderationAction','reason','expectedRevision']);
     if(Object.keys(req).some(key=>!agentAllowed.has(key)))return propertyError('Agents may edit listing content only',403);
@@ -328,13 +339,13 @@ export async function updateProperty(request:Request,id:string) {
     if(furnishingContextChanged)req.furnishedChecklist=[];
     else delete req.furnishedChecklist;
   }else if('furnishedChecklist' in req)req.furnishedChecklist=activeFurnishedItems(req.furnishedChecklist,nextUnitCondition,nextStructure);
-  try {validateProperty(req);model('Property',{...existing,...req},true);}catch{return propertyError('Invalid property fields',400);}
+  try {req=normalizePurpose(req,existing);validateProperty(req);model('Property',{...existing,...req},true);}catch(error){return propertyError(error instanceof Error?error.message:'Invalid property fields',400);}
   const allowed=new Set([...schemas.Property.map(field=>field.name),...additiveFields,'nextAgreementDraft','isRented']);
   for(const key of Object.keys(req))if(!allowed.has(key))return propertyError(`Unsupported property field: ${key}`,400);
   let images=existing.images;
   if(Array.isArray(req.images)) {
     const strings=req.images.filter((v):v is string=>typeof v==='string');
-    images=strings.length?await uploadPropertyImages(strings,id,user,existing.createdAs==='tenant',(existing.images as string[])||[]):[];
+    images=strings.length?await uploadPropertyImages(strings,id,user,existing.createdAs==='tenant'||(req.listingType??existing.listingType)==='manage',(existing.images as string[])||[]):[];
   }
   if(Array.isArray(req.internalImages))req.internalImages=await uploadPropertyImages(req.internalImages as string[],id,user,true,(existing.internalImages as string[])||[]);
   const updates:RecordData={};
@@ -400,6 +411,9 @@ async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnTyp
       if(Array.isArray(updates.tenants)) {
         const current=Array.isArray(before.data()?.tenants)?before.data()!.tenants.filter(isRecord):[];
         for(const tenant of updates.tenants as RecordData[]) {
+          const inventoryBefore=current.find((row:RecordData)=>row.id===tenant.id);
+          for(const key of ['agreementInventory','inventoryHistory']){if(key in tenant&&JSON.stringify(tenant[key])!==JSON.stringify(inventoryBefore?.[key]))throw new ApiError(403,'Use the tenancy inventory workflow');if(inventoryBefore&&key in inventoryBefore)tenant[key]=inventoryBefore[key];}
+          if(Object.keys(tenant).some(key=>['agreementinventory','inventoryhistory'].includes(key.toLowerCase())&&!['agreementInventory','inventoryHistory'].includes(key)))throw new ApiError(403,'Inventory aliases cannot be changed');
           const prior=current.find((row:RecordData)=>row.id===tenant.id);
           if(prior?.userUID&&prior.userUID!==tenant.userUID)throw new ApiError(409,'Tenant identity changed; refresh before editing');
           if(prior?.linkConfirmationRequired===true&&tenant.linkConfirmationRequired!==true)throw new ApiError(409,'Pending tenancy must be confirmed through its invitation');
@@ -437,9 +451,9 @@ async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnTyp
 const moderationFields=['moderationStatus','moderationRevision','moderationSubmittedAt','moderationReviewedAt','moderationReviewerUID','moderationReason','moderationHistory'];
 // Operational tenancy and archive changes retain approval. Changes to published
 // listing content require another review, including edits to legacy listings.
-const listingContentFields=['title','description','address','location','city','state','zipCode','propertyType','propertyCategory','listingType','configuration','unitNumber','floor','carpetArea','constructedArea','plotArea','areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit','squareFeet','buildingName','structure','bedrooms','bathrooms','monthlyRent','sellingPrice','price','images','amenities','projectCondition','isPreLeased','preLeasedType','rentalIncome','purpose','specificRequirement'];
+const listingContentFields=[...purposeFields,'title','description','address','location','city','state','zipCode','propertyType','propertyCategory','listingType','configuration','unitNumber','floor','carpetArea','constructedArea','plotArea','areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit','squareFeet','buildingName','structure','bedrooms','bathrooms','monthlyRent','sellingPrice','price','images','amenities','projectCondition','isPreLeased','preLeasedType','rentalIncome','purpose','specificRequirement'];
 function applyListingEdit(before:RecordData,updates:RecordData,uid:string) {
-  if(before.createdAs==='tenant'||!['rent','sell','sell_rent'].includes(s(updates.listingType??before.listingType)))return;
+  if(before.createdAs==='tenant'||!['rent','sell','sell_rent','pre_leased'].includes(s(updates.listingType??before.listingType)))return;
   const changed=listingContentFields.some(key=>key in updates&&JSON.stringify(updates[key])!==JSON.stringify(before[key]));
   if(!changed)return;
   const revision=Number(before.moderationRevision||0)+1,at=new Date();
@@ -465,6 +479,7 @@ async function moderateListing(req:RecordData,id:string,user:Awaited<ReturnType<
     if(action==='resubmit'?!['rejected','changes_requested'].includes(s(before.moderationStatus)):before.moderationStatus!==undefined&&before.moderationStatus!=='pending_review')throw new ApiError(409,'Invalid listing moderation transition');
     const history=Array.isArray(before.moderationHistory)?before.moderationHistory:[];
     if(history.length>=500)throw new ApiError(409,'Listing decision history limit reached');
+    if(action==='approve'&&leaseExpired(before))throw new ApiError(400,'Expired lease requires updated evidence and review');
     const at=new Date(),revision=Number(before.moderationRevision||0)+1;
     const status=action==='approve'?'approved':action==='reject'?'rejected':action==='request_changes'?'changes_requested':'pending_review';
     events=propertyNotificationEvents({...before,id,moderationRevision:revision,moderationReason:reason},recipient||{},status);

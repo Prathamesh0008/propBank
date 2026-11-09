@@ -1,4 +1,7 @@
 "use client";
+import AgreementInventoryPanel from './AgreementInventoryPanel';
+import {InventoryEditor,InventorySnapshot} from './InventoryEditor';
+import {propertyInventory,inventoryError,type InventoryItem} from '@/lib/agreement-inventory';
 import styles from "./AgreementWorkspace.module.css";
 import { useEffect,useState } from 'react';
 import { useQuery,useQueryClient } from '@tanstack/react-query';
@@ -13,6 +16,8 @@ import AmountInWords from '@/components/AmountInWords';
 
 export default function AgreementWorkflow({renew}:{renew:boolean}) {
   const {propertyId}=useParams();const {user,loading:authLoading}=useAuth();const cache=useQueryClient();
+  const [renewInventoryVersion,setRenewInventoryVersion]=useState(0);
+  const [renewInventory,setRenewInventory]=useState(false),[inventoryTenant,setInventoryTenant]=useState(''),[inventory,setInventory]=useState<InventoryItem[]>([]);
   const [terms,setTerms]=useState<Record<string,string>>({});const [notice,setNotice]=useState('1 Month');
   const [start,setStart]=useState(new Date().toISOString().slice(0,10));const [end,setEnd]=useState('');
   const [busy,setBusy]=useState(false),[feedback,setFeedback]=useState(''),[failure,setFailure]=useState('');
@@ -25,13 +30,14 @@ export default function AgreementWorkflow({renew}:{renew:boolean}) {
   useEffect(()=>{if(property){setTerms({...renewalPrefill(property),...(pending?.proposedTerms||pending?.terms||{})});setNotice(String(pending?.noticePeriod||property.noticePeriod||'1 Month'));if(pending?.noticeStartDate||property.noticeStartDate)setStart(String(pending?.noticeStartDate||property.noticeStartDate).slice(0,10));setEnd(String(pending?.terminationDate||property.anticipatedTerminationDate||'').slice(0,10));}},[property,pending]);
   async function submit(action:string) {
     if(!property||busy)return;
+    if(renewInventory&&action==='request'&&inventoryError(inventory)){setFailure(inventoryError(inventory));return;}
     if(!renew&&action==='terminate'&&!window.confirm('Finalize termination? Current tenancy ends; agreement history is retained.'))return;
     setBusy(true);setFailure('');setFeedback('');
     try {
       const endpoint=`agreements/${renew?(owner?'renew':'request-renewal'):(owner?'terminate':'request-termination')}`;
-      const body={propertyId:property.id,action,...(pending?{requestId:pending.id}:{}),...(renew&&action==='request'?{terms:Object.fromEntries(Object.entries(terms).filter(([,value])=>value!==''))}:!renew&&action!=='terminate'?{noticePeriod:notice,...(notice?{noticeStartDate:start,terminationDate:end}:{})}:{})};
+      const body={...(renew&&owner&&renewInventory&&action==='request'?{inventory,inventoryTenantId:inventoryTenant,expectedInventoryVersion:renewInventoryVersion}:{}),propertyId:property.id,action,...(pending?{requestId:pending.id}:{}),...(renew&&action==='request'?{terms:Object.fromEntries(Object.entries(terms).filter(([,value])=>value!==''))}:!renew&&action!=='terminate'?{noticePeriod:notice,...(notice?{noticeStartDate:start,terminationDate:end}:{})}:{})};
       await workflowRequest(endpoint,body);
-      await Promise.all([query.refetch(),cache.invalidateQueries({queryKey:['userProperties']}),cache.invalidateQueries({queryKey:['property',property.id]})]);
+      await Promise.all([query.refetch(),cache.invalidateQueries({queryKey:['agreementInventory']}),cache.invalidateQueries({queryKey:['userProperties']}),cache.invalidateQueries({queryKey:['property',property.id]})]);
       setFeedback(action==='reject'?'Request rejected.':renew&&action==='approve'?'Renewal approved. Agreed terms updated.':!renew&&action==='terminate'?'Agreement terminated; history retained.':owner&&!renew?'Notice recorded. Final termination requires an owner decision.':'Request submitted; pending owner approval.');
     }catch(error){setFailure(error instanceof Error?error.message:'Could not save agreement');}finally{setBusy(false);}
   }
@@ -47,6 +53,8 @@ export default function AgreementWorkflow({renew}:{renew:boolean}) {
         {pending&&<p className={styles.notice}>{reviewingPendingRenewal?(tenantProposedRenewal?'Tenant-proposed renewal terms are shown below for review. ':'Pending renewal terms are shown below for review. ')+'Approving accepts these exact terms.':'Pending '+pending.kind+' request. Existing terms remain in effect until the owner decides.'}</p>}
         {member&&property.agreementStatus!=='terminated'&&<form onSubmit={e=>{e.preventDefault();void submit('request');}} className="space-y-4">
           {renew?<div className="grid gap-4 sm:grid-cols-2">{renewalFields.map(([key,label])=><div key={key}><Label htmlFor={key}>{label}</Label><Input id={key} type={key.includes('Date')?'date':'text'} value={terms[key]||''} readOnly={reviewingPendingRenewal} aria-readonly={reviewingPendingRenewal} onChange={e=>setTerms({...terms,[key]:e.target.value})}/>{['monthlyRent','securityDeposit','escalationAmount'].includes(key)&&<AmountInWords amount={terms[key]}/>}</div>)}<div><Label htmlFor="maintenance-payer">Maintenance paid by</Label><select id="maintenance-payer" className="h-10 w-full rounded border px-3" value={terms.maintenanceToBePaidBy||''} disabled={reviewingPendingRenewal} onChange={e=>setTerms({...terms,maintenanceToBePaidBy:e.target.value})}><option value="">Select</option><option value="owner">Owner</option><option value="tenant">Tenant</option></select></div></div>:<div className="grid gap-4 sm:grid-cols-3"><div><Label htmlFor="notice-period">Notice period</Label><Input id="notice-period" value={notice} onChange={e=>setNotice(e.target.value)}/></div><div><Label htmlFor="notice-start">Notice start</Label><Input id="notice-start" type="date" value={start} onChange={e=>setStart(e.target.value)} required/></div><div><Label htmlFor="termination-date">Termination date</Label><Input id="termination-date" type="date" min={start} value={end} onChange={e=>setEnd(e.target.value)} required/></div></div>}
+          {renew&&owner&&!pending&&<section className="space-y-3"><label><input type="checkbox" checked={renewInventory} onChange={e=>{setRenewInventory(e.target.checked);const t=property.tenants?.find(t=>t.isActive&&t.id);setInventoryTenant(t?.id||'');setRenewInventoryVersion(t?.agreementInventory?.version||0);setInventory((t?.agreementInventory?.items??propertyInventory(property.furnishedChecklist)).map(item=>({...item})));}}/> Prepare a new inventory snapshot for this renewal</label>{renewInventory&&<><select aria-label="Renewal inventory tenancy" value={inventoryTenant} onChange={e=>{setInventoryTenant(e.target.value);const t=property.tenants?.find(t=>t.id===e.target.value);setRenewInventoryVersion(t?.agreementInventory?.version||0);setInventory((t?.agreementInventory?.items??propertyInventory(property.furnishedChecklist)).map(item=>({...item})));}}>{property.tenants?.filter(t=>t.isActive&&t.id).map(t=><option key={t.id} value={t.id}>{t.firstName||'Tenant'}</option>)}</select><InventoryEditor items={inventory} onChange={setInventory}/><p>Previous inventory remains unchanged. The new version requires tenant confirmation after renewal approval.</p></>}</section>}
+          {renew&&pending?.inventoryProposal&&<InventorySnapshot snapshot={pending.inventoryProposal.snapshot}/>}
           <div className="flex flex-wrap gap-3">
             {!pending&&<Button disabled={busy} type="submit">{renew?'Submit renewal request':owner?'Serve notice':'Request termination'}</Button>}
             {owner&&pending&&pending.kind===(renew?'renewal':'termination')&&<>{renew?<Button type="button" disabled={busy} onClick={()=>void submit('approve')}>Approve renewal</Button>:<Button type="button" disabled={busy||!start||!end} onClick={()=>void submit('request')}>Approve notice</Button>}<Button type="button" variant="outline" disabled={busy} onClick={()=>void submit('reject')}>Reject request</Button></>}
@@ -55,6 +63,7 @@ export default function AgreementWorkflow({renew}:{renew:boolean}) {
         </form>}
         {!member&&<p role="alert">Only the property owner or current tenant can use this workflow.</p>}
         {feedback&&<p role="status">{feedback}</p>}
+        {property.tenants?.filter(t=>t.id&&(owner||t.userUID===user?.uid)).map(t=><AgreementInventoryPanel key={t.id} tenantId={t.id!} owner={owner} label={t.firstName||'Tenant'} initialItems={propertyInventory(property.furnishedChecklist)}/>)}
         <Link to={`/attach-documents/${property.id}`}>Agreement documents and receipts</Link>
       </>}
     </CardContent></Card>

@@ -1,4 +1,5 @@
 import 'server-only';
+import {inventoryProposal,inventoryLocked,propertyInventory} from '@/lib/agreement-inventory';
 import { normalizeEmailAddress } from '@/lib/email-address';
 import {normalizeNextAgreementDraft,sameNextAgreementDraft,validateNextAgreementDraft} from '@/lib/next-agreement-draft';
 import {indianMobile} from '@/lib/indian-phone';
@@ -12,10 +13,11 @@ import { bestEffort, escapeHtml } from './property-effects';
 import { getUser, saveUser, resolveTenantIdentity } from './users';
 import { prepareLink, stageLinks, validContact } from './relationship-links';
 import { persistUserEvent, dispatchEmailOutbox, type TransactionalEmailEvent } from './transactional-email';
+const inventoryGuard=(value:RecordData)=>{if(Object.keys(value).some(key=>['agreementinventory','inventoryhistory'].includes(key.toLowerCase())))throw new ApiError(403,'Inventory snapshots are server controlled');};
 const collection=()=>getDatabase().collection(COLLECTIONS.tenants);
 export async function createTenants(request:Request) {
   const user=await identity(request);let req:RecordData;
-  try{const raw=await readObject(request);req=model('CreateTenantRequest',raw,true);if(Array.isArray(raw.tenants)&&Array.isArray(req.tenants))req.tenants=(req.tenants as RecordData[]).map((tenant,index)=>({...tenant,...(isRecord(raw.tenants![index])&&raw.tenants[index].nextAgreementDraft!==undefined?{nextAgreementDraft:raw.tenants[index].nextAgreementDraft}:{})}));}catch{return plainError('Invalid JSON',400);}
+  try{const raw=await readObject(request);req=model('CreateTenantRequest',raw,true);req.expectedPropertyUpdatedAt=raw.expectedPropertyUpdatedAt;if(Array.isArray(raw.tenants)&&Array.isArray(req.tenants))req.tenants=(req.tenants as RecordData[]).map((tenant,index)=>({...tenant,...(isRecord(raw.tenants![index])?(inventoryGuard(raw.tenants[index]),'inventory' in raw.tenants[index]?{inventory:raw.tenants[index].inventory}:{}):{}),...(isRecord(raw.tenants![index])&&raw.tenants[index].nextAgreementDraft!==undefined?{nextAgreementDraft:raw.tenants[index].nextAgreementDraft}:{})}));}catch{return plainError('Invalid JSON',400);}
   if(!req.propertyId)return plainError('Property ID is required',400);
   if(!req.ownerUID)return plainError('Owner UID is required',400);
   const tenants=Array.isArray(req.tenants)?req.tenants as RecordData[]:[];
@@ -25,7 +27,7 @@ export async function createTenants(request:Request) {
   if(!snapshot.exists)return plainError('Property not found',404);
   const raw=snapshot.data()||{};const property=model('Property',raw);requireOwnerOrAdmin(user,{ownerUID:s(property.ownerUID)});
   if(req.ownerUID!==property.ownerUID)throw new AccessError(403,'Property owner access required');
-  const added:RecordData[]=[];
+  const added:RecordData[]=[],inventoryInputs=new Map<string,unknown>();
   for(const value of tenants) {
     if(!value.firstName||!value.lastName||!value.email||!value.phone)return plainError(`First name, last name, email, and phone are required for tenant ${s(value.firstName)} ${s(value.lastName)}`,400);
     const email=normalizeEmailAddress(value.email);if(!email)return plainError('Invalid tenant email',400);value.email=email;
@@ -33,6 +35,7 @@ export async function createTenants(request:Request) {
     const doc=collection().doc();const now=new Date();const tenant:RecordData={...model('Tenant',{...value,userUID:'',linkConfirmationRequired:true,phoneE164:validContact(value.phone),id:doc.id,propertyId:req.propertyId,ownerUID:req.ownerUID,isActive:true,createdAt:now,updatedAt:now}),...(value.nextAgreementDraft?{nextAgreementDraft:value.nextAgreementDraft}:{})};
     const embedded={...tenant};delete embedded.propertyId;delete embedded.ownerUID;
     if(!tenant.isMarried||!tenant.spouse)delete embedded.spouse;
+    if('inventory' in value)inventoryInputs.set(s(tenant.id),value.inventory);
     added.push(embedded);
   }
   const candidates=await Promise.all(added.map(t=>prepareLink('tenant',s(req.propertyId),s(t.phone),user.uid,s(req.ownerUID),s(t.id),t.email)));
@@ -43,6 +46,8 @@ export async function createTenants(request:Request) {
     const fresh=await tx.get(ref);if(!fresh.exists)throw new AccessError(403,'Property access required');
     requireOwnerOrAdmin(user,{ownerUID:s(fresh.data()?.ownerUID)});
     if(fresh.data()?.ownerUID!==req.ownerUID)throw new AccessError(403,'Property owner changed');
+    if(req.expectedPropertyUpdatedAt){const at=fresh.data()?.updatedAt,millis=at?.toDate?at.toDate().getTime():new Date(at||0).getTime();if(millis!==new Date(s(req.expectedPropertyUpdatedAt)).getTime())throw new ApiError(409,'Property changed; reload before saving');}
+    for(const tenant of added){try{tenant.agreementInventory=inventoryProposal(inventoryInputs.has(s(tenant.id))?inventoryInputs.get(s(tenant.id)):propertyInventory(fresh.data()?.furnishedChecklist),user.uid,0);}catch(error){throw new ApiError(400,error instanceof Error?error.message:'Invalid inventory');}}
     const previous=Array.isArray(fresh.data()?.tenants)?fresh.data()!.tenants.filter(isRecord):[];
     const active=previous.filter((tenant:RecordData)=>tenant.isActive===true);
     for(const tenant of added) {
@@ -87,6 +92,8 @@ export async function getTenant(request:Request,id:string) {
 }
 export async function updateTenant(request:Request,id:string) {
   const user=await identity(request);let updates:RecordData;try{updates=await readObject(request);}catch{return plainError('Invalid JSON',400);}
+  inventoryGuard(updates);
+  const inventory=updates.inventory,hasInventory='inventory' in updates,expectedInventoryVersion=updates.expectedInventoryVersion;delete updates.inventory;delete updates.expectedInventoryVersion;
   const expectedPropertyUpdatedAt=s(updates.expectedPropertyUpdatedAt);delete updates.expectedPropertyUpdatedAt;
   const tenantSnapshot=await collection().doc(id).get();if(!tenantSnapshot.exists)return plainError('Tenant not found',404);
   const tenant={...tenantSnapshot.data(),...model('Tenant',tenantSnapshot.data()||{})};
@@ -101,7 +108,7 @@ export async function updateTenant(request:Request,id:string) {
   if('nextAgreementDraft' in updates&&updates.nextAgreementDraft!==null){const unchangedLegacy=sameNextAgreementDraft(updates.nextAgreementDraft,tenant.nextAgreementDraft);updates.nextAgreementDraft=normalizeNextAgreementDraft(updates.nextAgreementDraft,s(updates.leaseEndDate||tenant.leaseEndDate));const error=validateNextAgreementDraft(updates.nextAgreementDraft,s(updates.leaseEndDate||tenant.leaseEndDate),unchangedLegacy);if(error)return plainError(error,400);}
   delete updates.id;delete updates.createdAt;updates.updatedAt=new Date();
   try{model('Tenant',{...tenant,...updates},true);}catch{return plainError('Invalid tenant fields',400);}
-  await syncTenant(id,updates,user,expectedPropertyUpdatedAt);return jsonResponse({success:true,message:'Tenant updated successfully'});
+  await syncTenant(id,updates,user,expectedPropertyUpdatedAt,hasInventory?{items:inventory,version:expectedInventoryVersion}:undefined);return jsonResponse({success:true,message:'Tenant updated successfully'});
 }
 export async function deleteTenant(request:Request,id:string) {
   const user=await identity(request);const tenant=await getRecord(COLLECTIONS.tenants,id,'Tenant');if(!tenant)return plainError('Tenant not found',404);
@@ -120,7 +127,7 @@ export async function manageAdminTenancy(request:Request,propertyId:string) {
   let added:RecordData|null=null;
   if(action!=='remove') {
     if(!isRecord(req.tenant))return plainError('Tenant details are required',400);
-    const value=req.tenant;
+    const value=req.tenant;inventoryGuard(value);
     if(!value.firstName||!value.lastName||!value.email||!value.phone||!value.userUID)return plainError('A registered tenant with first name, last name, email, and phone is required',400);
     if(value.paymentDueDate&&(!/^\d{1,2}$/.test(s(value.paymentDueDate))||Number(value.paymentDueDate)<1||Number(value.paymentDueDate)>31))return plainError('Payment due day must be between 1 and 31',400);
     if(value.monthlyRent&&(!Number.isFinite(Number(value.monthlyRent))||Number(value.monthlyRent)<0))return plainError('Monthly rent must be a valid amount',400);
@@ -141,6 +148,7 @@ export async function manageAdminTenancy(request:Request,propertyId:string) {
     if(!ownerUID)throw new ApiError(409,'Verified property ownership is required before assigning a tenant');
     const revision=Number(property.tenancyRevision||0);
     if(revision!==Number(req.expectedRevision))throw new ApiError(409,'Tenancy changed; refresh before continuing');
+    if(added){try{added.agreementInventory=inventoryProposal(isRecord(req.tenant)&&'inventory' in req.tenant?req.tenant.inventory:propertyInventory(property.furnishedChecklist),user.uid,0);}catch(error){throw new ApiError(400,error instanceof Error?error.message:'Invalid inventory');}}
     const previous=Array.isArray(property.tenants)?property.tenants.filter(isRecord):[];
     const active=previous.filter((tenant:RecordData)=>tenant.isActive===true);
     const activeDocuments=new Map<string,boolean>();
@@ -185,7 +193,7 @@ export async function manageAdminTenancy(request:Request,propertyId:string) {
   if(propertyForNotification)await bestEffort(()=>persistUserEvent({eventType:`tenancy.tenant_${action}`,eventId:`${propertyId}:${Number(req.expectedRevision)+1}:${action}`,recipients:[{uid:ownerUID,role:'owner'},...(added?.userUID?[{uid:s(added.userUID),role:'tenant'}]:[]),...removedUIDs.map(uid=>({uid,role:'former_tenant'}))],propertyId,recordId:propertyId,templateId:`tenant-${action}`,subject:`Tenant ${action} completed`,title:'Tenant relationship updated',bodyHtml:`<p>The tenant relationship for <strong>${escapeHtml(s(propertyForNotification.title))}</strong> was ${action==='replace'?'replaced':action==='remove'?'removed':'assigned'}.</p>`,bodyText:`The tenant relationship for ${s(propertyForNotification.title)} was ${action==='replace'?'replaced':action==='remove'?'removed':'assigned'}.`,action:{label:'View property',path:`/manage-property/${propertyId}`}}));
   return jsonResponse({success:true,message:`Tenant ${action} completed`,tenancyRevision:Number(req.expectedRevision)+1,tenant:added?wireValue(added):undefined});
 }
-async function syncTenant(id:string,updates:RecordData,user:Awaited<ReturnType<typeof identity>>,expectedPropertyUpdatedAt='') {
+async function syncTenant(id:string,updates:RecordData,user:Awaited<ReturnType<typeof identity>>,expectedPropertyUpdatedAt='',inventory?:{items:unknown;version:unknown}) {
   await getDatabase().runTransaction(async tx=>{
     const ref=collection().doc(id),snapshot=await tx.get(ref);
     if(!snapshot.exists)throw new AccessError(403,'Tenant access required');
@@ -198,6 +206,7 @@ async function syncTenant(id:string,updates:RecordData,user:Awaited<ReturnType<t
     if(expectedPropertyUpdatedAt&&propertyUpdatedMillis!==new Date(expectedPropertyUpdatedAt).getTime())throw new ApiError(409,'Property or agreement details changed; refresh before saving tenant details');
     requireOwnerOrAdmin(user,{ownerUID:s(property.data()?.ownerUID)});
     if(property.data()?.ownerUID!==tenant.ownerUID)throw new AccessError(403,'Tenant owner relationship changed');
+    if(inventory){if(!Number.isInteger(inventory.version)||inventory.version!==Number(tenant.agreementInventory?.version||0))throw new ApiError(409,'Inventory changed; reload before saving');if(inventoryLocked(tenant,property.data()!))throw new ApiError(409,'Confirmed/finalized inventory requires an explicit amendment');try{updates.agreementInventory=inventoryProposal(inventory.items,user.uid,Number(tenant.agreementInventory?.version||0));}catch(error){throw new ApiError(400,error instanceof Error?error.message:'Invalid inventory');}}
     const tenants=(Array.isArray(property.data()?.tenants)?property.data()!.tenants:[]).filter(isRecord).map((entry:RecordData)=>entry.id===id?{...entry,...updates}:entry);
     const candidates=(updates.phone||updates.email)&&tenant.linkConfirmationRequired===true&&!tenant.userUID?[await prepareLink('tenant',s(tenant.propertyId),s(updates.phone||tenant.phone),user.uid,s(tenant.ownerUID),id,updates.email??tenant.email)]:[];
     const writeLinks=await stageLinks(tx,candidates);writeLinks();
