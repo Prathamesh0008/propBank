@@ -14,7 +14,7 @@ export function canonicalMobile(value: unknown): string {
 const unresolved = () => new ApiError(409, 'Your registered mobile requires a separately authorized account resolution. Contact support.', 'MOBILE_RESOLUTION_REQUIRED');
 const inconsistent = () => new ApiError(503, 'Mobile ownership requires administrator reconciliation.', 'MOBILE_REGISTRY_INCONSISTENT');
 const owned = (data: FirebaseFirestore.DocumentData | undefined, uid: string) => data?.version === MOBILE_REGISTRY_VERSION && data?.status === 'owned' && data?.ownerUID === uid;
-type WriteOptions = { createOnly?: boolean; expectedPhone: unknown };
+type WriteOptions = { createOnly?: boolean; expectedPhone: unknown; stage?: (tx:FirebaseFirestore.Transaction)=>Promise<()=>void> };
 
 /** Trusted primitive: callers authorize UID and verified phone changes first.
  * Account state is separate from historical profiles, which migration never edits.
@@ -45,7 +45,8 @@ export async function writeUserWithMobile(uid: string, data: FirebaseFirestore.D
         const blocked = (await tx.get(claimRef)).data();
         if (state.phoneKey !== key || blocked?.version !== MOBILE_REGISTRY_VERSION || blocked.status !== 'blocked' || 'ownerUID' in blocked) throw inconsistent();
         const metadata = {...data}; delete metadata.phoneNumber;
-        tx.set(userRef, metadata, {merge:true});
+        const writeIntent=options.stage?await options.stage(tx):()=>{};
+        writeIntent();tx.set(userRef, metadata, {merge:true});
         return;
       }
       if (state.state !== 'owned' || !oldPhone || state.phoneKey !== mobileKey(oldPhone)) throw inconsistent();
@@ -58,8 +59,9 @@ export async function writeUserWithMobile(uid: string, data: FirebaseFirestore.D
     const oldClaim = oldRef ? await tx.get(oldRef) : null;
     if (claim.exists && !owned(target, uid)) throw new ApiError(409, MOBILE_CONFLICT_MESSAGE, 'MOBILE_ALREADY_REGISTERED');
     if (oldPhone && !(oldRef ? owned(oldClaim?.data(), uid) : owned(target, uid))) throw inconsistent();
+    const writeIntent=options.stage?await options.stage(tx):()=>{};
     const now = new Date();
-    tx.set(claimRef, {version:MOBILE_REGISTRY_VERSION,status:'owned',ownerUID:uid,createdAt:target?.createdAt || now,updatedAt:now});
+    writeIntent();tx.set(claimRef, {version:MOBILE_REGISTRY_VERSION,status:'owned',ownerUID:uid,createdAt:target?.createdAt || now,updatedAt:now});
     if (oldRef) tx.delete(oldRef); // Only the verified OWNED claim above can reach this.
     tx.set(accountRef, {version:MOBILE_REGISTRY_VERSION,state:'owned',phoneKey:key,createdAt:state?.createdAt || now,updatedAt:now});
     tx.set(userRef, {...data,phoneNumber:phone}, {merge:true});

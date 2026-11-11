@@ -6,7 +6,7 @@ import {COLLECTIONS,getDatabase} from '../firestore';
 import {ApiError,jsonResponse} from '../http';
 import {readObject} from './domain-contracts';
 import {stringValue as s,wireValue,type RecordData} from './contracts';
-import {persistUserEvent} from './transactional-email';
+import {stageUserEvent,dispatchNotificationIntents} from './transactional-email';
 import {currentConnectionState} from '@/lib/relationship-link-state';
 import {LINK_COLLECTION,connectionAccountMatches} from './relationship-links';
 import {bestEffort,escapeHtml} from './property-effects';
@@ -28,7 +28,7 @@ export async function verifyPropertyOwner(request:Request) {
   try{identity=await getFirebaseAdminAuth().getUser(s(raw.ownerUID));}catch(error){if((error as {code?:string}).code==='auth/user-not-found')throw new ApiError(400,'Owner account does not exist');throw error;}
   if(identity.disabled||!identity.email||!identity.emailVerified)throw new ApiError(400,'Owner requires an active account with verified Firebase email');
  }
- const db=getDatabase(),ref=db.collection(COLLECTIONS.properties).doc(s(raw.propertyId));let verification:RecordData={},notify:RecordData={};
+ const db=getDatabase(),ref=db.collection(COLLECTIONS.properties).doc(s(raw.propertyId));let verification:RecordData={},notify:RecordData={};const intentIds:string[]=[];
  await db.runTransaction(async tx=>{
   if(action==='approve') {
    identity=await getFirebaseAdminAuth().getUser(s(raw.ownerUID));
@@ -51,6 +51,7 @@ export async function verifyPropertyOwner(request:Request) {
   const now=new Date(),status=action==='approve'?'verified':action==='reject'?'rejected':'pending';
   const event:RecordData={action,actorUID:actor.uid,at:now,reason:action==='approve'?s(raw.reviewNote).trim():reason,previousStatus:p.ownershipVerification,status,version:version+1};
   const updates:RecordData={ownershipVerification:status,ownershipVerificationVersion:version+1,ownershipVerificationReviewerUID:actor.uid,ownershipVerificationReviewedAt:now,ownershipVerificationReason:action==='reject'?reason:'',ownershipVerificationHistory:[...history,event],updatedAt:now};
+  const deferredWrites:Array<()=>void>=[];
   if(action==='approve'&&identity) {
    if(p.submittedByUID===identity.uid||(p.tenants||[]).some((t:{userUID?:string;isActive?:boolean})=>t.isActive===true&&t.userUID===identity!.uid))throw new ApiError(400,'An active tenant cannot be linked as this property owner');
    const profile=await tx.get(db.collection(COLLECTIONS.users).doc(identity.uid));if(!profile.exists||profile.data()?.isActive===false)throw new ApiError(400,'Owner must have an active platform profile');
@@ -59,12 +60,14 @@ export async function verifyPropertyOwner(request:Request) {
    const tenants=await tx.get(db.collection(COLLECTIONS.tenants).where('propertyId','==',raw.propertyId)),owner=profile.data()!;
    Object.assign(updates,{ownerUID:identity.uid,ownerEmail:identity.email,ownerName:owner.name||identity.displayName||'',ownerPhone:owner.phoneNumber||'',ownerRole:owner.role||'',ownershipVerificationAudit:{actorUID:actor.uid,ownerUID:identity.uid,evidenceDocumentId:raw.evidenceDocumentId,reviewNote:s(raw.reviewNote).trim(),verifiedAt:now}});
    Object.assign(event,{ownerUID:identity.uid,evidenceDocumentId:raw.evidenceDocumentId});
-   for(const tenant of tenants.docs)tx.update(tenant.ref,{ownerUID:identity.uid,updatedAt:now});
+   for(const tenant of tenants.docs)deferredWrites.push(()=>tx.update(tenant.ref,{ownerUID:identity!.uid,updatedAt:now}));
   }
+  verification={status,version:version+1,reason:updates.ownershipVerificationReason,history:updates.ownershipVerificationHistory};notify={title:p.title,submittedByUID:p.submittedByUID,ownerUID:updates.ownerUID||p.ownerUID,version:version+1};
+  const intent=await stageUserEvent(tx,{actorUID:actor.uid,eventType:`owner_verification.${action}`,eventId:`${s(raw.propertyId)}:${s(notify.version)}:${action}`,recipients:[...(notify.submittedByUID?[{uid:s(notify.submittedByUID),role:'tenant'}]:[]),...(notify.ownerUID?[{uid:s(notify.ownerUID),role:'owner'}]:[]),{uid:actor.uid,role:'admin'}],propertyId:s(raw.propertyId),recordId:s(raw.propertyId),templateId:'owner-verification-decision',subject:'Owner verification updated',title:'Owner verification updated',bodyHtml:`<p><strong>${escapeHtml(s(notify.title))}</strong>: ${escapeHtml(s(verification.status))}.</p>${verification.reason?`<p>Reason: ${escapeHtml(s(verification.reason))}</p>`:''}`,bodyText:`${s(notify.title)}: ${s(verification.status)}.${verification.reason?` Reason: ${s(verification.reason)}`:''}`,action:{label:'View property',path:`/manage-property/${s(raw.propertyId)}`}});intentIds.push(intent.id);intent.write();for(const write of deferredWrites)write();
   for(const claim of ownershipRequests)tx.update(claim.ref,{version:Number(claim.data().version||0)+1,status:['expired','rejected'].includes(currentConnectionState(claim.data()))?currentConnectionState(claim.data()):action==='approve'?(claim.data().candidateUID&&claim.data().candidateUID!==identity?.uid?'rejected':'linked'):action==='reject'?'rejected':'verification_required',...(action==='approve'&&identity&&(!claim.data().candidateUID||claim.data().candidateUID===identity.uid)?{candidateUID:identity.uid}:{}),...(action==='approve'&&identity?{approvedOwnerUID:identity.uid}:{}),reviewerUID:actor.uid,reviewedAt:now,verificationVersion:version+1,updatedAt:now});
   tx.update(ref,updates);verification={status,version:version+1,reason:updates.ownershipVerificationReason,history:updates.ownershipVerificationHistory};notify={title:p.title,submittedByUID:p.submittedByUID,ownerUID:updates.ownerUID||p.ownerUID,version:version+1};
  });
- await bestEffort(()=>persistUserEvent({eventType:`owner_verification.${action}`,eventId:`${s(raw.propertyId)}:${s(notify.version)}:${action}`,recipients:[...(notify.submittedByUID?[{uid:s(notify.submittedByUID),role:'tenant'}]:[]),...(notify.ownerUID?[{uid:s(notify.ownerUID),role:'owner'}]:[]),{uid:actor.uid,role:'admin'}],propertyId:s(raw.propertyId),recordId:s(raw.propertyId),templateId:'owner-verification-decision',subject:'Owner verification updated',title:'Owner verification updated',bodyHtml:`<p><strong>${escapeHtml(s(notify.title))}</strong>: ${escapeHtml(s(verification.status))}.</p>${verification.reason?`<p>Reason: ${escapeHtml(s(verification.reason))}</p>`:''}`,bodyText:`${s(notify.title)}: ${s(verification.status)}.${verification.reason?` Reason: ${s(verification.reason)}`:''}`,action:{label:'View property',path:`/manage-property/${s(raw.propertyId)}`}}));
+ dispatchNotificationIntents(intentIds);
  const message=action==='approve'?'Owner verified and linked. Tenant relationships preserved.':action==='reject'?'Owner verification rejected. Ownership and tenancy unchanged.':'Owner verification reopened for review. No owner has been linked.';
  return jsonResponse({success:true,message,verification:wireValue(verification)});
 }

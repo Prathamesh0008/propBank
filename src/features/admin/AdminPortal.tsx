@@ -1,21 +1,21 @@
 "use client";
-import AdminVisits from './AdminVisits';
-import EnquiryInbox from '@/features/enquiries/EnquiryInbox';
 
 
-import NegotiationPanel from '@/features/negotiations/NegotiationPanel';
 import {ServiceRequestHistory} from '@/features/services/ServiceRequestWorkflow';
 import { apiFetch } from '@/lib/api-client';
 
-import { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
+import {useQuery,useQueryClient} from "@tanstack/react-query";
+import {useAuth} from "@/contexts/AuthContext";
+import {matchesAdminPropertySection,adminAvailability,confirmedAdminTenants,type AdminPropertySection} from "@/lib/admin-property-views";
+import {adminPropertyDirectory} from "@/lib/admin-property-directory";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "@/lib/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Users, AlertCircle, Archive, Settings2, MessageSquareText, CalendarDays, Handshake } from "lucide-react";
+import { Building2, Users, AlertCircle, Archive, Settings2, MessageSquareText, CalendarDays, Handshake, LayoutDashboard, Bell, ClipboardCheck, KeyRound, DoorOpen } from "lucide-react";
 import styles from "./AdminPortal.module.css";
 import { uploadBase64Image } from "@/services/uploadService";
-import AdminPropertyDetailsDialog from "@/features/admin/AdminPropertyDetailsDialog";
-import AdminUserDetailsDialog from "@/features/admin/AdminUserDetailsDialog";
 import { useAllProperties } from "../../hooks/useProperties";
 import { useAllUsers } from "../../hooks/useUsers";
 import { propertyService, Property } from "@/services/propertyService";
@@ -26,19 +26,37 @@ import { AdminNotification, Agent, SiteSettings } from "./AdminTypes";
 import AdminArchiveTab from "./AdminArchiveTab";
 import { AdminServiceRequestsTab } from "./AdminServiceRequestsTab";
 import { AdminPropertiesTab } from "./AdminPropertiesTab";
-import { AdminAgentsTab } from "./AdminAgentsTab";
-import { AdminSiteSettingsTab } from "./AdminSiteSettingsTab";
 import {useDataRefresh} from '@/lib/data-refresh';
 
+const AdminRentedProperties=dynamic(()=>import('./AdminRentedProperties'));
+const AdminNotificationFeed=dynamic(()=>import('./AdminNotificationFeed'));
+const AdminVisits=dynamic(()=>import('./AdminVisits'));
+const EnquiryInbox=dynamic(()=>import('@/features/enquiries/EnquiryInbox'));
+const NegotiationPanel=dynamic(()=>import('@/features/negotiations/NegotiationPanel'));
+const AdminPropertyDetailsDialog=dynamic(()=>import('@/features/admin/AdminPropertyDetailsDialog'));
+const AdminUserDetailsDialog=dynamic(()=>import('@/features/admin/AdminUserDetailsDialog'));
+const AdminAgentsTab=dynamic(()=>import('./AdminAgentsTab').then(module=>module.AdminAgentsTab));
+const AdminSiteSettingsTab=dynamic(()=>import('./AdminSiteSettingsTab').then(module=>module.AdminSiteSettingsTab));
+const AdminEmailDeliveries=dynamic(()=>import('./AdminEmailDeliveries'));
+const propertySections:Record<string,AdminPropertySection>={properties:'all',approvals:'pending',available:'available',archived:'archived'};
+const navigation=[{heading:'OVERVIEW',items:[['dashboard','Dashboard',LayoutDashboard],['notifications','Notifications',Bell],['approvals','Pending Approvals',ClipboardCheck]]},{heading:'PROPERTIES',items:[['properties','All Properties',Building2],['rented','Rented Properties',KeyRound],['available','Available Properties',DoorOpen],['archived','Archived Properties',Archive]]},{heading:'OPERATIONS',items:[['service-requests','Service Requests / Issues',AlertCircle],['agents','Agents & Users',Users],['offers','Offers & Enquiries',MessageSquareText],['visits','Property Visits',CalendarDays]]},{heading:'ADMINISTRATION',items:[['settings','Site Settings',Settings2]]}] as const;
 const AdminPortal = () => {
+  const cache=useQueryClient(),{user}=useAuth();
+  const [activeTab,setActiveTab]=useState("dashboard");
+  const [notificationView,setNotificationView]=useState('all'),[offerView,setOfferView]=useState('offers');
+  const [unreadCount,setUnreadCount]=useState<number|undefined>();
+  const notificationGeneration=useRef(0);
+  const overview=useQuery<{openRequests:number;unreadNotifications:number}>({queryKey:['adminOverview',user?.uid],enabled:!!user&&activeTab==='dashboard',staleTime:120000,refetchOnWindowFocus:false,retry:false,queryFn:async()=>{const response=await apiFetch('/api/admin/overview');const data=await response.json();if(!response.ok)throw Error(data.message||'Could not load overview');return data;}});
+  const notificationCount=useQuery<{unreadCount:number}>({queryKey:['adminNotificationCount',user?.uid],enabled:!!user&&(activeTab!=='notifications'||notificationView==='emails'),staleTime:60000,refetchInterval:60000,refetchOnWindowFocus:false,queryFn:async()=>{const response=await apiFetch('/api/admin/notifications/feed?countOnly=true');if(!response.ok)throw Error('Notification count unavailable');return response.json();}});
+  useEffect(()=>{if(notificationCount.data)setUnreadCount(notificationCount.data.unreadCount);},[notificationCount.data]);
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("properties");
+
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
-  const { data: propertiesData, isLoading: loadingProperties,error:propertiesError } = useAllProperties(activeTab==='properties');
+  const { data: propertiesData, isLoading: loadingProperties,error:propertiesError,hasNextPage:moreProperties,fetchNextPage:loadProperties,isFetchingNextPage:loadingPropertyPage } = useAllProperties(activeTab==='dashboard'||activeTab in propertySections);
   const allProperties = propertiesData || [];
 
-  const { data: usersData, isLoading: loadingUsers } = useAllUsers(activeTab==='agents');
+  const { data: usersData, isLoading: loadingUsers,hasNextPage:moreUsers,fetchNextPage:loadUsers,isFetchingNextPage:loadingUserPage,error:usersError } = useAllUsers(activeTab==='agents'||activeTab==='offers'&&offerView==='enquiries',activeTab==='offers'?'agent':'');
   const agents = usersData || [];
 
   const [loading, setLoading] = useState(true);
@@ -74,15 +92,14 @@ const AdminPortal = () => {
 
   useEffect(() => {
     fetchData();
-  }, [activeTab]);
+  }, [activeTab,notificationView]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
       if (activeTab === "service-requests" || activeTab === "visits") {
         await fetchNotifications();
-      } else if (activeTab === "archive") {
-        await fetchArchivedNotifications();
+
       } else if (activeTab === "settings") {
         await fetchSiteSettings();
       }
@@ -117,53 +134,23 @@ const AdminPortal = () => {
   useEffect(() => {
     const params=new URLSearchParams(window.location.search);
     const requestedTab=params.get('tab');
-    if(requestedTab&&['properties','agents','archive','settings','offers','enquiries','visits','service-requests'].includes(requestedTab)) {
-      setActiveTab(requestedTab);
+    if(requestedTab&&['dashboard','notifications','approvals','properties','rented','available','archived','agents','archive','settings','offers','enquiries','visits','service-requests'].includes(requestedTab)) {
+      setActiveTab(requestedTab==='archive'?'notifications':requestedTab==='enquiries'?'offers':requestedTab);if(requestedTab==='archive')setNotificationView('archive');if(requestedTab==='enquiries')setOfferView('enquiries');
       const id=params.get('propertyId');
       if(requestedTab==='properties'&&id)void handleViewPropertyDetails(id);
     }
   }, []);
-  const fetchNotifications = async () => {
-    try {
-      const response = await apiFetch(`${API_BASE_URL}/admin/notifications?unread=true`);
-      if (response.ok) {
-        const data = await response.json();
-        // Filter for all notification types that are unread (isRead: false)
-        // Double-check isRead is false as a safety measure
-        const serviceRequests = Array.isArray(data)
-          ? data.filter((n: AdminNotification) =>
-            (n.type === "document_upload" || n.type === "review" || n.type === "want_to_sell" || n.type === "want_to_sell_cancelled" || n.type === "property_enquiry" || n.type === "service_request" || n.type === "legal_service_request" || n.type === "other_service_request" || n.type === "inspection_report" || n.type === "agreement_renewal" || n.type === "agreement_termination" || n.type === "general_inquiry" || n.type === "property_added" || n.type === "rent_due" || n.type === "agreement_expiry" || n.type === "visit_update" || n.type === "negotiation_update") && n.isRead === false
-          )
-          : [];
-
-        setNotifications(serviceRequests);
-      } else {
-        setNotifications([]);
-      }
-    } catch (error) {
-      setNotifications([]);
-    }
+  const loadNotifications=async(unread:boolean)=>{
+    const generation=++notificationGeneration.current;
+    try{const rows=await cache.fetchQuery<AdminNotification[]>({queryKey:['adminNotifications',user?.uid,unread],staleTime:120000,queryFn:async()=>{const response=await apiFetch(API_BASE_URL+'/admin/notifications?unread='+unread);if(!response.ok)throw Error('Could not load notifications');return response.json();}});if(generation!==notificationGeneration.current)return;setNotifications(rows);if(unread)setUnreadCount(rows.filter(row=>!row.isRead).length);}
+    catch{toast({title:'Notifications unavailable',description:'Refresh this section to retry.',variant:'destructive'});}
   };
-
-  const fetchArchivedNotifications = async () => {
-    try {
-      const response = await apiFetch(`${API_BASE_URL}/admin/notifications?unread=false`);
-      if (response.ok) {
-        const data = await response.json();
-        const archived = Array.isArray(data)
-          ? data.filter((n: AdminNotification) => n.isRead && (n.type === "document_upload" || n.type === "want_to_sell" || n.type === "want_to_sell_cancelled" || n.type === "property_enquiry" || n.type === "service_request" || n.type === "review" || n.type === "legal_service_request" || n.type === "other_service_request" || n.type === "inspection_report" || n.type === "agreement_renewal" || n.type === "agreement_termination" || n.type === "general_inquiry" || n.type === "property_added"))
-          : [];
-        archived.sort((a: AdminNotification, b: AdminNotification) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
-        setNotifications(archived);
-      }
-    } catch (error) { /* Preserve existing best-effort behavior. */ }
-  };
+  const fetchNotifications=()=>loadNotifications(true);
+  const fetchArchivedNotifications=()=>loadNotifications(false);
 
   const fetchSiteSettings = async () => {
     try {
-      const response = await apiFetch(`${API_BASE_URL}/admin/site-settings`);
+      const response = await cache.fetchQuery({queryKey:['siteSettings',user?.uid],staleTime:300000,queryFn:async()=>{const value=await apiFetch(API_BASE_URL+'/admin/site-settings');if(!value.ok)throw Error('Could not load settings');return value.json();}}).then(data=>new Response(JSON.stringify(data),{status:200}));
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.settings) {
@@ -180,7 +167,8 @@ const AdminPortal = () => {
       }
     } catch (error) { /* Preserve existing best-effort behavior. */ }
   };
-  useDataRefresh(activeTab==='settings'?['settings']:activeTab==='archive'||activeTab==='service-requests'||activeTab==='visits'?['notifications']:[],()=>{
+  useDataRefresh(['notifications','settings','services'],()=>{
+    void cache.invalidateQueries({queryKey:['adminNotifications'],refetchType:'none'});void cache.invalidateQueries({queryKey:['siteSettings'],refetchType:'none'});void cache.invalidateQueries({queryKey:['adminOverview']});void cache.invalidateQueries({queryKey:['adminNotificationCount']});
     void fetchData();
   });
   useDataRefresh(['properties'],()=>{
@@ -296,6 +284,10 @@ const AdminPortal = () => {
     });
   };
 
+  const handleDeleteNotification=async(id:string)=>{
+    if(!window.confirm('Permanently delete this notification? The related property and email history will remain.'))return;
+    setUpdating(id);try{const response=await apiFetch(API_BASE_URL+'/admin/notifications/'+encodeURIComponent(id),{method:'DELETE'});if(!response.ok)throw Error('Could not delete notification');const unread=notifications.some(n=>n.id===id&&!n.isRead);setNotifications(rows=>rows.filter(n=>n.id!==id));if(unread)setUnreadCount(value=>value===undefined?undefined:Math.max(0,value-1));void cache.invalidateQueries({queryKey:['adminNotifications'],refetchType:'none'});void cache.invalidateQueries({queryKey:['adminOverview']});void cache.invalidateQueries({queryKey:['adminNotificationCount']});}catch(error){toast({title:'Notification not deleted',description:error instanceof Error?error.message:'Please retry.',variant:'destructive'});}finally{setUpdating(null);}
+  };
   const handleMarkComplete = async (notificationId: string, checked: boolean) => {
     setUpdating(notificationId);
     try {
@@ -306,6 +298,7 @@ const AdminPortal = () => {
       });
 
       if (response.ok) {
+        void cache.invalidateQueries({queryKey:['adminNotifications'],refetchType:'none'});void cache.invalidateQueries({queryKey:['adminOverview']});void cache.invalidateQueries({queryKey:['adminNotificationCount']});setUnreadCount(value=>value===undefined?undefined:Math.max(0,value+(checked?-1:1)));
         toast({
           title: "Success",
           description: checked
@@ -313,7 +306,7 @@ const AdminPortal = () => {
             : "Request unarchived and moved back to Active Service Requests"
         });
 
-        if (activeTab === "archive") {
+        if (activeTab === "notifications"&&notificationView==='archive') {
           setNotifications(prev => prev.filter(n => n.id !== notificationId));
         } else {
           setNotifications(prev =>
@@ -395,88 +388,33 @@ const AdminPortal = () => {
 
   return (
     <main className={styles.workspace}>
-      <Tabs value={activeTab} onValueChange={setActiveTab} className={styles.panel}>
+      <Tabs orientation="vertical" value={activeTab} onValueChange={setActiveTab} className={styles.panel}>
         <div className={styles.panelGrid}>
         <aside className={styles.sidebar} aria-label="Administration sections">
-          <p className={styles.sidebarLabel}>WORKSPACE</p>
-          <TabsList className={styles.navigation}>
-          <TabsTrigger value="service-requests" className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4" />
-            <span className="hidden sm:inline">Active Service Requests</span>
-            <span className="sm:hidden">Requests</span>
-          </TabsTrigger>
-          <TabsTrigger value="properties" className="flex items-center gap-2">
-            <Building2 className="h-4 w-4" />
-            <span>Properties</span>
-          </TabsTrigger>
-          <TabsTrigger value="agents" className="flex items-center gap-2">
-            <Users className="h-4 w-4" />
-            <span>Agents</span>
-          </TabsTrigger>
-          <TabsTrigger value="archive" className="flex items-center gap-2">
-            <Archive className="h-4 w-4" />
-            <span>Archive</span>
-          </TabsTrigger>
-          <TabsTrigger value="settings" className="flex items-center gap-2">
-            <Settings2 className="h-4 w-4" />
-            <span className="hidden sm:inline">Site Settings</span>
-            <span className="sm:hidden">Settings</span>
-          </TabsTrigger>
-          <TabsTrigger value="offers" className="flex items-center gap-2"><Handshake className="h-4 w-4"/>Offers</TabsTrigger>
-          <TabsTrigger value="enquiries" className="flex items-center gap-2"><MessageSquareText className="h-4 w-4"/>Enquiries</TabsTrigger>
-          <TabsTrigger value="visits" className="flex items-center gap-2"><CalendarDays className="h-4 w-4"/>Visits</TabsTrigger>
-        </TabsList>
+          <TabsList aria-label="Admin workspace" className={styles.navigation}>
+            {navigation.map(group=><div key={group.heading} className={styles.navGroup}><p className={styles.sidebarLabel}>{group.heading}</p>{group.items.map(([value,label,Icon])=><TabsTrigger key={value} value={value} className={styles.navItem}><Icon size={16} aria-hidden="true"/><span>{label}</span>{value==='notifications'&&unreadCount!==undefined&&<span className={styles.navCount}>{unreadCount}</span>}{value==='approvals'&&propertiesData&&<span className={styles.navCount}>{allProperties.filter((p:Property)=>matchesAdminPropertySection(p,'pending')).length}</span>}</TabsTrigger>)}</div>)}
+          </TabsList>
         </aside>
         <div className={styles.content}>
 
-        <TabsContent value="offers"><NegotiationPanel admin/></TabsContent>
-        <TabsContent value="enquiries"><EnquiryInbox admin agents={agents}/></TabsContent>
-        <TabsContent value="visits"><AdminVisits notifications={notifications.filter(n=>n.type==='visit_update'&&!n.isRead)} onMarkRead={handleMarkComplete}/></TabsContent>
-        <TabsContent value="service-requests" className="mt-6">
-          <ServiceRequestHistory admin/>
-          <AdminServiceRequestsTab
-            loading={loading}
-            notifications={notifications.filter(n=>n.type!=="visit_update"&&!(n.type==="service_request" && n.relatedId))}
-            handleMarkComplete={handleMarkComplete}
-            handleViewPropertyDetails={handleViewPropertyDetails}
-            loadingProperty={loadingProperty}
-            selectedProperty={selectedProperty}
-            updating={updating}
-            uploadingRemarkImage={uploadingRemarkImage}
-            remarkImages={remarkImages}
-            handleRemarkImageUpload={handleRemarkImageUpload}
-            handleSaveRemarks={handleSaveRemarks}
-          />
-        </TabsContent>
-
-        <TabsContent value="properties" className="mt-6">
-          {propertiesError&&<p role="alert" className="text-destructive mb-4">Could not load properties. Please refresh to retry.</p>}
-          <AdminPropertiesTab
-            loading={loading||loadingProperties}
-            properties={allProperties}
-            handleViewPropertyDetails={handleViewPropertyDetails}
-            loadingProperty={loadingProperty}
-            selectedProperty={selectedProperty}
-          />
-        </TabsContent>
-
-        <TabsContent value="agents" className="mt-6">
-          <AdminAgentsTab
-            loading={loading}
-            agents={agents}
-            handleViewUserDetails={handleViewUserDetails}
-          />
-        </TabsContent>
-
-        <AdminArchiveTab
-          loading={loading}
-          notifications={notifications.filter((n) => n.resolvedAt)}
-          updating={updating}
-          handleMarkComplete={handleMarkComplete}
-          handleViewPropertyDetails={handleViewPropertyDetails}
-          loadingProperty={loadingProperty}
-          selectedProperty={selectedProperty}
-        />
+        <TabsContent value="dashboard"><section className={styles.overview}><header><p className={styles.sidebarLabel}>OVERVIEW</p><h1>Dashboard</h1></header>{(propertiesError||overview.error)&&<p role="alert">Some summary data could not be loaded. Open the relevant section to retry.</p>}<div className={styles.summary}>
+        {[
+          ['Total properties',propertiesData?adminPropertyDirectory(allProperties).all.length:undefined,'properties'],
+          ['Pending property approvals',propertiesData?allProperties.filter((p:Property)=>matchesAdminPropertySection(p,'pending')).length:undefined,'approvals'],
+          ['Rented properties','Open directory','rented'],
+          ['Available properties',propertiesData?allProperties.filter((p:Property)=>adminAvailability(p)==='available').length:undefined,'available'],
+          ['Open service requests / issues',overview.data?.openRequests,'service-requests'],
+          ['Unread admin notifications',unreadCount,'notifications'],
+          ['Pending connections (property records)',propertiesData?allProperties.filter((p:Property)=>p.isActive!==false&&p.status!=='inactive').reduce((n:number,p:Property)=>n+(p.createdAs==='tenant'&&!p.ownerUID&&p.ownershipVerification==='pending'?1:0)+(p.tenants||[]).filter(t=>t.isActive===true&&t.linkConfirmationRequired===true&&!t.userUID).length,0):undefined,'notifications'],
+        ].map(([label,count,target])=><button type="button" key={String(label)} onClick={()=>setActiveTab(String(target))}><span>{label}</span><strong>{count===undefined?(propertiesError||overview.error?'Unavailable':'Loading'):count}</strong></button>)}
+        </div>{moreProperties&&<p role="status">Property counts cover loaded pages, not the full directory. <button type="button" disabled={loadingPropertyPage} onClick={()=>void loadProperties()}>Load more property records</button></p>}<p className="text-sm text-muted-foreground">Available totals exclude unknown occupancy. Pending connections are derived from property records; review the property's relationship details before acting.</p></section></TabsContent>
+        <TabsContent value="offers">{offerView==='enquiries'&&moreUsers&&<p>Agent choices cover loaded users. <button type="button" disabled={loadingUserPage} onClick={()=>void loadUsers()}>Load more agents</button></p>}<Tabs value={offerView} onValueChange={setOfferView}><TabsList aria-label="Offers and enquiries"><TabsTrigger value="offers">Offers</TabsTrigger><TabsTrigger value="enquiries">Enquiries</TabsTrigger></TabsList><TabsContent value="offers">{activeTab==='offers'&&offerView==='offers'&&<NegotiationPanel admin/>}</TabsContent><TabsContent value="enquiries">{activeTab==='offers'&&offerView==='enquiries'&&<EnquiryInbox admin agents={agents}/>}</TabsContent></Tabs></TabsContent>
+        <TabsContent value="visits">{activeTab==='visits'&&<AdminVisits notifications={notifications.filter(n=>n.type==='visit_update'&&!n.isRead)} onMarkRead={handleMarkComplete}/>}</TabsContent>
+        <TabsContent value="rented">{activeTab==='rented'&&<AdminRentedProperties onViewProperty={id=>void handleViewPropertyDetails(id)}/>}</TabsContent>
+        <TabsContent value="notifications"><Tabs value={notificationView} onValueChange={setNotificationView}><TabsList aria-label="Notification history"><TabsTrigger value="all">All notifications</TabsTrigger><TabsTrigger value="unread">Unread</TabsTrigger><TabsTrigger value="archive">Read / Archived</TabsTrigger><TabsTrigger value="emails">Email delivery history</TabsTrigger></TabsList>{['all','unread','archive'].map(view=><TabsContent key={view} value={view}>{activeTab==='notifications'&&notificationView===view&&<AdminNotificationFeed state={view==='archive'?'read':view} onUnreadCount={setUnreadCount} onViewProperty={id=>void handleViewPropertyDetails(id)}/>}</TabsContent>)}<TabsContent value="emails">{activeTab==='notifications'&&notificationView==='emails'&&<AdminEmailDeliveries/>}</TabsContent></Tabs></TabsContent>
+        <TabsContent value="service-requests">{activeTab==='service-requests'&&<><ServiceRequestHistory admin/><AdminServiceRequestsTab embedded loading={loading} notifications={notifications.filter(n=>!n.isRead&&['service_request','legal_service_request','other_service_request'].includes(n.type)&&!n.relatedId)} handleMarkComplete={handleMarkComplete} handleViewPropertyDetails={handleViewPropertyDetails} loadingProperty={loadingProperty} selectedProperty={selectedProperty} updating={updating} uploadingRemarkImage={uploadingRemarkImage} remarkImages={remarkImages} handleRemarkImageUpload={handleRemarkImageUpload} handleSaveRemarks={handleSaveRemarks}/></>}</TabsContent>
+        {Object.entries(propertySections).map(([value,section])=><TabsContent key={value} value={value}>{propertiesError&&<p role="alert">Could not load properties. Reopen this section to retry.</p>}{moreProperties&&<p>Filters and counts cover loaded properties. <button type="button" disabled={loadingPropertyPage} onClick={()=>void loadProperties()}>Load more properties</button></p>}<AdminPropertiesTab key={section} section={section} loading={loadingProperties} properties={allProperties} handleViewPropertyDetails={handleViewPropertyDetails} loadingProperty={loadingProperty} selectedProperty={selectedProperty}/></TabsContent>)}
+        <TabsContent value="agents">{usersError&&<p role="alert">Could not load users. Retry this directory.</p>}{moreUsers&&<p>Showing loaded users. <button type="button" disabled={loadingUserPage} onClick={()=>void loadUsers()}>Load more users</button></p>}{activeTab==='agents'&&<AdminAgentsTab loading={loadingUsers} agents={agents} handleViewUserDetails={handleViewUserDetails}/>}</TabsContent>
 
         <TabsContent value="settings" className="mt-6">
           <AdminSiteSettingsTab
@@ -495,17 +433,17 @@ const AdminPortal = () => {
       </div>
       </Tabs>
 
-      <AdminPropertyDetailsDialog
+      {isPropertyDialogOpen&&<AdminPropertyDetailsDialog
         property={selectedProperty}
         onVerificationChange={async()=>{if(selectedProperty?.id)setSelectedProperty(await propertyService.getPropertyById(selectedProperty.id));}}
         isOpen={isPropertyDialogOpen}
         onOpenChange={setIsPropertyDialogOpen}
-      />
-      <AdminUserDetailsDialog
+      />}
+      {isUserDialogOpen&&<AdminUserDetailsDialog
         user={selectedUser}
         isOpen={isUserDialogOpen}
         onOpenChange={setIsUserDialogOpen}
-      />
+      />}
     </main>
   );
 };

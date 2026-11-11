@@ -1,3 +1,4 @@
+import {PRE_LEASED_EVIDENCE,privateLeaseEvidence,requireDocumentAccess} from './document-access';
 import {publicListing} from '../../listing-policy';
 import 'server-only';
 import {randomUUID} from 'node:crypto';
@@ -77,17 +78,25 @@ export async function prepareMediaBindings(tx:Transaction,user:AuthenticatedUser
       if(kept.length>50)throw new ApiError(400,'File reference limit reached');
     }
     const privateUse=used.some(use=>!(collection==='properties'&&use.field==='images'&&next.createdAs!=='tenant'&&['rent','sell','sell_rent','pre_leased'].includes(next.listingType)||collection==='siteSettings'&&use.field==='bannerImages'));
-    changes.push({ref:files().doc(snapshot.id),data:{privateOnly:data.privateOnly===true||privateUse,propertyId:data.propertyId||propertyId,bindings:kept,status:kept.length?'attached':'pending',updatedAt:new Date()}});
+    changes.push({ref:files().doc(snapshot.id),data:{...(data.accessScope===PRE_LEASED_EVIDENCE||collection==='documents'&&next.accessScope===PRE_LEASED_EVIDENCE?{accessScope:PRE_LEASED_EVIDENCE}:{}),privateOnly:data.privateOnly===true||privateUse,propertyId:data.propertyId||propertyId,bindings:kept,status:kept.length?'attached':'pending',updatedAt:new Date()}});
   }
   return ()=>{for(const change of changes)tx.update(change.ref,change.data);};
 }
-export async function saveMediaRecord(collection:string,id:string,data:RecordData,user:AuthenticatedUser,create=false) {
+export async function saveMediaRecord(collection:string,id:string,data:RecordData,user:AuthenticatedUser,create=false,stage?:(tx:FirebaseFirestore.Transaction)=>Promise<()=>void>) {
   const db=getDatabase(),ref=db.collection(collection).doc(id);
   await db.runTransaction(async tx=>{
     const existing=await tx.get(ref),before=existing.data()||{};
     if(create&&existing.exists)throw new ApiError(409,'Record already exists');
+    if(collection==='documents'){
+      const property=await tx.get(db.collection('properties').doc(String(data.propertyId||before.propertyId||'')));
+      if(!property.exists)throw new AccessError(403,'Property access required');
+      requirePropertyMember(user,filePropertyRelationships(property.data()!));
+      requireDocumentAccess(user,before,property.data()!);requireDocumentAccess(user,data,property.data()!);
+      if(privateLeaseEvidence(before,property.data()!))data.accessScope=PRE_LEASED_EVIDENCE;
+    }
     const bind=await prepareMediaBindings(tx,user,collection,id,String(data.propertyId||before.propertyId||''),data,before);
-    bind();if(create)tx.create(ref,data);else tx.set(ref,data);
+    const writeIntent=stage?await stage(tx):()=>{};
+    writeIntent();bind();if(create)tx.create(ref,data);else tx.set(ref,data);
   });
 }
 
@@ -146,6 +155,7 @@ async function canReadBinding(user:AuthenticatedUser,binding:Binding,data:Record
   const propertyId=binding.collection==='properties'?binding.id:String(data.propertyId||'');
   if(propertyId!==binding.propertyId)throw new AccessError(403,'File relationship changed');
   const p=propertyId?await member(user,propertyId):null;
+  if(binding.collection==='documents'&&p)requireDocumentAccess(user,data,p);
   if(binding.collection==='admin_notifications'||binding.collection==='service_requests') {
     const requester=data.userUID||data.userId;
     if(user.role!=='admin'&&user.uid!==p?.ownerUID&&user.uid!==requester)throw new AccessError(403,'Request file access required');
@@ -175,10 +185,23 @@ export async function deliverMedia(request:Request,id:string) {
   const snapshot=await files().doc(id).get(),data=snapshot.data();
   if(!data||!['pending','attached'].includes(data.status))throw new ApiError(404,'File not found');
   const bindings=await liveBindings(data,fileUrl(id));
+  // A restricted evidence binding vetoes every less-restricted alias to this object.
+  let authenticatedUser:AuthenticatedUser|undefined;
+  if(data.accessScope===PRE_LEASED_EVIDENCE){
+    const property=(await getDatabase().collection('properties').doc(String(data.propertyId||'')).get()).data();
+    if(!property)throw new AccessError(403,'File access required');
+    authenticatedUser=await mediaUser(request);requireDocumentAccess(authenticatedUser,{accessScope:PRE_LEASED_EVIDENCE},property);
+  }
+  for(const item of bindings.filter(item=>item.binding.collection==='documents')){
+    if(item.data.propertyId!==item.binding.propertyId)throw new AccessError(403,'File relationship changed');
+    const property=(await getDatabase().collection('properties').doc(String(item.data.propertyId)).get()).data();
+    if(!property)throw new AccessError(403,'File access required');
+    if(privateLeaseEvidence(item.data,property)){authenticatedUser??=await mediaUser(request);requireDocumentAccess(authenticatedUser,item.data,property);}
+  }
   // A private reference vetoes public delivery, even when the same asset is also a cover/banner.
   const publicFile=data.privateOnly!==true&&bindings.length>0&&bindings.every(({binding:b,data:p})=>b.collection==='siteSettings'&&b.field==='bannerImages'||b.collection==='properties'&&b.field==='images'&&p.images?.[0]===fileUrl(id)&&published(p));
   if(!publicFile){
-    const user=await mediaUser(request);
+    const user=authenticatedUser||await mediaUser(request);
     if(!data.bindings?.length){if(user.uid!==data.uploadedBy&&user.role!=='admin')throw new AccessError(403,'Upload access required');if(data.propertyId)await member(user,data.propertyId);}
     else {let allowed=false;for(const item of bindings){try{await canReadBinding(user,item.binding,item.data);allowed=true;break;}catch(error){if(!(error instanceof AccessError))throw error;}}if(!allowed)throw new AccessError(403,'File access required');}
   }
@@ -244,6 +267,7 @@ export async function deleteDocumentMedia(id:string,documentId:string,user:Authe
     if(a.status==='deleting'&&Number(a.leaseUntil)>Date.now())throw new ApiError(409,'Document cleanup is already running');
     const property=await tx.get(db.collection('properties').doc(d.propertyId));if(!property.exists)throw new AccessError(403,'Property access required');
     requirePropertyMember(user,filePropertyRelationships(property.data()!));
+    requireDocumentAccess(user,d,property.data()!);
     if(user.role!=='admin'&&user.uid!==d.userId&&user.uid!==property.data()?.ownerUID)throw new AccessError(403,'Document deletion access required');
     if(mediaId(d.fileUrl)!==id||a.propertyId!==d.propertyId)throw new AccessError(403,'File belongs to another property');
     if((a.bindings||[]).some((b:Binding)=>b.collection!=='admin_notifications'&&(b.collection!=='documents'||b.id!==documentId)))throw new ApiError(409,'File has another active record; resolve references before deleting');

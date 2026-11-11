@@ -2,7 +2,7 @@ import 'server-only';
 import { templates } from './group2-email-templates';
 import { templates as propertyTemplates } from './property-email-templates';
 import { formatTemplate, queueEmail, sendEmail, bestEffort,escapeHtml,trustedTemplateHtml } from './property-effects';
-import {persistUserEvent} from './transactional-email';
+import {persistUserEvent,brandedEmail,type TransactionalEmailEvent} from './transactional-email';
 import { stringValue as s, type RecordData } from './contracts';
 
 export function formatIST(date:Date) {
@@ -23,6 +23,12 @@ export function inquiryMail(req:RecordData) {
   const visit=req.requestVisit?`Requested on ${s(req.visitDate)} at ${s(req.visitTime)}`:'Not requested';
   const subject=`📩 New Quick Inquiry: ${s(req.userName)}`;
   return persistUserEvent({eventType:'enquiry.general_created',eventId:`${s(req.id)}:created`,recipients:[{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:s(req.id),templateId:'general-enquiry',subject,title:'New general enquiry',bodyHtml:formatTemplate(templates.GeneralInquiry[0],[s(req.userName),s(req.userEmail),s(req.userPhone),listing,s(req.propertyType),visit,s(req.message),s(req.userEmail)]),bodyText:`New ${listing.toLowerCase()} enquiry from ${s(req.userName)}. Review it in the administrator portal.`,action:{label:'Open enquiry inbox',path:'/admin?tab=notifications'}});
+}
+export function inquiryMailEvent(req:RecordData):TransactionalEmailEvent {
+  const listing=req.inquiryType==='buy'?'Buying':req.inquiryType==='sell'?'Selling':'Renting';
+  const visit=req.requestVisit?`Requested on ${s(req.visitDate)} at ${s(req.visitTime)}`:'Not requested';
+  const subject=`📩 New Quick Inquiry: ${s(req.userName)}`;
+  const event={eventType:'enquiry.general_created',eventId:`${s(req.id)}:created`,recipients:[{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:s(req.id),templateId:'general-enquiry',subject,title:'New general enquiry',bodyHtml:formatTemplate(templates.GeneralInquiry[0],[s(req.userName),s(req.userEmail),s(req.userPhone),listing,s(req.propertyType),visit,s(req.message),s(req.userEmail)]),bodyText:`New ${listing.toLowerCase()} enquiry from ${s(req.userName)}. Review it in the administrator portal.`,action:{label:'Open enquiry inbox',path:'/admin?tab=notifications'}};return {eventType:event.eventType,eventId:event.eventId,recipientRole:'admin',recipientEmail:process.env.ADMIN_EMAIL,recordId:event.recordId,templateId:event.templateId,templateVersion:1,subject:event.subject,...brandedEmail(event.title,event.bodyHtml,event.bodyText,event.action)};
 }
 export function ownerTerminationMail(property:RecordData,owner:RecordData,tenant:RecordData,notice:boolean,terminationDate:string) {
   for(const isTenant of [true,false]) {

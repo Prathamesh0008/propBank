@@ -10,7 +10,7 @@ import { getUser } from './users';
 import { getProperty } from './properties';
 import { createNotification } from './notifications';
 import { bestEffort, escapeHtml } from './property-effects';
-import { persistUserEvent } from './transactional-email';
+import { stageUserEvent,dispatchNotificationIntents } from './transactional-email';
 import {prepareFile,saveMediaRecord,prepareMediaBindings,restoreFileReferences} from './media';
 import {fileFields} from '../file-projection';
 import {discoverFor} from './relationship-links';
@@ -87,11 +87,9 @@ export async function createServiceRequest(request:Request) {
   if(req.propertyId&&!property)return fail('Property not found',404);
   const image=req.image?await prepareFile(s(req.image),user,s(req.propertyId),'service-request'):'';
   const now=new Date();const value=model('ServiceRequest',{...req,id:randomUUID(),userName:profile.name,userEmail:profile.email,userPhone:profile.phoneNumber,serviceName:service.name,image,status:'pending',createdAt:now,updatedAt:now});
-  await saveMediaRecord(COLLECTIONS.serviceRequests,s(value.id),{...storeModel('ServiceRequest',value),history:[{status:'pending',actorUID:user.uid,at:now}]},user,true);
-  await bestEffort(async()=>{
-    await createNotification({...notificationContext(property,profile,s(req.userUID),s(req.propertyId)),relatedId:value.id,type:'service_request',title:'New Service Request',message:`Service request from ${s(profile.name)} for ${s(service.name)}`,serviceType:service.name,serviceComment:req.message,serviceImage:image});
-  });
-  await bestEffort(()=>persistUserEvent({eventType:'maintenance.created',eventId:`${s(value.id)}:created`,recipients:[{uid:s(req.userUID),role:'requester'},...(property?.ownerUID?[{uid:s(property.ownerUID),role:'owner'}]:[]),{role:'admin',email:process.env.ADMIN_EMAIL}],propertyId:s(req.propertyId),recordId:s(value.id),templateId:'maintenance-activity',subject:'Maintenance request created',title:'Maintenance request created',bodyHtml:`<p>${escapeHtml(s(service.name))} was submitted successfully.</p>`,bodyText:`${s(service.name)} was submitted successfully.`,action:{label:'View request',path:req.propertyId?`/manage-property/${s(req.propertyId)}`:'/manage-property'}}));
+  const intentIds:string[]=[];
+  await saveMediaRecord(COLLECTIONS.serviceRequests,s(value.id),{...storeModel('ServiceRequest',value),history:[{status:'pending',actorUID:user.uid,at:now}]},user,true,async tx=>{const intent=await stageUserEvent(tx,{actorUID:user.uid,eventType:'maintenance.created',eventId:`${s(value.id)}:created`,recipients:[{uid:s(req.userUID),role:'requester'},...(property?.ownerUID?[{uid:s(property.ownerUID),role:'owner'}]:[]),{role:'admin',email:process.env.ADMIN_EMAIL}],propertyId:s(req.propertyId),recordId:s(value.id),templateId:'maintenance-activity',subject:'Maintenance request created',title:'Maintenance request created',bodyHtml:`<p>${escapeHtml(s(service.name))} was submitted successfully.</p>`,bodyText:`${s(service.name)} was submitted successfully.`,action:{label:'View request',path:req.propertyId?`/manage-property/${s(req.propertyId)}`:'/manage-property'}});intentIds.push(intent.id);return intent.write;});
+  dispatchNotificationIntents(intentIds);
   return jsonResponse({success:true,message:'Service request created successfully. One of our members will reach out to you soon!',serviceRequest:wireModel('ServiceRequest',value)},201);
 }
 export async function updateServiceRequest(request:Request,id:string) {
@@ -101,7 +99,7 @@ export async function updateServiceRequest(request:Request,id:string) {
   if(req.action&&!['archive','unarchive'].includes(s(req.action)))return fail('Invalid archive action',400);
   if(s(req.adminNotes).length>4000||s(req.resolutionReport).length>8000)return fail('Resolution details exceed the allowed length',400);
   if(req.action&&Object.entries(req).some(([key,value])=>key!=='action'&&value))return fail('Archive changes must be submitted separately',400);
-  const ref=getDatabase().collection(COLLECTIONS.serviceRequests).doc(id);let updated:RecordData={};
+  const intentIds:string[]=[];const ref=getDatabase().collection(COLLECTIONS.serviceRequests).doc(id);let updated:RecordData={};
   const existing=await ref.get();if(!existing.exists)throw new ApiError(404,'Service request not found');
   restoreFileReferences(COLLECTIONS.serviceRequests,id,req,existing.data()!);
   if(req.adminImage)req.adminImage=await prepareFile(s(req.adminImage),user,s(existing.data()?.propertyId),'resolution',s(existing.data()?.adminImage));
@@ -111,12 +109,14 @@ export async function updateServiceRequest(request:Request,id:string) {
     for(const key of ['status','adminNotes','resolutionReport','adminImage'])if(req[key])updates[key]=req[key];
     if(req.action)updates.isArchived=req.action==='archive';
     if(['completed','resolved'].includes(s(req.status)))updates.completedAt=now;
+    if(Object.entries(updates).every(([key,value])=>['updatedAt','completedAt'].includes(key)||JSON.stringify(before[key])===JSON.stringify(value))){updated=before;return;}
     updates.history=[...(Array.isArray(before.history)?before.history:[]),{status:req.status||before.status,action:req.action||'update',actorUID:user.uid,comment:req.adminNotes,at:now}];
     updated={...before,...updates};const bind=await prepareMediaBindings(tx,user,COLLECTIONS.serviceRequests,id,s(before.propertyId),updated,before);
-    bind();tx.update(ref,updates);
+    const property=before.propertyId?(await tx.get(getDatabase().collection(COLLECTIONS.properties).doc(s(before.propertyId)))).data():null;
+    const intent=await stageUserEvent(tx,{actorUID:user.uid,eventType:`maintenance.${s(updated.status)||'updated'}`,eventId:`${id}:${Array.isArray(updated.history)?updated.history.length:0}:${s(updated.status)}`,recipients:[{uid:s(updated.userUID),role:'requester'},...(property?.ownerUID?[{uid:s(property.ownerUID),role:'owner'}]:[]),{uid:user.uid,role:'admin'}],propertyId:s(updated.propertyId),recordId:id,templateId:'maintenance-activity',subject:'Service request updated',title:'Service request updated',bodyHtml:`<p>${escapeHtml(s(updated.serviceName))}: ${escapeHtml(s(updated.status))}</p>${updated.adminNotes?`<p>${escapeHtml(s(updated.adminNotes))}</p>`:''}`,bodyText:`${s(updated.serviceName)}: ${s(updated.status)}${updated.adminNotes?`. ${s(updated.adminNotes)}`:''}`,action:{label:'View request',path:updated.propertyId?`/manage-property/${s(updated.propertyId)}`:'/manage-property'}});intentIds.push(intent.id);intent.write();bind();tx.update(ref,updates);
   });
   const property=updated.propertyId?await getProperty(s(updated.propertyId)):null;
-  await bestEffort(()=>persistUserEvent({eventType:`maintenance.${s(updated.status)||'updated'}`,eventId:`${id}:${Array.isArray(updated.history)?updated.history.length:0}:${s(updated.status)}`,recipients:[{uid:s(updated.userUID),role:'requester'},...(property?.ownerUID?[{uid:s(property.ownerUID),role:'owner'}]:[]),{uid:user.uid,role:'admin'}],propertyId:s(updated.propertyId),recordId:id,templateId:'maintenance-activity',subject:'Service request updated',title:'Service request updated',bodyHtml:`<p>${escapeHtml(s(updated.serviceName))}: ${escapeHtml(s(updated.status))}</p>${updated.adminNotes?`<p>${escapeHtml(s(updated.adminNotes))}</p>`:''}`,bodyText:`${s(updated.serviceName)}: ${s(updated.status)}${updated.adminNotes?`. ${s(updated.adminNotes)}`:''}`,action:{label:'View request',path:updated.propertyId?`/manage-property/${s(updated.propertyId)}`:'/manage-property'}}));
+  dispatchNotificationIntents(intentIds);
   return jsonResponse({success:true,message:'Service request updated successfully'});
 }
 

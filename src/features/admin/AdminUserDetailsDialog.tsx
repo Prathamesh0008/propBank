@@ -3,7 +3,7 @@ import styles from "./AdminUserDetailsDialog.module.css";
 
 import { apiFetch } from '@/lib/api-client';
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect,useRef } from "react";
 import {
     Dialog,
     DialogContent,
@@ -29,29 +29,12 @@ const AdminUserDetailsDialog: React.FC<AdminUserDetailsDialogProps> = ({
 }) => {
     const [inspectionReports, setInspectionReports] = useState<any[]>([]);
     const [loadingReports, setLoadingReports] = useState(false);
-    const [account,setAccount]=useState<any>(user);
+    const [account,setAccount]=useState<any>(user);const generation=useRef(0);const [relationshipLoading,setRelationshipLoading]=useState(false),[relationshipError,setRelationshipError]=useState('');
+    async function moreRelationships(){if(!detail.relationships?.nextCursor||relationshipLoading)return;const current=generation.current;setRelationshipLoading(true);setRelationshipError('');try{const response=await apiFetch(`${API_BASE_URL}/users/${user.uid}?relationshipsOnly=true&relationshipCursor=${encodeURIComponent(detail.relationships.nextCursor)}`),data=await response.json();if(current!==generation.current)return;if(!response.ok)throw Error('Relationship page unavailable');setAccount((old:any)=>({...old,relationships:{...data.user.relationships,ownedPropertyIds:[...new Set([...(old.relationships?.ownedPropertyIds||[]),...data.user.relationships.ownedPropertyIds])],rentedPropertyIds:[...new Set([...(old.relationships?.rentedPropertyIds||[]),...data.user.relationships.rentedPropertyIds])]}}));}catch{if(current!==generation.current)return;setRelationshipError('Could not load further relationships');}finally{if(current===generation.current)setRelationshipLoading(false);}}
 
-    useEffect(() => {
-        if (isOpen && user?.uid) {
-            fetchInspectionReports();
-            void apiFetch(`${API_BASE_URL}/users/${user.uid}`).then(response=>response.json()).then(data=>{if(data.user)setAccount(data.user);}).catch(()=>setAccount(user));
-        }
-    }, [isOpen, user?.uid]);
-
-    const fetchInspectionReports = async () => {
-        setLoadingReports(true);
-        try {
-            const response = await apiFetch(`${API_BASE_URL}/inspection-reports/user/${user.uid}`);
-            const data = await response.json();
-            if (data.success) {
-                setInspectionReports(data.reports || []);
-            }
-        } catch (error) {
-            console.error("Failed to fetch inspection reports:", error);
-        } finally {
-            setLoadingReports(false);
-        }
-    };
+    useEffect(()=>{const current=++generation.current,controller=new AbortController();setAccount(user);setInspectionReports([]);setRelationshipLoading(false);setRelationshipError('');if(!isOpen||!user?.uid)return()=>{generation.current++;controller.abort();};setLoadingReports(true);
+      void Promise.all([apiFetch(`${API_BASE_URL}/inspection-reports/user/${encodeURIComponent(user.uid)}`,{signal:controller.signal}).then(async response=>{const data=await response.json();if(response.ok&&current===generation.current)setInspectionReports(data.reports||[]);}),apiFetch(`${API_BASE_URL}/users/${encodeURIComponent(user.uid)}`,{signal:controller.signal}).then(async response=>{const data=await response.json();if(response.ok&&current===generation.current&&data.user)setAccount(data.user);})]).catch(()=>{}).finally(()=>{if(current===generation.current)setLoadingReports(false);});return()=>{generation.current++;controller.abort();};
+    },[isOpen,user?.uid]);
 
     if (!user) return null;
     const detail=account||user;
@@ -117,6 +100,7 @@ const AdminUserDetailsDialog: React.FC<AdminUserDetailsDialogProps> = ({
                             <div><span>Owned properties</span><strong>{detail.relationships?.ownedPropertyIds?.length||0}</strong></div>
                             <div><span>Rented properties</span><strong>{detail.relationships?.rentedPropertyIds?.length||0}</strong></div>
                         </div>
+                        {detail.relationships?.nextCursor&&<p>Relationship counts cover loaded records. <button type="button" disabled={relationshipLoading} onClick={()=>void moreRelationships()}>Load more relationships</button></p>}{relationshipError&&<p role="alert">{relationshipError}</p>}
                         <div className={styles.activity}><h3>Authentication activity</h3>{detail.authActivity?.length?detail.authActivity.map((event:any)=><div key={event.id}><strong>{String(event.eventType).replaceAll('_',' ')}</strong><span>{event.createdAt?new Date(event.createdAt).toLocaleString():''}</span></div>):<p>No server-recorded activity.</p>}</div>
 
                         {/* Inspection Reports Section */}

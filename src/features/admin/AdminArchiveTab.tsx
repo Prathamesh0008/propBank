@@ -21,6 +21,7 @@ import {
 import { AdminNotification } from "./AdminTypes";
 
 interface AdminArchiveTabProps {
+  onDelete?:(id:string)=>Promise<void>;
   loading: boolean;
   notifications: AdminNotification[];
   updating: string | null;
@@ -31,6 +32,7 @@ interface AdminArchiveTabProps {
 }
 
 export default function AdminArchiveTab({
+  onDelete,
   loading,
   notifications,
   updating,
@@ -291,7 +293,7 @@ export default function AdminArchiveTab({
                         ) : (
                           <Archive className="h-3 w-3 mr-1" />
                         )}
-                        Unarchive
+                          Mark unread / Restore
                       </Button>
                       {notification.propertyId && (
                         <Button
@@ -309,7 +311,8 @@ export default function AdminArchiveTab({
                       )}
                     </div>
 
-                    {/* Archive History */}
+                      {onDelete&&<Button type="button" variant="outline" disabled={updating===notification.id} onClick={()=>void onDelete(notification.id)}>Delete notification</Button>}
+                      {/* Archive History */}
                     {notification.archiveHistory && notification.archiveHistory.length > 0 && (
                       <div className="mt-4 pt-3 border-t border-gray-100">
                         <p className="text-xs font-medium text-muted-foreground mb-2">Status History</p>

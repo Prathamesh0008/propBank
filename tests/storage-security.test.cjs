@@ -60,7 +60,7 @@ test('failed document and service image uploads never create misleading business
  assert.equal(Object.keys(app.state.documents||{}).length,0);assert.equal(Object.keys(app.state.service_requests||{}).length,0);assert.ok(Object.values(app.state.storage_objects).every(v=>v.status==='cleanup_pending'));
 });
 test('property base64 upload failure aborts the property instead of silently skipping photos',async()=>{
- const app=setup();const response=await route(app,'properties').POST(request('/properties','owner','POST',{ownerUID:'owner',propertyTitle:'No silent loss',propertyType:'residential',configuration:'2 BHK',listingType:'rent',monthlyRent:'70000',location:'Test',images:[image,'bad']}));assert.equal(response.status,502);assert.equal(Object.keys(app.state.properties).length,2);assert.ok(!app.writes.some(w=>w.kind==='storage'));
+ const app=setup();const response=await route(app,'properties').POST(request('/properties','owner','POST',{ownerUID:'owner',propertyTitle:'No silent loss',propertyType:'residential',configuration:'2 BHK',listingType:'rent',monthlyRent:'70000',securityDeposit:'0',location:'Test',images:[image,'bad']}));assert.equal(response.status,502);assert.equal(Object.keys(app.state.properties).length,2);assert.ok(!app.writes.some(w=>w.kind==='storage'));
 });
 test('document deletion failure remains visible/retryable; pending files cannot be downloaded',async()=>{
  const app=setup(),doc=await document(app),api=route(app,'documents/[id]');app.env.TEST_R2_DELETE_FAIL='1';

@@ -2,7 +2,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict');
 const {isolated,users,properties,request,route,context}=require('./fixtures/native-server.cjs');
 const setup=()=>isolated({users:{...users,agent:{...users.other,uid:'agent',role:'agent'}},properties:{P:{...properties.P,tenants:[],rentalStatus:'available'}}});
 async function submit(app,extra={}) {
- const response=await route(app,'properties').POST(request('/properties','owner','POST',{propertyTitle:'Review Home',propertyType:'residential',structure:'Apartment',configuration:'2 BHK',location:'Isolated address',ownerUID:'owner',listingType:'rent',monthlyRent:'70000',...extra}));
+ const response=await route(app,'properties').POST(request('/properties','owner','POST',{propertyTitle:'Review Home',propertyType:'residential',structure:'Apartment',configuration:'2 BHK',location:'Isolated address',ownerUID:'owner',listingType:'rent',securityDeposit:'0',monthlyRent:'70000',...extra}));
  assert.equal(response.status,200,await response.clone().text());return (await response.json()).property;
 }
 const patch=(app,id,uid,body)=>route(app,'properties/[id]').PATCH(request('/properties/'+id,uid,'PATCH',body),context(id));
@@ -133,7 +133,7 @@ test('provider failure preserves saved property and admin can retry without dupl
 
 test('outbox write failure rolls back property and sends no notifications',async()=>{
  const app=setup();app.env.TEST_DB_WRITE_COLLECTION='email_deliveries';
- const response=await route(app,'properties').POST(request('/properties','owner','POST',{propertyTitle:'Rollback Home',propertyType:'residential',structure:'Apartment',configuration:'2 BHK',location:'Address',ownerUID:'owner',listingType:'sell'}));
+ const response=await route(app,'properties').POST(request('/properties','owner','POST',{propertyTitle:'Rollback Home',propertyType:'residential',structure:'Apartment',configuration:'2 BHK',location:'Address',ownerUID:'owner',listingType:'sell',sellingPrice:'5000000'}));
  assert.equal(response.status,503);assert.ok(!Object.values(app.state.properties).some(p=>p.title==='Rollback Home'));
  await app.flush();assert.equal(app.emails.length,0);assert.equal(Object.keys(app.state.property_submissions||{}).length,0);
 });
@@ -169,8 +169,8 @@ test('submission distinguishes malformed JSON from invalid property fields and a
  const app=setup();
  for(const [body,message] of [
   ['{"propertyTitle":','Invalid JSON request body'],
-  [JSON.stringify({propertyTitle:'Invalid day',propertyType:'residential',structure:'Apartment',configuration:'2 BHK',location:'Address',ownerUID:'owner',listingType:'rent',paymentDueDate:'32'}),'Invalid property data: Invalid payment due day'],
-  [JSON.stringify({propertyTitle:'Invalid type',propertyType:'residential',structure:'Apartment',configuration:'2 BHK',location:'Address',ownerUID:'owner',listingType:'rent',monthlyRent:123}),'Invalid property data:'],
+  [JSON.stringify({propertyTitle:'Invalid day',propertyType:'residential',structure:'Apartment',configuration:'2 BHK',location:'Address',ownerUID:'owner',listingType:'rent',monthlyRent:'30000',securityDeposit:'0',paymentDueDate:'32'}),'Invalid property data: Invalid payment due day'],
+  [JSON.stringify({propertyTitle:'Invalid type',propertyType:'residential',structure:'Apartment',configuration:'2 BHK',location:'Address',ownerUID:'owner',listingType:'rent',securityDeposit:'0',monthlyRent:'not-a-number'}),'Invalid property data:'],
  ]){
   const response=await route(app,'properties').POST(request('/properties','owner','POST',body));
   assert.equal(response.status,400);assert.match(response.headers.get('content-type'),/application\/json/);

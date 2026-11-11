@@ -40,7 +40,10 @@ const VisitPlanner = () => {
     staleTime:60_000,
     retry:false,
   });
-  const properties=propertyOptions.data?.properties||[];
+  const [extraProperties,setExtraProperties]=useState<Property[]>([]);const [propertyCursor,setPropertyCursor]=useState<string|null|undefined>(undefined);const [loadingPropertyPage,setLoadingPropertyPage]=useState(false);
+  const properties=[...new Map([...(propertyOptions.data?.properties||[]),...extraProperties].map(p=>[p.id,p])).values()];
+  const nextPropertyCursor=propertyCursor===undefined?propertyOptions.data?.nextCursor:propertyCursor;
+  async function morePropertyOptions(){if(!nextPropertyCursor||loadingPropertyPage)return;setLoadingPropertyPage(true);try{const page=await propertyService.getAllPropertiesWithSettings(nextPropertyCursor);setExtraProperties(old=>[...old,...page.properties]);setPropertyCursor(page.nextCursor||null);}catch{setLoadError('Could not load additional property options');}finally{setLoadingPropertyPage(false);}}
   const propertiesLoading=isAddingVisit&&propertyOptions.isPending;
   const propertiesError=propertyOptions.error?'Properties could not be loaded. You can still schedule a general visit.':'';
   const requestRef=useRef<AbortController|null>(null);
@@ -392,9 +395,10 @@ const VisitPlanner = () => {
                         <option value="">General visit — no property selected</option>
                         {properties.filter(property=>`${property.title} ${property.location||property.address||''} ${property.propertyType||''}`.toLowerCase().includes(propertySearch.trim().toLowerCase())).map(property=><option key={property.id} value={property.id}>{property.title} · {property.location||property.address||'Location unavailable'}{property.propertyType?` · ${property.propertyType}`:''}</option>)}
                       </select>
+                      {nextPropertyCursor&&<button type="button" disabled={loadingPropertyPage} onClick={()=>void morePropertyOptions()}>Load more eligible property options</button>}
                       {propertiesLoading&&<p className={styles.fieldHelp}>Loading eligible properties…</p>}
                       {propertiesError&&<p className={styles.fieldNotice}>{propertiesError}</p>}
-                      {!propertiesLoading&&!propertiesError&&properties.length===0&&<p className={styles.fieldHelp}>No eligible properties are currently listed. You can schedule a general visit.</p>}
+                      {!propertiesLoading&&!propertiesError&&properties.length===0&&<p className={styles.fieldHelp}>{nextPropertyCursor?'No eligible properties in the loaded page yet.':'No eligible properties are currently listed.'} You can schedule a general visit.</p>}
                       {editingVisit&&<p className={styles.fieldHelp}>The linked property stays unchanged when a visit is rescheduled.</p>}
                       {editingVisit&&<p className={styles.fieldHelp}>To prevent a schedule update being applied to the wrong listing, create a new visit if the property changes.</p>}
                     </div>

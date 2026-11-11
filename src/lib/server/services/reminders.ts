@@ -7,7 +7,7 @@ import { isRecord, stringValue, type RecordData } from './contracts';
 import { escapeHtml } from './property-effects';
 import { formatIST } from './group2-mail';
 import { brandedEmail, processTransactionalEmail, type TransactionalEmailEvent } from './transactional-email';
-import {rentAmountForDate} from '@/lib/rent-schedule';
+import {rentForBillingPeriod} from '@/lib/rent-resolution';
 
 export function requireCron(request:Request) {
   const secret=process.env.CRON_SECRET;
@@ -110,14 +110,17 @@ export function propertyReminderEvents(property:RecordData,now:Date):ReminderCan
   const tenants=(Array.isArray(property.tenants)?property.tenants:[]).filter(isRecord).filter(tenant=>tenant.isActive===true&&stringValue(tenant.userUID));
   const events:ReminderCandidate[]=[];
   for(const tenant of tenants){
-    const tenancyId=stringValue(tenant.id||tenant.userUID),amount=rentAmountForDate({...property,...tenant,rentSchedule:Array.isArray(tenant.rentSchedule)?tenant.rentSchedule:property.rentSchedule},local.date),dueDay=Number(tenant.paymentDueDate||property.paymentDueDate);
-    const dueDate=Number.isInteger(dueDay)&&dueDay>=1&&dueDay<=31?isoDate(local.year,local.month,Math.min(dueDay,new Date(Date.UTC(local.year,local.month,0)).getUTCDate())):'';
-    const rentOffset=dueDate?calendarDays(local.date,dueDate):-1;
+    const tenancyId=stringValue(tenant.id||tenant.userUID);
     const expiryDate=dateOnly(tenant.leaseEndDate||property.agreementEndDate),expiryOffset=expiryDate?calendarDays(local.date,expiryDate):-1;
     const agreementVersion=stringValue(tenant.agreementVersion||property.agreementVersion||property.tenancyRevision||expiryDate);
     const recipients:Array<{recipientUID:string;recipientRole:'owner'|'tenant'}>=[{recipientUID:stringValue(tenant.userUID),recipientRole:'tenant'}];
     if(property.ownerUID)recipients.push({recipientUID:stringValue(property.ownerUID),recipientRole:'owner'});
-    if(!paid&&amount&&[7,1,0].includes(rentOffset))for(const recipient of recipients)events.push({kind:'rent_due',...recipient,tenancyId,period,amount,dueDate,offset:rentOffset,agreementVersion});
+    const nextPeriod=new Date(Date.UTC(local.year,local.month,1)).toISOString().slice(0,7);
+    for(const rentPeriod of [period,nextPeriod]){
+      const resolved=rentForBillingPeriod(property,rentPeriod,tenant),dueDate=resolved.dueDate,amount=resolved.amount;
+      const rentOffset=dueDate?calendarDays(local.date,dueDate):-1,paid=isRecord(ledger[rentPeriod])&&ledger[rentPeriod].status==='paid';
+      if(!paid&&amount&&[7,1,0].includes(rentOffset))for(const recipient of recipients)events.push({kind:'rent_due',...recipient,tenancyId,period:rentPeriod,amount,dueDate,offset:rentOffset,agreementVersion});
+    }
     if(expiryDate&&[30,15,7].includes(expiryOffset))for(const recipient of recipients)events.push({kind:'agreement_expiry',...recipient,tenancyId,period:expiryDate.slice(0,7),amount:'',dueDate:expiryDate,offset:expiryOffset,agreementVersion});
   }
   return events;

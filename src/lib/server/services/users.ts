@@ -1,3 +1,5 @@
+import {reconcileVerifiedEmail} from './verified-email';
+import {documentPage,pageOptions,memberPropertyPage} from '../query-pages';
 import 'server-only';
 import {randomUUID} from 'node:crypto';
 import { AccessError, completedProfile, requireUser, verifyFirebaseIdentity } from '../auth';
@@ -6,7 +8,7 @@ import { getFirebaseAdminAuth } from '../firebase-admin';
 import { ApiError, dependencyDiagnostic, jsonResponse } from '../http';
 import { canonicalMobile, writeUserWithMobile } from '../mobile-registry';
 import {indianMobile} from '@/lib/indian-phone';
-import { persistUserEvent } from './transactional-email';
+import {stageUserEvent,dispatchNotificationIntents,type UserEvent} from './transactional-email';
 import { authMetadata, recordAuthActivity } from './auth-activity';
 import { model, storeModel, stringValue, wireModel, wireValue, type RecordData, isRecord } from './contracts';
 import { discoverFor, verifiedMobile, validContact, throttleRelationshipAction } from './relationship-links';
@@ -86,12 +88,13 @@ function checkRole(admin:boolean,requested:unknown,existing:RecordData|null,init
 export async function listUsers(request:Request) {
   const identity = await userIdentity(request);
   if (!identity.admin) throw new AccessError(403,'Administrator access required');
-  const docs = await userCollection().get();
+  const params=new URL(request.url).searchParams,{size,cursor}=pageOptions(params);const role=params.get('role')||'';if(role&&!['admin','agent','individual'].includes(role))throw new ApiError(400,'Invalid user role filter');const page=await documentPage(role?userCollection().where('role','==',role):userCollection(),size,cursor);const docs={docs:page.docs};
   const users: RecordData[] = [];
-  for (const doc of docs.docs) {
-    try { const user=model('User',doc.data()); if(!user.uid) user.uid=doc.id;let authentication:RecordData={};try{authentication=authMetadata(await getFirebaseAdminAuth().getUser(doc.id));}catch{authentication={accountStatus:'missing_auth_account',providerIds:[],emailVerified:false};}users.push({...wireModel('User',user),...authentication}); } catch { /* Skip invalid documents. */ }
-  }
-  return jsonResponse({success:true,message:'Users fetched successfully',...(users.length?{data:users}:{})});
+  for(let offset=0;offset<docs.docs.length;offset+=5){const batch=await Promise.all(docs.docs.slice(offset,offset+5).map(async doc=>{
+    try{const value=model('User',doc.data());value.uid=doc.id;let authentication:RecordData;try{authentication=authMetadata(await getFirebaseAdminAuth().getUser(doc.id));}catch(error){authentication={accountStatus:(error as {code?:string}).code==='auth/user-not-found'?'missing_auth_account':'auth_status_unavailable',providerIds:[],emailVerified:false};}
+    const wire=wireModel('User',value),summary=Object.fromEntries(['uid','name','email','phoneNumber','role','isActive','photoURL','createdAt','updatedAt'].map(key=>[key,wire[key]]));return {...summary,...authentication};}catch{return null;}
+  }));for(const value of batch)if(value)users.push(value);}
+  return jsonResponse({success:true,message:'Users fetched successfully',data:users,nextCursor:page.nextCursor,coverageComplete:!page.nextCursor});
 }
 export async function searchUsersForAdmin(request:Request) {
   const caller=await requireUser(request);
@@ -99,18 +102,20 @@ export async function searchUsersForAdmin(request:Request) {
   const query=(new URL(request.url).searchParams.get('q')||'').trim().toLowerCase();
   if(query.length<2)return fail('Enter at least 2 characters',400);
   if(query.length>100)return fail('Search is too long',400);
-  const docs=await userCollection().get();
+  const params=new URL(request.url).searchParams,{size,cursor}=pageOptions(params),mode=params.get('mode')||'substring';if(!['substring','exact-email','exact-phone','exact-uid'].includes(mode))throw new ApiError(400,'Unsupported user search mode');
+  const base=mode==='exact-email'?userCollection().where('email','==',query):mode==='exact-phone'?userCollection().where('phoneNumber','==',params.get('q')!.trim()):mode==='exact-uid'?userCollection().where('__name__','==',params.get('q')!.trim()):userCollection();
+  const page=await documentPage(base,size,cursor),docs={docs:page.docs};
   const matches:RecordData[]=[];
   for(const doc of docs.docs) {
     const raw=doc.data();
     const fields=[stringValue(raw.name),stringValue(raw.email),stringValue(raw.phoneNumber)].map(value=>value.toLowerCase());
-    if(!fields.some(value=>value.includes(query)))continue;
+    if(mode==='substring'&&!fields.some(value=>value.includes(query)))continue;
     let authActive=false;
     try { authActive=!(await getFirebaseAdminAuth().getUser(doc.id)).disabled; } catch { authActive=false; }
     matches.push({uid:doc.id,name:raw.name,email:raw.email,phoneNumber:raw.phoneNumber,role:raw.role,isActive:raw.isActive!==false&&authActive});
-    if(matches.length===20)break;
+
   }
-  return jsonResponse({success:true,users:matches});
+  return jsonResponse({success:true,users:matches,nextCursor:page.nextCursor,coverageComplete:!page.nextCursor,searchMode:mode,candidatesInspected:page.examined});
 }
 export async function readUser(request:Request,uid:string) {
   const identity=await userIdentity(request);
@@ -120,7 +125,7 @@ export async function readUser(request:Request,uid:string) {
   // Role-only consumers still pass fresh identity/profile checks, without loading
   // the administrator's entire property relationship and activity dossier.
   if(new URL(request.url).searchParams.get('summary')==='true')return success('User fetched successfully',user);
-  if(identity.admin){let authentication:RecordData={};try{authentication=authMetadata(await getFirebaseAdminAuth().getUser(uid));}catch{authentication={accountStatus:'missing_auth_account',providerIds:[],emailVerified:false};}const properties=await getDatabase().collection(COLLECTIONS.properties).get(),owned:string[]=[],rented:string[]=[];for(const doc of properties.docs){const property=doc.data();if(property.ownerUID===uid)owned.push(doc.id);if(Array.isArray(property.tenants)&&property.tenants.some((tenant:RecordData)=>tenant.isActive===true&&tenant.userUID===uid))rented.push(doc.id);}const activity=await getDatabase().collection('auth_activity').where('targetUID','==',uid).get();const authActivity=activity.docs.map(doc=>wireValue({...doc.data(),id:doc.id})).sort((a,b)=>+new Date((b as RecordData).createdAt as string)-+new Date((a as RecordData).createdAt as string)).slice(0,100);return jsonResponse({success:true,message:'User fetched successfully',user:{...wireModel('User',user),...authentication,relationships:{ownedPropertyIds:owned,rentedPropertyIds:rented},authActivity}});}
+  if(identity.admin){let authentication:RecordData={};try{authentication=authMetadata(await getFirebaseAdminAuth().getUser(uid));}catch{authentication={accountStatus:'missing_auth_account',providerIds:[],emailVerified:false};}const target={...identity,uid,email:'',phoneNumber:'',role:'individual' as const,token:{...identity.token,email:'',email_verified:false}},members=await memberPropertyPage(target,new URL(request.url).searchParams.get('relationshipCursor')||''),owned=members.properties.filter(p=>p.ownerUID===uid).map(p=>String(p.id)),rented=members.properties.filter(p=>p.ownerUID!==uid).map(p=>String(p.id));if(new URL(request.url).searchParams.get('relationshipsOnly')==='true')return jsonResponse({success:true,user:{relationships:{ownedPropertyIds:owned,rentedPropertyIds:rented,nextCursor:members.nextCursor,coverageComplete:members.coverageComplete}}});const activity=await getDatabase().collection('auth_activity').where('targetUID','==',uid).orderBy('createdAt','desc').limit(100).get();const authActivity=activity.docs.map(doc=>wireValue({...doc.data(),id:doc.id})).sort((a,b)=>+new Date((b as RecordData).createdAt as string)-+new Date((a as RecordData).createdAt as string)).slice(0,100);return jsonResponse({success:true,message:'User fetched successfully',user:{...wireModel('User',user),...authentication,relationships:{ownedPropertyIds:owned,rentedPropertyIds:rented,nextCursor:members.nextCursor,coverageComplete:members.coverageComplete},authActivity}});}
   return success('User fetched successfully',user);
 }
 export async function searchUser(request:Request) {
@@ -144,7 +149,9 @@ export async function registrationProfile(request:Request){
   const reference=randomUUID(),started=Date.now();let stage='firebase_identity',identityMs=0;
   try{
     const token=await verifyFirebaseIdentity(request);identityMs=Date.now()-started;stage='firestore_profile';
-    const existing=await getUser(token.uid),profileMs=Date.now()-started-identityMs;
+    let existing=await getUser(token.uid);
+    if(existing&&token.email_verified===true&&String(existing.email||'').trim().toLowerCase()!==String(token.email||'').trim().toLowerCase()) {await reconcileVerifiedEmail(request);existing=await getUser(token.uid);}
+    const profileMs=Date.now()-started-identityMs;
     if(existing?.isActive===false)throw new AccessError(403,'Active user profile required','ACCOUNT_DISABLED');
     const profileExists=!!existing,profileComplete=completedProfile(existing||undefined,token);
     if(Date.now()-started>2000)console.warn('auth_profile_slow',JSON.stringify({reference,identityMs,profileMs,totalMs:Date.now()-started}));
@@ -189,11 +196,12 @@ export async function createUser(request:Request,authRegistration=false) {
     if (existing.phoneNumber && existing.role) { user.phoneNumber=phone; user.role=existing.role; }
     else if (existing.role && req.role==='individual') user.role=existing.role;
   }
-  await writeUserWithMobile(uid,{...user,...storeModel('User',user)}, {createOnly:!existing,expectedPhone:existing?.phoneNumber});
+  const intentIds:string[]=[],events:UserEvent[]=[];if(authRegistration&&!existing)events.push({eventType:'user.registration_welcome',eventId:`user:${uid}:registered`,recipients:[{uid,role:'user'}],recordId:uid,templateId:'registration-welcome',subject:'Welcome to PropBank',title:'Welcome to PropBank',bodyHtml:'<p>Your PropBank account is ready. You can now manage property and rental activity from your secure account.</p>',bodyText:'Your PropBank account is ready. You can now manage property and rental activity from your secure account.',action:{label:'Open your account',path:'/manage-property'}});if(authRegistration&&!existing&&user.role==='agent')events.push({eventType:'agent.registration',eventId:`agent:${uid}:registered`,recipients:[{uid,role:'agent'},{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:uid,templateId:'agent-registration',subject:'Real estate agent account registered',title:'Agent account registered',bodyHtml:'<p>A Real Estate Agent account was registered with PropBank. Email verification is required before protected access.</p>',bodyText:'A Real Estate Agent account was registered with PropBank. Email verification is required before protected access.',action:{label:'Open PropBank',path:'/manage-property'}});
+  await writeUserWithMobile(uid,{...user,...storeModel('User',user)}, {createOnly:!existing,expectedPhone:existing?.phoneNumber,stage:async tx=>{const staged=[];for(const event of events)staged.push(await stageUserEvent(tx,event));intentIds.push(...staged.map(i=>i.id));return()=>staged.forEach(i=>i.write());}});dispatchNotificationIntents(intentIds);
   if(uid===identity.token.uid && identity.token.email_verified===true)await discoverFor({uid,token:identity.token,role:user.role as 'admin'|'agent'|'individual',email:stringValue(user.email),phoneNumber:''});
   if(authRegistration&&!existing)await recordAuthActivity({eventType:'registration',actorUID:uid,targetUID:uid,context:{providerIds:metadata.providerIds||[],emailVerified:metadata.emailVerified===true,source:'firebase'}}).catch(()=>null);
-  if(authRegistration&&!existing)await persistUserEvent({eventType:'user.registration_welcome',eventId:`user:${uid}:registered`,recipients:[{uid,role:'user'}],recordId:uid,templateId:'registration-welcome',subject:'Welcome to PropBank',title:'Welcome to PropBank',bodyHtml:'<p>Your PropBank account is ready. You can now manage property and rental activity from your secure account.</p>',bodyText:'Your PropBank account is ready. You can now manage property and rental activity from your secure account.',action:{label:'Open your account',path:'/manage-property'}}).catch(()=>null);
-  if(authRegistration&&!existing&&user.role==='agent')await persistUserEvent({eventType:'agent.registration',eventId:`agent:${uid}:registered`,recipients:[{uid,role:'agent'},{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:uid,templateId:'agent-registration',subject:'Real estate agent account registered',title:'Agent account registered',bodyHtml:'<p>A Real Estate Agent account was registered with PropBank. Email verification is required before protected access.</p>',bodyText:'A Real Estate Agent account was registered with PropBank. Email verification is required before protected access.',action:{label:'Open PropBank',path:'/manage-property'}}).catch(()=>null);
+
+
   return success(authRegistration?(existing?'User updated successfully':'User created successfully'):'User created/updated successfully',user,authRegistration?200:201);
 }
 export async function updateUser(request:Request,uid:string) {
@@ -238,19 +246,11 @@ export async function updateUser(request:Request,uid:string) {
   if('isActive' in req){if(!identity.admin)throw new AccessError(403,'Administrator access required to change account status');existing.isActive=req.isActive;}
   existing.updatedAt=new Date();
   existing.phoneNumber=canonicalMobile(existing.phoneNumber);
-  await writeUserWithMobile(uid,{...existing,...storeModel('User',existing)}, {expectedPhone});
+  const ids:string[]=[];await writeUserWithMobile(uid,{...existing,...storeModel('User',existing)}, {expectedPhone,stage:async tx=>{const event=await stageUserEvent(tx,{eventType:phoneChanged?'user.mobile_number_changed':'user.profile_changed',eventId:`${uid}:${(existing.updatedAt as Date).getTime()}`,recipients:[{uid,role:'user'},{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:uid,templateId:'account-security',subject:'PropBank profile updated',bodyHtml:'<p>Your account profile was updated.</p>',bodyText:'Your account profile was updated.'});ids.push(event.id);return event.write;}});dispatchNotificationIntents(ids);
   if('isActive' in req)await getFirebaseAdminAuth().updateUser(uid,{disabled:req.isActive===false});
   if(previousRole!==existing.role)await recordAuthActivity({eventType:'role_changed',actorUID:identity.token.uid,targetUID:uid,context:{previousRole,role:existing.role,source:'admin'}}).catch(()=>null);
   if(previousStatus!==(existing.isActive!==false))await recordAuthActivity({eventType:'account_status_changed',actorUID:identity.token.uid,targetUID:uid,context:{previousStatus:previousStatus?'active':'inactive',status:existing.isActive===false?'inactive':'active',source:'admin'}}).catch(()=>null);
   if(['name','photoURL','email'].some(key=>req[key]))await recordAuthActivity({eventType:'profile_changed',actorUID:identity.token.uid,targetUID:uid,context:{source:identity.admin?'admin':'self'}}).catch(()=>null);
   if(uid===identity.token.uid)await discoverFor({uid,token:identity.token,role:existing.role as 'admin'|'agent'|'individual',email:stringValue(existing.email),phoneNumber:''});
-  if(phoneChanged){
-    const phone=normalizePhone(stringValue(req.phoneNumber)),eventId=`user:${uid}:phone:${phone}`;
-    const audit=getDatabase().collection(COLLECTIONS.adminNotifications).doc(eventId.replaceAll(':','-'));
-    await Promise.allSettled([
-      persistUserEvent({eventType:'user.mobile_number_changed',eventId,recipients:[{uid,role:'user'},{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:uid,templateId:'mobile-number-changed',subject:'Your PropBank mobile number changed',title:'Mobile number updated',bodyHtml:'<p>The verified mobile number on this PropBank account was changed.</p><p>If you did not make this change, review your account immediately.</p>',bodyText:'The verified mobile number on this PropBank account was changed. If you did not make this change, review your account immediately.',action:{label:'Review account',path:'/manage-property'}}),
-      audit.set({id:audit.id,type:'security_mobile_changed',title:'Verified mobile number changed',message:'A user changed their verified mobile number.',userId:uid,timestamp:new Date(),createdAt:new Date(),updatedAt:new Date(),isRead:false,priority:'high'}),
-    ]);
-  }
   return success('User updated successfully',existing);
 }
