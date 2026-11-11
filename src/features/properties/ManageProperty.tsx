@@ -174,7 +174,7 @@ const ManageProperty = () => {
   const queryClient = useQueryClient();
   
   const [user, setUser] = useState<User | null>(null);
-  const { data: propertiesData, isLoading: loading, error: propertyError } = useUserProperties(user);
+  const { data: propertiesData, isLoading: loading, error: propertyError ,hasNextPage,fetchNextPage,isFetchingNextPage } = useUserProperties(user);
 
   const ownedProperties = useMemo(() => propertiesData?.owned || [], [propertiesData?.owned]);
   const tenantProperties = useMemo(() => propertiesData?.tenant || [], [propertiesData?.tenant]);
@@ -621,7 +621,7 @@ const ManageProperty = () => {
 
 
   return (
-    <main className={workspaceStyles.workspace}>
+    <main className={workspaceStyles.workspace}>{hasNextPage&&<p role="status">Results cover loaded records; older memberships may require further pages. <Button variant="outline" disabled={isFetchingNextPage} onClick={()=>void fetchNextPage()}>Load more properties</Button></p>}
       <>
         <title>Manage Property — PropBank</title>
         <meta name="description" content="Manage your property listings, update property details, unit numbers, and building information." />

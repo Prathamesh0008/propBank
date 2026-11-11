@@ -5,7 +5,7 @@ import { OwnerVerificationStatus } from "@/features/admin/OwnerVerification";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
-import { useParams, Link } from "@/lib/navigation";
+import { useParams,useSearchParams, Link } from "@/lib/navigation";
 import { workflowRequest } from "@/lib/client-workflows";
 import {
   todayIST,
@@ -26,15 +26,16 @@ export interface HubResponse {
   actions: ProductRecord[];
   metrics: Record<string, number>;
   pipeline: ProductRecord[];
-  truncated: boolean;
+  truncated: boolean;nextCursor?:string|null;activityPages?:Record<string,string|null>;activityPageActive?:boolean;negotiationPages?:Record<string,string|null>;
 }
-export function useProductHub(propertyId?: string) {
+export function useProductHub(propertyId?: string, billingMonth?: string,cursor='') {
+  const [params]=useSearchParams(),activityCollection=params.get('activityCollection')||'',activityCursor=params.get('activityCursor')||'',negotiationRole=params.get('negotiationRole')||'',negotiationCursor=params.get('negotiationCursor')||'';
   const { user, loading } = useAuth();
   return useQuery({
-    queryKey: ["productHub", user?.uid, propertyId || "portfolio"],
+    queryKey: ["productHub", user?.uid, propertyId || "portfolio", billingMonth||"",cursor,activityCollection,activityCursor,negotiationRole,negotiationCursor],
     queryFn: () =>
       workflowRequest<HubResponse>(
-        `property-hub${propertyId ? "?propertyId=" + encodeURIComponent(propertyId) : ""}`,
+        `property-hub${propertyId ? "?propertyId=" + encodeURIComponent(propertyId)+(billingMonth?"&billingMonth="+encodeURIComponent(billingMonth):"") : "?cursor="+encodeURIComponent(cursor)+"&negotiationRole="+encodeURIComponent(negotiationRole)+"&negotiationCursor="+encodeURIComponent(negotiationCursor)}${propertyId?"&activityCollection="+encodeURIComponent(activityCollection)+"&activityCursor="+encodeURIComponent(activityCursor):""}`,
       ),
     enabled: !!user && !loading,
     staleTime: 60_000,
@@ -78,7 +79,7 @@ function CompactActions({
   );
 }
 export function ProductDashboard({ admin = false }: { admin?: boolean }) {
-  const query = useProductHub();
+  const [cursor,setCursor]=useState(''),[pages,setPages]=useState<string[]>([]);const query = useProductHub(undefined,undefined,cursor);
   const pending = !admin ? <PendingConnections /> : null;
   if (query.isLoading)
     return (
@@ -107,9 +108,9 @@ export function ProductDashboard({ admin = false }: { admin?: boolean }) {
   const data = query.data;
   if (!data) return <>{pending}</>;
   if (!admin) return (
-    <div className={hubStyles.actionStrip} aria-label="Portfolio actions">
+    <div className={hubStyles.actionStrip} aria-label="Portfolio actions">{data.truncated&&<p role="status">Actions cover the displayed property/activity pages. Open a property hub to inspect its full history.</p>}{Object.entries(data.negotiationPages||{}).filter(([,next])=>next).map(([role,next])=><Link key={role} to={`/manage-property?negotiationRole=${role}&negotiationCursor=${encodeURIComponent(next!)}`}>Next {role==='brokerUID'?'assigned offer':'customer offer'} page </Link>)}
       {!!data.actions.length && <section className={hubStyles.compactAttention} aria-label="Actions required">
-        {data.truncated && <p className={hubStyles.notice}>Showing actions from the first 250 authorized properties.</p>}
+        {data.truncated && <p className={hubStyles.notice}>Actions cover the current property/activity page; more records may remain.</p>}
         <CompactActions actions={data.actions} propertyTitles />
         {data.actions.some((a) => ["broker", "customer"].includes(a.role)) && (
           <details className={hubStyles.compactDisclosure} id="assigned-offers">
@@ -118,13 +119,13 @@ export function ProductDashboard({ admin = false }: { admin?: boolean }) {
           </details>
         )}
       </section>}
-      {pending}
+      {(data.nextCursor||pages.length>0)&&<p>Portfolio page <Button variant="outline" disabled={!pages.length} onClick={()=>{setCursor(pages.at(-1)||'');setPages(old=>old.slice(0,-1));}}>Previous</Button><Button variant="outline" disabled={!data.nextCursor} onClick={()=>{setPages(old=>[...old,cursor]);setCursor(data.nextCursor!);}}>Next property page</Button></p>}{pending}
     </div>
   );
   return (
     <>
       {pending}
-      <section className={hubStyles.dashboard}>
+      {(data.nextCursor||pages.length>0)&&<p>Portfolio page <Button variant="outline" disabled={!pages.length} onClick={()=>{setCursor(pages.at(-1)||'');setPages(old=>old.slice(0,-1));}}>Previous</Button><Button variant="outline" disabled={!data.nextCursor} onClick={()=>{setPages(old=>[...old,cursor]);setCursor(data.nextCursor!);}}>Next property page</Button></p>}<section className={hubStyles.dashboard}>
         <div className={hubStyles.dashboardHeading}>
           <h2>{admin ? "Portfolio operations" : "Property activity"}</h2>
           <span>
@@ -227,13 +228,13 @@ export function ProductDashboard({ admin = false }: { admin?: boolean }) {
     </>
   );
 }
-function Checklist({ items }: { items: Array<[string, boolean, string]> }) {
+function Checklist({ items }: { items: Array<[string, boolean|null, string]> }) {
   return (
     <ul className="space-y-2">
       {items.map(([label, done, path]) => (
         <li key={label}>
           <Link className="underline" to={path}>
-            {done ? "✓ Recorded" : "○ Not recorded"} — {label}
+            {done===null?"Unknown (more activity pages)":done ? "✓ Recorded" : "○ Not recorded"} — {label}
           </Link>
         </li>
       ))}
@@ -243,7 +244,8 @@ function Checklist({ items }: { items: Array<[string, boolean, string]> }) {
 export default function PropertyHub() {
   const { propertyId } = useParams<{ propertyId: string }>(),
     { user } = useAuth();
-  const query = useProductHub(propertyId);
+  const [billingMonth,setBillingMonth]=useState("");
+  const query = useProductHub(propertyId,billingMonth||undefined);
   const [failure, setFailure] = useState(""),
     [feedback, setFeedback] = useState(""),
     [busy, setBusy] = useState(false),
@@ -299,11 +301,11 @@ export default function PropertyHub() {
       setBusy(false);
     }
   }
-  const month = todayIST().slice(0, 7),
+  const month = billingMonth || h.rentMonth,
     current = h.ledger.find((r: ProductRecord) => r.month === month) || {};
   const displayedLedgerAmount =
     ledgerAmount === null
-      ? String(current.expectedRent || p.monthlyRent || "")
+      ? String(current.expectedRent ?? h.rentSuggestion?.amount ?? "")
       : ledgerAmount;
   return (
     <main className={`${hubStyles.hub} mx-auto max-w-6xl px-4 py-8 space-y-7`}>
@@ -379,6 +381,11 @@ export default function PropertyHub() {
             <Link to={`/edit-property/${p.id}`}>Edit details</Link>
           ) : null}
         </div>
+        {query.data.truncated&&<p role="status">Activity and counts cover the displayed bounded pages. Continue a category to inspect older records.</p>}
+        {h.documentsRestricted&&<p>Private lease evidence is available only to the owner and authorized administrators.</p>}
+        {h.documentLibraryRequired&&<Link to={`/attach-documents/${p.id}`}>Open authorized document library </Link>}
+        {query.data.activityPageActive&&<Link to={`/manage-property/${propertyId}`}>First activity pages </Link>}
+        {Object.entries(query.data.activityPages||{}).filter(([,next])=>next).map(([collection,next])=><Link key={collection} to={`/manage-property/${propertyId}?activityCollection=${encodeURIComponent(collection)}&activityCursor=${encodeURIComponent(next!)}`}>Next {collection.replaceAll('_',' ')} page </Link>)}
         <CompactActions actions={query.data.actions} />
       </section>
       <PendingConnections />
@@ -399,10 +406,11 @@ export default function PropertyHub() {
           </details>
         )}
         {h.tenants.map((t: ProductRecord, index: number) => (
-          <p key={t.id || index}>
+          <div key={t.id || index}><p>
             {t.firstName} {t.lastName} · {t.lifecycle} ·{" "}
             {t.linked ? "Linked account" : "Account not linked"}
           </p>
+            <p>Effective monthly rent: INR {t.effectiveMonthlyRent ?? 'Not available'}</p></div>
         ))}
         {(h.role === "owner" || h.role === "admin") && (
           <Link className="underline" to={`/add-tenant/${p.id}`}>
@@ -451,7 +459,7 @@ export default function PropertyHub() {
         )}
         {(h.role === "owner" || h.role === "admin") && (
           <form
-            key={h.ledgerVersion}
+            key={`${h.ledgerVersion}:${month}`}
             className="grid gap-3 sm:grid-cols-2"
             onSubmit={(e) => save(e, "rent_ledger")}
           >
@@ -462,32 +470,7 @@ export default function PropertyHub() {
                 type="month"
                 name="month"
                 defaultValue={month}
-                onChange={(event) => {
-                  const selected =
-                    h.ledger.find(
-                      (r: ProductRecord) => r.month === event.target.value,
-                    ) || {};
-                  const values = {
-                    expectedRent: selected.expectedRent || p.monthlyRent || "",
-                    dueDate:
-                      selected.dueDate ||
-                      dueDate(
-                        event.target.value,
-                        Number(p.paymentDueDate) || 1,
-                      ),
-                    status: selected.status || "due",
-                    receiptId: selected.receiptId || "",
-                    notes: selected.derived ? "" : selected.notes || "",
-                  };
-                  setLedgerAmount(String(values.expectedRent));
-                  for (const [name, value] of Object.entries(values)) {
-                    if (name === "expectedRent") continue;
-                    const input = event.currentTarget.form?.elements.namedItem(
-                      name,
-                    ) as HTMLInputElement | null;
-                    if (input) input.value = String(value);
-                  }
-                }}
+                onChange={(event) => {setBillingMonth(event.target.value);setLedgerAmount(null);}}
               />
             </label>
             <label>
@@ -511,7 +494,7 @@ export default function PropertyHub() {
                 name="dueDate"
                 defaultValue={
                   current.dueDate ||
-                  dueDate(month, Number(p.paymentDueDate) || 1)
+                  h.rentSuggestion?.dueDate || ""
                 }
               />
             </label>
@@ -628,7 +611,7 @@ export default function PropertyHub() {
               ]}
             />
             <p>
-              Unresolved requests: {h.moveOut.pendingTasks}. Handover/legal or
+              Unresolved requests: {h.moveOut.pendingTasks??"Unknown (more activity pages)"}. Handover/legal or
               financial settlement is not inferred from a report.
             </p>
           </div>

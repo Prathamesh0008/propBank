@@ -1,4 +1,9 @@
+import {buildRenewalSchedule,rentSnapshot,rentDate} from '@/lib/rent-resolution';
+import {validatePropertyRentSchedule} from './property-validation';
+import {validPropertyMoney} from '@/lib/property-money';
 import {inventoryProposal} from '@/lib/agreement-inventory';
+import {stageAdminLifecycle} from './admin-lifecycle';
+import {dispatchEmailOutbox,type TransactionalEmailEvent} from './transactional-email';
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { getDatabase, COLLECTIONS } from '../firestore';
@@ -9,7 +14,7 @@ import { identity, readObject } from './domain-contracts';
 import { getUser } from './users';
 import { bestEffort, escapeHtml } from './property-effects';
 import { createNotificationOnce } from './notifications';
-import { persistUserEvent } from './transactional-email';
+import { stageUserEvent,dispatchNotificationIntents } from './transactional-email';
 
 const terms=['monthlyRent','securityDeposit','paymentDueDate','escalationPercentage','escalationAmount','agreementPeriod','agreementStartDate','agreementEndDate','noticePeriod','lockInPeriod','unitCondition','maintenanceToBePaidBy'];
 const entries=(v:unknown):RecordData[]=>Array.isArray(v)?v.filter(isRecord):[];
@@ -43,13 +48,20 @@ async function agreement(request:Request,renew:boolean,tenantRequest:boolean) {
   const id=s(req.propertyId);
   if(!id||id.includes('/'))throw new ApiError(400,'Property ID required');
   if('inventory' in req&&(!renew||tenantRequest||req.action!=='request'))throw new ApiError(403,'Only owner renewal proposals may include inventory');
-  const proposed=readTerms(req.terms),action=s(req.action)||'request';
+  if('rentSchedule'in req)throw new ApiError(400,'rentSchedule: submit the proposed schedule inside terms');
+  if(req.terms!=null&&!isRecord(req.terms))throw new ApiError(400,'Terms must be an object');
+  const rawTerms=isRecord(req.terms)?req.terms:{},proposedSchedule=rawTerms.rentSchedule;
+  const proposed=readTerms(Object.fromEntries(Object.entries(rawTerms).filter(([key])=>key!=='rentSchedule'))),action=s(req.action)||'request';
+  if(proposedSchedule!==undefined&&(!renew||action!=='request'))throw new ApiError(400,'rentSchedule: schedules belong to renewal proposals only');
   if(renew&&!['request','approve','complete','reject'].includes(action))throw new ApiError(400,'Invalid renewal action');
   if(!renew&&!['request','terminate','reject'].includes(action))throw new ApiError(400,'Invalid termination action');
   if(tenantRequest&&action!=='request')throw new ApiError(403,'Owner approval required');
   const db=getDatabase(),ref=db.collection(COLLECTIONS.properties).doc(id),now=new Date();
+  let lifecycleEmails:TransactionalEmailEvent[]=[];
   let tenant:RecordData={},before:RecordData={},changed=true;
+  const intentIds:string[]=[];
   const updated=await db.runTransaction(async tx=>{
+    changed=true;lifecycleEmails=[];
     const snapshot=await tx.get(ref);
     if(!snapshot.exists)throw new ApiError(404,'Property not found');
     const property=snapshot.data()!;
@@ -60,13 +72,14 @@ async function agreement(request:Request,renew:boolean,tenantRequest:boolean) {
       if(!isPropertyTenant(user,{tenants:relationships as Parameters<typeof isPropertyTenant>[1]['tenants']}))throw new ApiError(403,'Active tenant relationship required');
       tenant=active.find(t=>t.userUID===user.uid||!t.userUID&&s(t.email).toLowerCase()===user.token.email?.toLowerCase())||{};
     } else {
-      if(property.ownerUID!==user.uid)throw new ApiError(403,'Only the property owner can approve or terminate an agreement');
+      if(property.ownerUID!==user.uid&&user.role!=='admin')throw new ApiError(403,'Only the property owner can approve or terminate an agreement');
       tenant=active[0]||{name:property.tenantName,email:property.tenantEmail,phone:property.mobileNumber};
     }
     const history=Array.isArray(property.agreementHistory)?property.agreementHistory:[];
     if(history.length>=500)throw new ApiError(409,'Agreement history limit reached');
     const current=isRecord(property.agreementRequest)?property.agreementRequest:null;
     if(req.requestId&&req.requestId!==current?.id)throw new ApiError(409,'Agreement request changed');
+    if(req.expectedRentTermsVersion!==undefined&&req.expectedRentTermsVersion!==Number(property.rentTermsVersion||0))throw new ApiError(409,'Rental terms changed; refresh the renewal');
     const updates:RecordData={updatedAt:now};
     const snapshotTerms=Object.fromEntries(terms.map(key=>[key,property[key]??'']));
     let event:RecordData={id:randomUUID(),actorUID:user.uid,at:now,kind:renew?'renewal':'termination',action,previousTerms:snapshotTerms,previousTenants:entries(property.tenants)};
@@ -78,9 +91,17 @@ async function agreement(request:Request,renew:boolean,tenantRequest:boolean) {
         if(action==='reject')updates.agreementRequest={...current,status:'rejected',resolvedAt:now,resolvedBy:user.uid};
         else {
           const values=readTerms(current.proposedTerms||current.terms);
+          if(!validPropertyMoney(values.monthlyRent))throw new ApiError(400,'monthlyRent: a valid renewal rent is required');
           if(!values.agreementStartDate||!values.agreementEndDate)throw new ApiError(400,'Renewal start and end dates required');
+          if(current.baseRentTermsVersion!==undefined&&current.baseRentTermsVersion!==Number(property.rentTermsVersion||0))throw new ApiError(409,'Rental terms changed since this renewal proposal');
+          if(current.baseTenancyRevision!==undefined&&current.baseTenancyRevision!==Number(property.tenancyRevision||0))throw new ApiError(409,'Tenancy changed since this renewal proposal');
+          const newSchedule=Array.isArray(current.rentSchedule)?current.rentSchedule:[];
+          try{if(current.rentSchedule!==undefined)validatePropertyRentSchedule({...values,rentSchedule:current.rentSchedule,rentScheduleVersion:2});}catch(error){throw new ApiError(400,error instanceof Error?error.message:'Invalid renewal schedule');}
+          updates.rentSchedule=newSchedule;updates.rentAgreementSnapshots=[...(Array.isArray(property.rentAgreementSnapshots)?property.rentAgreementSnapshots:[]),rentSnapshot(property)];
+          if((updates.rentAgreementSnapshots as unknown[]).length>100)throw new ApiError(409,'Rent history limit reached');
+          updates.rentEffectiveFrom=rentDate(values.agreementStartDate);updates.rentTermsVersion=Number(property.rentTermsVersion||0)+1;
           Object.assign(updates,values,{agreementStatus:'renewed',agreementRequest:{...current,status:'completed',terms:values,resolvedAt:now,resolvedBy:user.uid}});
-          updates.tenants=entries(property.tenants).map(t=>t.isActive===true?{...t,monthlyRent:values.monthlyRent??t.monthlyRent,leaseStartDate:values.agreementStartDate,leaseEndDate:values.agreementEndDate,updatedAt:now}:t);
+          updates.tenants=entries(property.tenants).map(t=>t.isActive===true?{...t,rentSchedule:newSchedule,rentAgreementSnapshots:[...(Array.isArray(t.rentAgreementSnapshots)?t.rentAgreementSnapshots:[]),rentSnapshot({...property,...t,agreementStartDate:t.leaseStartDate||property.agreementStartDate,agreementEndDate:t.leaseEndDate||property.agreementEndDate})],rentEffectiveFrom:rentDate(values.agreementStartDate),rentTermsVersion:Number(t.rentTermsVersion||0)+1,monthlyRent:values.monthlyRent??t.monthlyRent,leaseStartDate:values.agreementStartDate,leaseEndDate:values.agreementEndDate,updatedAt:now}:t);
           if(isRecord(current.inventoryProposal)){
             const proposal=current.inventoryProposal, selected=active.find(t=>t.id===proposal.tenantId);
             if(!selected||Number((selected.agreementInventory as RecordData|undefined)?.version||0)!==proposal.expectedVersion)throw new ApiError(409,'Renewal inventory changed; reject and prepare a new request');
@@ -89,12 +110,18 @@ async function agreement(request:Request,renew:boolean,tenantRequest:boolean) {
             if(selected.agreementInventory&&!inventoryHistory.some(v=>v.version===(selected.agreementInventory as RecordData).version))inventoryHistory.push(selected.agreementInventory);
             updates.tenants=(updates.tenants as RecordData[]).map(t=>t.id===selected.id?{...t,agreementInventory:proposal.snapshot,inventoryHistory}:t);
           }
-          event={...event,terms:values,inventoryProposal:current.inventoryProposal||null};
+          event={...event,terms:values,rentSchedule:newSchedule,previousRentSchedule:property.rentSchedule||[],previousRentContract:rentSnapshot(property),inventoryProposal:current.inventoryProposal||null};
         }
       } else {
-        if(current?.status==='pending'&&current.kind==='renewal'&&current.requestedBy===user.uid){changed=false;return property;}
+        if(current?.status==='pending'&&current.kind==='renewal'&&current.requestedBy===user.uid){if(Object.entries(proposed).some(([key,value])=>current.terms?.[key]!==value)||proposedSchedule!==undefined&&JSON.stringify(current.rentSchedule)!==JSON.stringify(proposedSchedule))throw new ApiError(409,'A different renewal proposal is already pending; reject it before editing');changed=false;return property;}
         if(current?.status==='pending')throw new ApiError(409,'Resolve the pending agreement request first');
-        updates.agreementRequest={id:randomUUID(),kind:'renewal',status:'pending',requestedBy:user.uid,requestedAt:now,terms:{...snapshotTerms,...proposed}};
+        const nextTerms={...snapshotTerms,...proposed};
+        if(!rentDate(nextTerms.agreementStartDate)||!rentDate(nextTerms.agreementEndDate))throw new ApiError(400,'Renewal start and end dates are required');
+        if(rentDate(property.agreementEndDate)&&rentDate(nextTerms.agreementStartDate)<=rentDate(property.agreementEndDate))throw new ApiError(400,'Renewal must start after the current agreement ends');
+        for(const key of ['escalationPercentage','escalationAmount'])if(nextTerms[key]&&!validPropertyMoney(nextTerms[key],false))throw new ApiError(400,`${key}: enter a finite non-negative decimal`);
+        const schedule=proposedSchedule===undefined?buildRenewalSchedule(nextTerms):proposedSchedule;
+        try{validatePropertyRentSchedule({...nextTerms,rentSchedule:schedule,rentScheduleVersion:2});}catch(error){throw new ApiError(400,error instanceof Error?error.message:'Invalid renewal schedule');}
+        updates.agreementRequest={id:randomUUID(),kind:'renewal',status:'pending',requestedBy:user.uid,requestedAt:now,terms:nextTerms,rentSchedule:schedule,baseRentTermsVersion:Number(property.rentTermsVersion||0),baseTenancyRevision:Number(property.tenancyRevision||0),baseAgreementStatus:s(property.agreementStatus)};
         if('inventory' in req){
           const selected=active.find(t=>t.id===req.inventoryTenantId);
           if(!selected||!Number.isInteger(req.expectedInventoryVersion)||Number((selected.agreementInventory as RecordData|undefined)?.version||0)!==req.expectedInventoryVersion)throw new ApiError(409,'Select the current tenancy inventory version');
@@ -124,25 +151,32 @@ async function agreement(request:Request,renew:boolean,tenantRequest:boolean) {
       event={...event,action:notice?'notice_served':'terminated',noticePeriod:s(req.noticePeriod),noticeStartDate:s(req.noticeStartDate),terminationDate:s(req.terminationDate)||now};
     }
     const tenantDocs=await tx.get(db.collection(COLLECTIONS.tenants).where('propertyId','==',id));
+    if(renew&&action!=='reject'&&Array.isArray(updates.tenants))for(const t of updates.tenants)if(Array.isArray(t.rentAgreementSnapshots)&&t.rentAgreementSnapshots.length>100)throw new ApiError(409,'Tenant rent history limit reached');
     const inventoryProposalRequest=isRecord(updates.agreementRequest)&&isRecord(updates.agreementRequest.inventoryProposal)?updates.agreementRequest.inventoryProposal:null;
     if(renew&&action!=='reject'&&inventoryProposalRequest){const linked=tenantDocs.docs.find(doc=>doc.id===inventoryProposalRequest.tenantId);if(!linked||linked.data().ownerUID!==property.ownerUID||Number(linked.data().agreementInventory?.version||0)!==inventoryProposalRequest.expectedVersion)throw new ApiError(409,'Tenancy inventory relationship changed');}
+    const lifecycle=await stageAdminLifecycle(tx,[{type:renew?(action==='request'?'agreement_renewal_submitted':['approve','complete'].includes(action)?'agreement_renewed':'agreement_renewal_rejected'):updates.agreementStatus==='terminated'?'agreement_terminated':tenantRequest?'agreement_termination_submitted':action==='reject'?'agreement_termination_rejected':'agreement_notice_served',propertyId:id,tenantId:s(tenant.id),actorUID:user.uid,eventId:`agreement:${id}:${s(event.id)}`,title:renew?'Agreement renewal activity':'Agreement termination activity',message:renew?`Renewal ${action} was committed.`:`Agreement ${s(updates.agreementStatus)||action} was committed.`}]);lifecycleEmails=lifecycle.events;
+    const eventId=`${id}:${history.length+1}:${renew?'renewal':'termination'}:${action}`;
+    const intent=await stageUserEvent(tx,{actorUID:user.uid,eventType:`agreement.${renew?'renewal':'termination'}_${action}`,eventId,recipients:[{uid:s(property.ownerUID),role:'owner'},...(tenant.userUID?[{uid:s(tenant.userUID),role:'tenant'}]:[])],propertyId:id,recordId:s((updates.agreementRequest as RecordData)?.id)||id,templateId:'agreement-activity',subject:'Agreement activity updated',title:'Agreement activity updated',bodyHtml:`<p><strong>${escapeHtml(s(property.title))}</strong>: ${escapeHtml(s(updates.agreementStatus||action).replaceAll('_',' '))}.</p>`,bodyText:`${s(property.title)}: ${s(updates.agreementStatus||action).replaceAll('_',' ')}.`,action:{label:'View agreement',path:`/manage-property/${id}`}});intentIds.push(intent.id);const notificationWrites:Array<()=>void>=[intent.write];
+    if(!renew){
+      const owner=(await tx.get(db.collection(COLLECTIONS.users).doc(s(property.ownerUID)))).data(),actor=(await tx.get(db.collection(COLLECTIONS.users).doc(user.uid))).data();
+      const outcome=tenantRequest?'requested':action==='reject'?'rejected':s(updates.agreementStatus)==='notice_served'?'notice_served':'terminated',actionLabel=outcome==='notice_served'?'Early termination notice issued':outcome==='terminated'?'Agreement terminated':outcome==='rejected'?'Termination request rejected':'Early termination requested';
+      const ownerName=s(owner?.name)||s(property.ownerName),tenantName=s(tenant.name)||[s(tenant.firstName),s(tenant.lastName)].filter(Boolean).join(' '),actorName=s(actor?.name)||'Authorized account',propertyName=[s(property.buildingName)||s(property.title),s(property.unitNumber)].filter(Boolean).join(' - '),noticeDate=s(updates.noticeStartDate)||s(req.noticeStartDate),effectiveDate=s(updates.anticipatedTerminationDate)||s(req.terminationDate);
+      const summary=`${actionLabel}. Property: ${propertyName}. Property ID: ${id}. Owner: ${ownerName}. Tenant: ${tenantName}. Initiated by: ${actorName} (${user.uid===s(property.ownerUID)?'owner':'tenant'}). Notice date: ${noticeDate}. Effective termination date: ${effectiveDate}.`;
+      const adminIntent=await stageUserEvent(tx,{actorUID:user.uid,eventType:`agreement.termination_admin_${outcome}`,eventId:`${eventId}:admin`,recipients:[{role:'admin',email:process.env.ADMIN_EMAIL}],propertyId:id,recordId:id,templateId:'agreement-termination-admin',subject:`PropBank - ${actionLabel}`,title:actionLabel,bodyHtml:`<p><strong>Property:</strong> ${escapeHtml(propertyName)}</p><p><strong>Property ID:</strong> ${escapeHtml(id)}</p><p>${escapeHtml(summary)}</p>`,bodyText:summary,action:{label:'Review agreement',path:`/manage-property/${id}`}});intentIds.push(adminIntent.id);
+      const notificationRef=db.collection(COLLECTIONS.adminNotifications).doc(`agreement-${adminIntent.id}`),existing=await tx.get(notificationRef);
+      notificationWrites.push(adminIntent.write);if(!existing.exists)notificationWrites.push(()=>tx.create(notificationRef,{id:notificationRef.id,type:'agreement_termination',title:actionLabel,message:summary,propertyId:id,ownerId:property.ownerUID,userId:user.uid,isRead:false,readByUIDs:[],timestamp:now,createdAt:now,eventId}));
+    }
+    for(const write of notificationWrites)write();
     if(Array.isArray(updates.tenants))for(const doc of tenantDocs.docs) {
       const embedded=(updates.tenants as RecordData[]).find(t=>t.id===doc.id);
       if(embedded)tx.update(doc.ref,{...embedded,propertyId:id,ownerUID:property.ownerUID});
     }
-    updates.agreementHistory=[...history,event];
+    lifecycle.write();updates.agreementHistory=[...history,event];
     tx.update(ref,updates);
     return {...property,...updates};
   });
-  if(changed) {
-    const owner=await getUser(s(before.ownerUID)),actor=await getUser(user.uid),tenantName=(s(tenant.name)||[s(tenant.firstName),s(tenant.lastName)].join(' ')).trim(),ownerName=s(owner?.name)||s(before.ownerName),actorName=s(actor?.name)||s(user.token.name)||'Authorized account',eventId=`${id}:${s(updated.agreementHistory?.length)}:${renew?'renewal':'termination'}:${action}`;
-    const outcome=renew?action:tenantRequest?'requested':action==='reject'?'rejected':s(updated.agreementStatus)==='notice_served'?'notice_served':s(updated.agreementStatus)==='terminated'?'terminated':action;
-    const actionLabel=outcome==='notice_served'?'Early termination notice issued':outcome==='terminated'?'Agreement terminated':outcome==='rejected'?'Termination request rejected':'Early termination requested';
-    const noticeDate=s(updated.noticeStartDate)||s((updated.agreementRequest as RecordData)?.noticeStartDate)||s(req.noticeStartDate),effectiveDate=s(updated.anticipatedTerminationDate)||s((updated.agreementRequest as RecordData)?.terminationDate)||s(updated.terminationDate)||s(req.terminationDate),propertyName=[s(before.buildingName)||s(before.title),s(before.unitNumber)].filter(Boolean).join(' – ');
-    await bestEffort(()=>createNotificationOnce({type:renew?'agreement_renewal':'agreement_termination',title:renew?(tenantRequest?'Renewal Requested by Tenant':'Agreement Renewal Update'):actionLabel,message:renew?`Renewal ${action} for ${s(before.title)}.`:`${actionLabel} by ${actorName} for ${propertyName||s(before.title)}. Notice date: ${noticeDate||'Not provided'}. Effective date: ${effectiveDate||'Not provided'}. Status: ${s(updated.agreementStatus)||outcome}.`,propertyId:id,ownerId:before.ownerUID,ownerName,ownerEmail:owner?.email||before.ownerEmail,userId:user.uid,userName:actorName,userEmail:actor?.email||user.token.email||'',userPhone:actor?.phoneNumber||'',tenantName,tenantEmail:tenant.email,tenantPhone:tenant.phone,priority:'high',relatedId:s(updated.agreementRequest?.id)||id},`agreement-admin:${eventId}:${outcome}`));
-    await bestEffort(()=>persistUserEvent({eventType:`agreement.${renew?'renewal':'termination'}_${action}`,eventId,recipients:[{uid:s(before.ownerUID),role:'owner'},...(tenant.userUID?[{uid:s(tenant.userUID),role:'tenant'}]:[])],propertyId:id,recordId:s(updated.agreementRequest?.id)||id,templateId:'agreement-activity',subject:'Agreement activity updated',title:'Agreement activity updated',bodyHtml:`<p><strong>${escapeHtml(s(before.title))}</strong>: ${escapeHtml(s(updated.agreementStatus||action).replaceAll('_',' '))}.</p>`,bodyText:`${s(before.title)}: ${s(updated.agreementStatus||action).replaceAll('_',' ')}.`,action:{label:'View agreement',path:`/manage-property/${id}`}}));
-    if(!renew)await bestEffort(()=>persistUserEvent({eventType:`agreement.termination_admin_${outcome}`,eventId:`${eventId}:admin`,recipients:[{role:'admin',email:process.env.ADMIN_EMAIL}],propertyId:id,recordId:s(updated.agreementRequest?.id)||id,templateId:'agreement-termination-admin',subject:`PropBank – ${actionLabel}`,title:actionLabel,bodyHtml:`<p><strong>Property:</strong> ${escapeHtml(propertyName||s(before.title))}</p><p><strong>Property ID:</strong> ${escapeHtml(id)}</p><p><strong>Owner:</strong> ${escapeHtml(ownerName||'Not available')}<br><strong>Tenant:</strong> ${escapeHtml(tenantName||'Not available')}<br><strong>Initiated by:</strong> ${escapeHtml(actorName)} (${escapeHtml(user.uid===s(before.ownerUID)?'owner':'tenant')})</p><p><strong>Notice date:</strong> ${escapeHtml(noticeDate||'Not provided')}<br><strong>Effective termination date:</strong> ${escapeHtml(effectiveDate||'Not provided')}<br><strong>Agreement status:</strong> ${escapeHtml(s(updated.agreementStatus)||outcome)}</p>`,bodyText:`${actionLabel}. Property: ${propertyName||s(before.title)}. Property ID: ${id}. Owner: ${ownerName||'Not available'}. Tenant: ${tenantName||'Not available'}. Initiated by: ${actorName} (${user.uid===s(before.ownerUID)?'owner':'tenant'}). Notice date: ${noticeDate||'Not provided'}. Effective termination date: ${effectiveDate||'Not provided'}. Agreement status: ${s(updated.agreementStatus)||outcome}.`,action:{label:'View property agreement',path:`/manage-property/${id}`}}));
-  }
+  dispatchNotificationIntents(intentIds);
+  if(lifecycleEmails.length)dispatchEmailOutbox(lifecycleEmails);
   return jsonResponse({success:true,message:renew?'Agreement renewal request updated successfully.':'Agreement termination updated successfully.',property:wireValue(updated),request:wireValue(updated.agreementRequest||null)});
 }
 export const ownerAgreement=(request:Request,renew:boolean)=>agreement(request,renew,false);

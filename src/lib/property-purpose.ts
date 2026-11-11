@@ -1,3 +1,4 @@
+import {validPropertyMoney} from './property-money';
 import {indianMobile} from './indian-phone';
 // Additive purposes: retain legacy sell_rent records unchanged.
 export const PROPERTY_PURPOSES = ['rent', 'sell', 'pre_leased', 'manage'] as const;
@@ -32,12 +33,12 @@ export function normalizePurpose(input: Record<string, any>, previous?: Record<s
       if(!date(tenant.occupancyStartDate)||tenant.occupancyStartDate>today)throw Error('Enter a valid tenant occupancy start date that is not in the future');
       existingTenant={type:tenant.type,name:tenant.name.trim(),mobile,email:(tenant.email||'').trim().toLowerCase(),occupancyStartDate:tenant.occupancyStartDate};
     }else if(!previous||previous.listingType!=='pre_leased'||'preLeased' in input){throw Error('Existing tenant details are required');}
-    const price=Number(input.sellingPrice??previous?.sellingPrice),rent=Number(p.monthlyRentalIncome);
-    if(!Number.isFinite(price)||price<=0||!Number.isFinite(rent)||rent<=0)throw Error('Positive selling price and monthly rental income are required');
+    if((!previous||previous.listingType!=='pre_leased'||'sellingPrice' in input&&input.sellingPrice!==previous.sellingPrice)&&!validPropertyMoney(input.sellingPrice??previous?.sellingPrice))throw Error('sellingPrice: enter a finite positive decimal amount');
+    if((!previous||previous.listingType!=='pre_leased'||p.monthlyRentalIncome!==previous.preLeased?.monthlyRentalIncome)&&!validPropertyMoney(p.monthlyRentalIncome))throw Error('preLeased.monthlyRentalIncome: enter a finite positive decimal amount');
     if(p.tenantOccupied!==true)throw Error('Confirm an existing occupying tenant');
     if(!date(p.leaseStartDate)||!date(p.leaseEndDate)||p.leaseStartDate>today||p.leaseEndDate<today||p.leaseEndDate<p.leaseStartDate)throw Error('An active lease with valid start and end dates is required');
     if(!['registered','other'].includes(p.leaseType))throw Error('Select the lease type');
-    if(p.securityDeposit!==undefined&&p.securityDeposit!==''&&(!Number.isFinite(Number(p.securityDeposit))||Number(p.securityDeposit)<0))throw Error('Invalid lease security deposit');
+    if(p.securityDeposit!==undefined&&p.securityDeposit!==''&&(!previous||p.securityDeposit!==previous.preLeased?.securityDeposit)&&!validPropertyMoney(p.securityDeposit,false))throw Error('preLeased.securityDeposit: enter a finite non-negative decimal amount');
     if(p.paymentFrequency&&!['monthly','quarterly','annually'].includes(p.paymentFrequency))throw Error('Invalid rent payment frequency');
     if(['lockInPeriod','escalation'].some(k=>p[k]!==undefined&&(typeof p[k]!=='string'||p[k].length>1000)))throw Error('Invalid lease details');
     if(p.priceNegotiable!==undefined&&typeof p.priceNegotiable!=='boolean')throw Error('Invalid negotiable price confirmation');

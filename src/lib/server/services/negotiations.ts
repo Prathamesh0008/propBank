@@ -15,7 +15,7 @@ import {
   bestEffort,
 } from './property-effects';
 import { createNotification } from './notifications';
-import { persistUserEvent } from './transactional-email';
+import {stageUserEvent,dispatchNotificationIntents,type UserEvent} from './transactional-email';
 import type {
   Negotiation,
   NegotiationAction,
@@ -51,21 +51,7 @@ function canRead(
   );
 }
 
-async function notify(n: Negotiation) {
-  await bestEffort(() =>
-    createNotification({
-      type: 'negotiation_update',
-      title: 'Negotiation Update',
-      message: `${n.propertyTitle}: ${n.status}`,
-      propertyId: n.propertyId,
-      ownerId: n.ownerUID,
-      userId: n.customerUID,
-      relatedId: n.id,
-    })
-  );
-
-  await bestEffort(()=>persistUserEvent({eventType:`negotiation.${n.status}`,eventId:`${n.id}:${n.version||0}:${n.status}`,recipients:Array.from(new Set([n.ownerUID,n.customerUID,n.brokerUID].filter(Boolean))).map(uid=>({uid,role:uid===n.ownerUID?'owner':uid===n.customerUID?'customer':'broker'})),propertyId:n.propertyId,recordId:n.id,templateId:'negotiation-activity',subject:`Negotiation update: ${n.propertyTitle}`,title:'Negotiation updated',bodyHtml:`<p><strong>${escapeHtml(n.propertyTitle)}</strong>: ${escapeHtml(n.status.replaceAll('_',' '))}</p><p>Open the property to review the offer and its history.</p>`,bodyText:`${n.propertyTitle}: ${n.status.replaceAll('_',' ')}. Open the property to review the offer and its history.`,action:{label:'Review negotiation',path:`/manage-property/${n.propertyId}`}}));
-}
+function negotiationEvent(n:Negotiation,actorUID:string):UserEvent {return {actorUID,eventType:`negotiation.${n.status}`,eventId:`${n.id}:${n.version||0}:${n.status}`,recipients:Array.from(new Set([n.ownerUID,n.customerUID,n.brokerUID].filter(Boolean))).map(uid=>({uid,role:uid===n.ownerUID?'owner':uid===n.customerUID?'customer':'broker'})),propertyId:n.propertyId,recordId:n.id,templateId:'negotiation-activity',subject:`Negotiation update: ${n.propertyTitle}`,title:'Negotiation updated',bodyHtml:`<p><strong>${escapeHtml(n.propertyTitle)}</strong>: ${escapeHtml(n.status.replaceAll('_',' '))}</p><p>Open the property to review the offer and its history.</p>`,bodyText:`${n.propertyTitle}: ${n.status.replaceAll('_',' ')}. Open the property to review the offer and its history.`,action:{label:'Review negotiation',path:`/manage-property/${n.propertyId}`}};}
 
 export async function createNegotiation(
   request: Request
@@ -152,8 +138,7 @@ export async function createNegotiation(
     updatedAt: now,
   };
 
-  await ref.create(n);
-  await notify(n);
+  const ids:string[]=[];await getDatabase().runTransaction(async tx=>{const intent=await stageUserEvent(tx,negotiationEvent(n,user.uid));ids.push(intent.id);intent.write();tx.create(ref,n);});dispatchNotificationIntents(ids);
 
   return jsonResponse(
     {
@@ -262,6 +247,7 @@ export async function updateNegotiation(
 
   const ref = collection().doc(id);
 
+  const ids:string[]=[];
   const result =
     await getDatabase().runTransaction(
       async (tx) => {
@@ -634,13 +620,14 @@ export async function updateNegotiation(
         const updateData =
           n as unknown as UpdateData<DocumentData>;
 
+        const intent=await stageUserEvent(tx,negotiationEvent({...before,...updateData} as Negotiation,user.uid));ids.push(intent.id);intent.write();
         tx.update(ref, updateData);
 
         return n;
       }
     );
 
-  await notify(result);
+  dispatchNotificationIntents(ids);
 
   return jsonResponse({
     success: true,

@@ -1,3 +1,4 @@
+import {stageAdminLifecycle} from './admin-lifecycle';
 import 'server-only';
 import { stageInvitationEmails, type InvitationIntent } from './relationship-invitation-email';
 import { createHash } from 'node:crypto';
@@ -13,7 +14,7 @@ import { normalizeEmailAddress } from '@/lib/email-address';
 import { isRecord, stringValue as s, type RecordData } from './contracts';
 import { readObject } from './domain-contracts';
 import { bestEffort } from './property-effects';
-import { persistUserEvent, dispatchEmailOutbox, type TransactionalEmailEvent } from './transactional-email';
+import { stageUserEvent,dispatchNotificationIntents, dispatchEmailOutbox, type TransactionalEmailEvent } from './transactional-email';
 
 export const LINK_COLLECTION = 'relationship_links';
 const links = () => getDatabase().collection(LINK_COLLECTION);
@@ -284,7 +285,7 @@ export async function actOnRelationshipLink(request: Request) {
   if (!ownerAction && action !== 'reject' && !identity.email && !identity.phone) throw new ApiError(403, 'Verify your Firebase account email before claiming a relationship');
   const authenticatedAt = Number(user.token.auth_time || 0);
   if (!authenticatedAt || Date.now() / 1000 - authenticatedAt > 300 || authenticatedAt > Date.now() / 1000 + 60) throw new AccessError(403, 'Sign in again before confirming a relationship');
-  let linked: RecordData | null = null, expired = false, outcome = '', invitationEvents: TransactionalEmailEvent[] = [];
+  const intentIds:string[]=[];let linked: RecordData | null = null, expired = false, outcome = '', invitationEvents: TransactionalEmailEvent[] = [];
   await getDatabase().runTransaction(async tx => {
     linked = null; expired = false; outcome = ''; invitationEvents = [];
     const ref = links().doc(s(body.claimId)), snapshot = await tx.get(ref), claim = snapshot.data();
@@ -345,7 +346,8 @@ export async function actOnRelationshipLink(request: Request) {
     if (!row || row.isActive !== true || row.userUID || row.linkConfirmationRequired !== true || (claim.recipientEmailNormalized ? normalizeEmailAddress(row.email) !== claim.recipientEmailNormalized : indianMobile(row.phone) !== claim.contactE164) || tenant.propertyId !== claim.propertyId || tenant.ownerUID !== property.ownerUID) throw new ApiError(409, 'Tenancy changed; refresh before confirming');
     if (embedded.some(t => t.isActive === true && t.userUID === targetUID)) throw new ApiError(409, 'This account already has an active tenancy here');
     const now = new Date(), updates = {userUID: targetUID, linkConfirmationRequired: false, linkedAt: now, linkedByUID: user.uid};
-    tx.update(tenantRef, {...updates, updatedAt: now});
+    const lifecycle=await stageAdminLifecycle(tx,[{type:'tenant_confirmed',propertyId:s(claim.propertyId),tenantId:s(claim.tenantId),actorUID:user.uid,eventId:`tenant-confirmed:${s(claim.id)}`,title:'Tenancy confirmed',message:'The tenant relationship was confirmed.'}]);
+    const participant=await stageUserEvent(tx,{actorUID:user.uid,eventType: 'relationship.tenant_linked', eventId: `${s(claim.id)}:linked`, recipients: [{uid: s(targetUID), role: 'tenant'}, {uid: s(claim.ownerUID), role: 'owner'}], propertyId: s(claim.propertyId), recordId: s(claim.tenantId), templateId: 'tenant-linked', subject: 'Tenancy confirmed', title: 'Tenancy confirmed', bodyHtml: '<p>Your tenancy relationship has been confirmed.</p>', bodyText: 'Your tenancy relationship has been confirmed.', action: {label: 'View property', path: `/manage-property/${s(claim.propertyId)}`}});intentIds.push(participant.id);participant.write();lifecycle.write();tx.update(tenantRef, {...updates, updatedAt: now});
     tx.update(propertyRef, {tenants: embedded.map(t => t.id === claim.tenantId ? {...t, ...updates} : t), tenancyRevision: Number(property.tenancyRevision || 0) + 1, updatedAt: now});
     tx.update(ref, {status: 'linked', version, confirmedByUID: targetUID, confirmedAt: claim.confirmedAt || now, authorizedByUID: property.ownerUID, authorizedCandidateUID: targetUID, ownerApprovedAt: ownerAction ? now : claim.createdAt, linkedAt: now, updatedAt: now});
     linked = {...claim, candidateUID: targetUID};
@@ -353,9 +355,6 @@ export async function actOnRelationshipLink(request: Request) {
   });
   if (expired) throw new ApiError(409, 'This connection has expired. Ask for a new invitation through the existing property workflow.');
   if (invitationEvents.length) dispatchEmailOutbox(invitationEvents);
-  if (linked) {
-    const claim = linked as RecordData;
-    await bestEffort(() => persistUserEvent({eventType: 'relationship.tenant_linked', eventId: `${s(claim.id)}:linked`, recipients: [{uid: s(claim.candidateUID), role: 'tenant'}, {uid: s(claim.ownerUID), role: 'owner'}], propertyId: s(claim.propertyId), recordId: s(claim.tenantId), templateId: 'tenant-linked', subject: 'Tenancy confirmed', title: 'Tenancy confirmed', bodyHtml: '<p>Your tenancy relationship has been confirmed.</p>', bodyText: 'Your tenancy relationship has been confirmed.', action: {label: 'View property', path: `/manage-property/${s(claim.propertyId)}`}}));
-  }
+  dispatchNotificationIntents(intentIds);
   return jsonResponse({success: true, status: outcome || undefined, message: 'Relationship request updated'});
 }

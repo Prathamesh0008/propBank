@@ -119,6 +119,8 @@ interface SiteSettings {
 }
 
 interface PropertiesResponse {
+  nextCursor?:string|null;
+  coverageComplete?:boolean;
   success: boolean;
   properties: Property[];
   count: number;
@@ -135,11 +137,14 @@ interface PropertiesResponse {
 
 // Combined response with properties and site settings
 interface PropertiesWithSettingsResponse {
+  nextCursor?:string|null;
+  coverageComplete?:boolean;
   properties: Property[];
   siteSettings: SiteSettings;
 }
 
 class PropertyService {
+  private legacyArray(data:PropertiesResponse):Property[]{if(data.nextCursor)throw new Error('More property pages remain. Use the paginated property lookup to continue; this result is not complete.');return data.properties||[];}
   private async getHeaders(): Promise<Record<string, string>> {
     return {
       'Content-Type': 'application/json',
@@ -162,14 +167,14 @@ class PropertyService {
       throw new Error('Failed to fetch properties');
     }
 
-    return data.properties || [];
+    return this.legacyArray(data);
   }
 
   // Get properties with site settings (quote, hero text, etc.)
-  async getAllPropertiesWithSettings(): Promise<PropertiesWithSettingsResponse> {
+  async getAllPropertiesWithSettings(cursor=''): Promise<PropertiesWithSettingsResponse> {
     const headers = await this.getHeaders();
 
-    const response = await apiFetch(`${API_BASE_URL}/properties`, {
+    const response = await apiFetch(`${API_BASE_URL}/properties?cursor=${encodeURIComponent(cursor)}`, {
       method: 'GET',
       headers,
     });
@@ -183,7 +188,7 @@ class PropertyService {
     }
 
     return {
-      properties: data.properties || [],
+      nextCursor:data.nextCursor,coverageComplete:data.coverageComplete,properties: data.properties || [],
       siteSettings: {
         quote: data.quote,
         quoteAuthor: data.quoteAuthor,
@@ -210,7 +215,7 @@ class PropertyService {
       throw new Error(`Failed to fetch ${listingType} properties`);
     }
 
-    return data.properties || [];
+    return this.legacyArray(data);
   }
 
   async getRentalProperties(): Promise<Property[]> {
@@ -252,14 +257,14 @@ class PropertyService {
       throw new Error('Failed to fetch owner properties');
     }
 
-    return data.properties || [];
+    return this.legacyArray(data);
   }
 
-  async searchProperties(query: string, listingType?: 'buy' | 'rent', projectCondition?: string): Promise<Property[]> {
+  async searchPropertyPage(query: string, listingType?: 'buy' | 'rent', projectCondition?: string,cursor=''): Promise<PropertiesResponse> {
     const headers = await this.getHeaders();
 
     // Build query parameters
-    const searchParams = new URLSearchParams();
+    const searchParams = new URLSearchParams({cursor});
     if (query) searchParams.append('q', query);
     if (listingType) {
       // Map frontend types to backend types
@@ -281,8 +286,10 @@ class PropertyService {
       throw new Error('Failed to search properties');
     }
 
-    return data.properties || [];
+    return data;
   }
+  async searchProperties(query:string,listingType?:'buy'|'rent',projectCondition?:string):Promise<Property[]>{return this.legacyArray(await this.searchPropertyPage(query,listingType,projectCondition));}
+
 }
 
 export const propertyService = new PropertyService();

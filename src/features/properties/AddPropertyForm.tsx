@@ -380,7 +380,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
 
   useEffect(() => {
     const user=auth.currentUser;setCurrentUser(user);
-    if(user)void apiFetch(`${API_BASE_URL}/users/${user.uid}`).then(response=>response.json()).then(data=>setAccountRole(data.user?.role||'individual')).catch(()=>setAccountRole('individual'));
+    if(user)void apiFetch(`${API_BASE_URL}/users/${user.uid}?summary=true`).then(response=>response.json()).then(data=>setAccountRole(data.user?.role||'individual')).catch(()=>setAccountRole('individual'));
   },[]);
 
   useEffect(() => {

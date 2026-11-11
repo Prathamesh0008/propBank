@@ -1,7 +1,7 @@
-﻿const {test}=require('node:test'),assert=require('node:assert/strict');
+const {test}=require('node:test'),assert=require('node:assert/strict');
 const {isolated,users,properties,request,route,context,defaults}=require('./fixtures/native-server.cjs');
 const item={id:'bed',name:'Bed',quantity:2,condition:'Good',remarks:'Existing'};
-function setup(snapshot){const t={...properties.P.tenants[0],...defaults,propertyId:'P',ownerUID:'owner',agreementInventory:snapshot};if(!snapshot)delete t.agreementInventory;const p={...properties.P,furnishedChecklist:[{...item,checked:true}],tenants:[{...t}]};return isolated({users,properties:{P:p},tenants:{T:t}});}
+function setup(snapshot){const t={...properties.P.tenants[0],...defaults,propertyId:'P',ownerUID:'owner',agreementInventory:snapshot};if(!snapshot)delete t.agreementInventory;const p={...properties.P,monthlyRent:'30000',furnishedChecklist:[{...item,checked:true}],tenants:[{...t}]};return isolated({users,properties:{P:p},tenants:{T:t}});}
 const pure=()=>isolated().load('@/lib/agreement-inventory');
 const call=(app,uid,method,body)=>route(app,'tenants/[id]/inventory')[method](request('/tenants/T/inventory',uid,method,body),context('T'));
 test('add/edit/remove/undo preserves the original property source',()=>{const lib=pure(),source=[{...item,checked:true}],baseline=lib.propertyInventory(source);let edited=lib.normalizeInventory([...baseline,{id:'lamp',name:'Lamp',quantity:1}]);edited[0].quantity=3;const removed=lib.removeInventoryItem(edited,0);assert.equal(removed.items.length,1);const restored=lib.restoreInventoryItem(removed.items,removed.removed,removed.index);assert.equal(lib.inventorySummary(restored).quantity,4);assert.equal(source[0].quantity,2);assert.equal(lib.propertyInventory(source)[0].quantity,2);});

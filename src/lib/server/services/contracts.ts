@@ -1,3 +1,4 @@
+import {rentForBillingPeriod,localRentDate} from '@/lib/rent-resolution';
 import {purposeFields,leaseSummary,leaseExpired} from '@/lib/property-purpose';
 import 'server-only';
 import { schemas, projections } from './go-contracts';
@@ -10,9 +11,10 @@ const zeroDate = '0001-01-01T00:00:00Z';
 // Additive native fields live outside the generated legacy Go schemas.
 const tenantLinkFields = {linkConfirmationRequired: 'bool', phoneE164: 'string'};
 function tenantLinkValues(name: string, input: RecordData): RecordData {
+  if(name==='RentScheduleItem')return 'months' in input?{months:typedValue('string',input.months,true,'RentScheduleItem.months')}:{};
   if (!['Tenant', 'TenantInfo'].includes(name)) return {};
-  const inventory=Object.fromEntries(['agreementInventory','inventoryHistory'].filter(key=>key in input).map(key=>[key,input[key]]));
-  return {...inventory,...Object.fromEntries(Object.entries(tenantLinkFields).filter(([key]) => key in input)
+  const inventory=Object.fromEntries(['agreementInventory','inventoryHistory','rentAgreementSnapshots','rentEffectiveFrom','rentTermsVersion'].filter(key=>key in input).map(key=>[key,input[key]]));
+  return {...inventory,...('rentSchedule'in input?{rentSchedule:typedValue('[]RentScheduleItem',input.rentSchedule,true,'Tenant.rentSchedule')}:{}),...Object.fromEntries(Object.entries(tenantLinkFields).filter(([key]) => key in input)
     .map(([key, type]) => [key, typedValue(type, input[key], true, key)]))};
 }
 
@@ -103,6 +105,7 @@ export function wireModel(name: string, input: RecordData): RecordData {
 }
 
 export function parsePrice(value: unknown) { return Number.parseFloat(stringValue(value).replace(/[₹,]/g,'').trim()); }
+export const ownerReviewFields=['moderationStatus','moderationRevision','moderationReason','moderationSubmittedAt','moderationReviewedAt'] as const;
 export function propertyResponse(property: RecordData, projection = 'normal', userRole?: string) {
   const result = model('PropertyResponse', {});
   for (const [to,from] of projections[projection]) result[to] = property[from];
@@ -117,11 +120,14 @@ export function propertyResponse(property: RecordData, projection = 'normal', us
   if (userRole) result.userRole = userRole;
   const response=wireModel('PropertyResponse',result);
   if(userRole)for(const field of schemas.Property)if(field.name!=='price')response[field.name]=nestedModel(field.type,property[field.name],false);
-  if(userRole)for(const key of ['createdAs','submittedByUID','ownershipVerification','reportedOwner','moderationStatus','moderationRevision','moderationSubmittedAt','moderationReviewedAt','moderationReviewerUID','moderationReason','moderationHistory'])if(key in property)response[key]=wireValue(property[key]);
+  if(userRole)for(const key of ['createdAs','submittedByUID','ownershipVerification','reportedOwner'])if(key in property)response[key]=wireValue(property[key]);
+  if(userRole==='owner'||userRole==='admin')for(const key of ownerReviewFields)if(key in property)response[key]=wireValue(property[key]);
+  if(userRole==='admin')for(const key of ['moderationReviewerUID','moderationHistory'])if(key in property)response[key]=wireValue(property[key]);
   for(const key of ['propertyCategory','buildingName','plotArea','areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit','expectedRent','structure','agreementStatus','anticipatedTerminationDate','noticeStartDate','terminationDate','agreementHistory','agreementRequest','nextAgreementDraft','isRented'])if(key in property)response[key]=wireValue(property[key]);
   if(userRole==='admin'||userRole==='tenant')for(const key of ['ownershipVerificationReason','ownershipVerificationVersion'])if(key in property)response[key]=wireValue(property[key]);
   if(userRole==='admin')for(const key of ['ownershipVerificationReviewerUID','ownershipVerificationReviewedAt','ownershipVerificationHistory','ownershipVerificationAudit'])if(key in property)response[key]=wireValue(property[key]);
   if(Array.isArray(property.rentSchedule))response.rentSchedule=wireValue(property.rentSchedule);
+  if(userRole){for(const key of ['rentAgreementSnapshots','rentEffectiveFrom','rentTermsVersion'])if(key in property)response[key]=wireValue(property[key]);response.effectiveMonthlyRent=rentForBillingPeriod(property,localRentDate(property).slice(0,7)).amount;}
   if(userRole)for(const key of purposeFields)if(key in property)response[key]=wireValue(property[key]);
   if(isRecord(response.preLeased)&&!['owner','admin'].includes(userRole||'')){const {existingTenant:privateTenant,...lease}=response.preLeased;response.preLeased=lease;}
   if(property.listingType==='pre_leased'){response.investment=leaseSummary(property);response.leaseReviewRequired=leaseExpired(property);}

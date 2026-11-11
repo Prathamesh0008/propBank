@@ -10,7 +10,7 @@ import { ApiError, jsonResponse, plainError } from '../http';
 import { identity, readObject } from './domain-contracts';
 import { sendEmail, EmailConfigurationError, EmailProviderError } from './resend';
 import { isRecord, stringValue as s, wireValue, type RecordData } from './contracts';
-import {rentAmountForDate} from '@/lib/rent-schedule';
+import {rentForBillingPeriod} from '@/lib/rent-resolution';
 import {normalizeEmailAddress} from '@/lib/email-address';
 import {currentConnectionState} from '@/lib/relationship-link-state';
 
@@ -20,7 +20,7 @@ export type TransactionalEmailEvent={
   subject:string;html:string;text:string;idempotencyKey?:string;
   invitationClaimId?:string;tenancyId?:string;rentPeriod?:string;agreementVersion?:string;scheduledFor?:string;reminderOffset?:number;reminderDueDate?:string;reminderAmount?:string;
 };
-type UserEvent={eventType:string;eventId:string;recipients?:Array<{uid?:string;role:string;email?:string}>;recipientUIDs?:string[];propertyId?:string;recordId?:string;templateId:string;subject:string;title?:string;bodyHtml:string;bodyText:string;action?:{label:string;path:string}};
+export type UserEvent={actorUID?:string;eventType:string;eventId:string;recipients?:Array<{uid?:string;role:string;email?:string}>;recipientUIDs?:string[];propertyId?:string;recordId?:string;templateId:string;subject:string;title?:string;bodyHtml:string;bodyText:string;action?:{label:string;path:string}};
 
 const deliveries=()=>getDatabase().collection(COLLECTIONS.emailDeliveries || 'email_deliveries');
 const safeError=()=> 'Email provider delivery failed';
@@ -65,19 +65,21 @@ async function resolveRecipient(event:TransactionalEmailEvent) {
 
 async function deliver(id:string) {
   const ref=deliveries().doc(id),now=new Date(),lease=randomUUID();let value:RecordData|null=null;
-  await getDatabase().runTransaction(async tx=>{value=null;const snapshot=await tx.get(ref);if(!snapshot.exists)return;const current=snapshot.data()!,status=s(current.status);if(!(['pending','failed'].includes(status)||status==='sending'&&Number(current.deliveryLeaseUntil?.toMillis?.()||new Date(current.deliveryLeaseUntil||0).getTime())<=now.getTime())||Number(current.retryCount||0)>=5||status==='failed'&&Number(current.nextRetryAt?.toMillis?.()||new Date(current.nextRetryAt||0).getTime())>now.getTime())return;value=current;tx.update(ref,{status:'sending',deliveryLease:lease,deliveryLeaseUntil:new Date(now.getTime()+120000),lastAttemptAt:now,updatedAt:now});});
+  await getDatabase().runTransaction(async tx=>{value=null;const snapshot=await tx.get(ref);if(!snapshot.exists)return;const current=snapshot.data()!,status=s(current.status);if(['pending','failed','sending'].includes(status)&&Number(current.retryCount||0)>=5){tx.update(ref,{status:'exhausted',updatedAt:now});return;}if(!(['pending','failed'].includes(status)||status==='sending'&&Number(current.deliveryLeaseUntil?.toMillis?.()||new Date(current.deliveryLeaseUntil||0).getTime())<=now.getTime())||Number(current.retryCount||0)>=5||status==='failed'&&Number(current.nextRetryAt?.toMillis?.()||new Date(current.nextRetryAt||0).getTime())>now.getTime())return;value=current;tx.update(ref,{status:'sending',deliveryLease:lease,deliveryLeaseUntil:new Date(now.getTime()+120000),recoveryAt:new Date(now.getTime()+120000),lastAttemptAt:now,updatedAt:now});});
   if(!value)return 'skipped';
+  const finish=async(update:RecordData)=>getDatabase().runTransaction(async tx=>{const fresh=await tx.get(ref);if(fresh.data()?.deliveryLease===lease)tx.update(ref,update);});
   try{
-    if(!await invitationIsCurrent(value)){await ref.update({status:'cancelled',errorSummary:'Invitation is no longer eligible',updatedAt:now,deliveryLease:'',deliveryLeaseUntil:now});return 'skipped';}
+    if(!await invitationIsCurrent(value)||!await reminderIsCurrent(value)){await finish({status:'cancelled',errorSummary:'Invitation is no longer eligible',updatedAt:now,deliveryLease:'',deliveryLeaseUntil:now});return 'skipped';}
     if(value.firstAttemptAt&&now.getTime()-new Date(wireValue(value.firstAttemptAt) as string).getTime()>=23*60*60*1000)throw new Error('Delivery reconciliation required');
-    if(!value.firstAttemptAt)await ref.update({firstAttemptAt:now});
+    if(!value.firstAttemptAt)await finish({firstAttemptAt:now});
     const recipient=s(value.recipientEmail)||(value.recipientRole==='admin'?process.env.ADMIN_EMAIL||'':'');
     if(value.recipientRole==='admin'&&!emailPattern.test(recipient))throw new EmailConfigurationError('ADMIN_EMAIL must be a valid recipient address');
     const provider=await sendEmail({to:recipient,subject:s(value.subject),html:s(value.html),text:s(value.text)},s(value.idempotencyKey));
-    await ref.update({status:'sent',sentAt:now,lastAttemptAt:now,updatedAt:now,retryCount:Number(value.retryCount||0)+1,errorSummary:'',failureCategory:'',providerMessageId:provider.id||'',deliveryLease:'',deliveryLeaseUntil:now});return 'sent';
+    await finish({status:'sent',sentAt:now,lastAttemptAt:now,updatedAt:now,retryCount:Number(value.retryCount||0)+1,errorSummary:'',failureCategory:'',providerMessageId:provider.id||'',deliveryLease:'',deliveryLeaseUntil:now});return 'sent';
   }catch(error){
     console.error(`Transactional email delivery failed ${JSON.stringify({deliveryId:id,eventType:value.eventType,...(error instanceof EmailProviderError?{providerStatus:error.status,providerErrorCode:error.providerCode}:{}),configurationFailure:error instanceof EmailConfigurationError})}`);
-    await ref.update({status:'failed',lastAttemptAt:now,updatedAt:now,retryCount:Number(value.retryCount||0)+1,errorSummary:error instanceof EmailConfigurationError?error.message:error instanceof EmailProviderError&&error.providerCode==='sender_domain_not_verified'?'Sender domain is not verified in Resend; correct its DNS records':error instanceof Error&&error.message==='Delivery reconciliation required'?'Delivery reconciliation required before retry':safeError(),failureCategory:error instanceof EmailConfigurationError?'configuration':'provider_or_transport',...(error instanceof EmailProviderError?{providerStatus:error.status,providerErrorCode:error.providerCode}:{}),nextRetryAt:new Date(now.getTime()+5*60*1000),deliveryLease:'',deliveryLeaseUntil:now});return 'failed';
+    const exhausted=Number(value.retryCount||0)+1>=5,permanent=error instanceof EmailProviderError&&error.providerCode!=='sender_domain_not_verified'&&[400,404,422].includes(error.status),reconciliation=error instanceof Error&&error.message==='Delivery reconciliation required';
+    await finish({status:exhausted?'exhausted':permanent?'permanent_failure':reconciliation?'reconciliation_required':'failed',recoveryAt:new Date(now.getTime()+Math.min(60,5*2**Number(value.retryCount||0))*60000),lastAttemptAt:now,updatedAt:now,retryCount:Number(value.retryCount||0)+1,errorSummary:error instanceof EmailConfigurationError?error.message:error instanceof EmailProviderError&&error.providerCode==='sender_domain_not_verified'?'Sender domain is not verified in Resend; correct its DNS records':error instanceof Error&&error.message==='Delivery reconciliation required'?'Delivery reconciliation required before retry':safeError(),failureCategory:error instanceof EmailConfigurationError?'configuration':'provider_or_transport',...(error instanceof EmailProviderError?{providerStatus:error.status,providerErrorCode:error.providerCode}:{}),nextRetryAt:new Date(now.getTime()+5*60*1000),deliveryLease:'',deliveryLeaseUntil:now});return 'failed';
   }
 }
 
@@ -86,7 +88,7 @@ export function writeEmailOutbox(tx:Transaction,events:TransactionalEmailEvent[]
   const now=new Date();
   for(const event of events) {
     const recipientEmail=event.recipientEmail||'',idempotencyKey=keyFor(event,recipientEmail),id=idFor(idempotencyKey);
-    tx.create(deliveries().doc(id),definedFields({...event,id,recipientEmail,idempotencyKey,status:'pending',retryCount:0,createdAt:now,updatedAt:now,errorSummary:''}));
+    tx.create(deliveries().doc(id),definedFields({...event,id,recipientEmail,idempotencyKey,status:'pending',recoveryAt:now,retryCount:0,createdAt:now,updatedAt:now,errorSummary:''}));
   }
 }
 export function dispatchEmailOutbox(events:TransactionalEmailEvent[]) {
@@ -100,7 +102,7 @@ export async function enqueueTransactionalEmail(event:TransactionalEmailEvent) {
   const recipientEmail=await resolveRecipient(event);if(!recipientEmail)return {queued:false,reason:'recipient_ineligible'};
   const idempotencyKey=keyFor(event,recipientEmail),id=idFor(idempotencyKey),ref=deliveries().doc(id),now=new Date();
   let created=false;
-  await getDatabase().runTransaction(async tx=>{const existing=await tx.get(ref);if(existing.exists)return;created=true;tx.create(ref,definedFields({id,...event,recipientEmail,idempotencyKey,status:'pending',retryCount:0,createdAt:now,updatedAt:now,errorSummary:''}));});
+  await getDatabase().runTransaction(async tx=>{const existing=await tx.get(ref);if(existing.exists)return;created=true;tx.create(ref,definedFields({id,...event,recipientEmail,idempotencyKey,status:'pending',recoveryAt:now,retryCount:0,createdAt:now,updatedAt:now,errorSummary:''}));});
   return {queued:created,id,duplicate:!created};
 }
 
@@ -122,12 +124,8 @@ export async function processTransactionalEmail(event:TransactionalEmailEvent){
   }
 }
 export async function persistUserEvent(event:UserEvent) {
-  const content=brandedEmail(event.title||event.subject,event.bodyHtml,event.bodyText,event.action);
-  const recipients:Array<{uid?:string;role:string;email?:string}>=event.recipients||event.recipientUIDs?.map(uid=>({uid,role:'user'}))||[];
-  const ids:string[]=[];
-  for(const recipient of recipients){const result=await enqueueTransactionalEmail({eventType:event.eventType,eventId:event.eventId,recipientUID:recipient.uid,recipientRole:recipient.role,recipientEmail:recipient.email,propertyId:event.propertyId,recordId:event.recordId,templateId:event.templateId,templateVersion:1,subject:event.subject,...content});if(result.queued&&result.id)ids.push(result.id);}
-  if(ids.length)after(async()=>{for(const id of ids)await deliver(id);});
-  return {recorded:ids.length};
+  let id='';await getDatabase().runTransaction(async tx=>{const staged=await stageUserEvent(tx,event);id=staged.id;staged.write();});
+  dispatchNotificationIntents([id]);return {recorded:1};
 }
 export async function processUserEvent(event:UserEvent) {
   const content=brandedEmail(event.title||event.subject,event.bodyHtml,event.bodyText,event.action);
@@ -136,7 +134,7 @@ export async function processUserEvent(event:UserEvent) {
   for(const recipient of recipients)outcomes.push({role:recipient.role,status:await processTransactionalEmail({eventType:event.eventType,eventId:event.eventId,recipientUID:recipient.uid,recipientRole:recipient.role,recipientEmail:recipient.email,propertyId:event.propertyId,recordId:event.recordId,templateId:event.templateId,templateVersion:1,subject:event.subject,...content})});
   return outcomes;
 }
-export function queueUserEvent(event:UserEvent){after(async()=>{try{await persistUserEvent(event);}catch{console.error('Transactional email event persistence failed',{eventType:event.eventType,eventId:event.eventId});}});}
+export function queueUserEvent(event:UserEvent){after(async()=>{try{await persistUserEvent(event);}catch{console.error('Transactional email event persistence failed',{eventType:event.eventType});}});}
 
 export async function listEmailDeliveries(request:Request) {
   const user=await identity(request);if(user.role!=='admin')throw new AccessError(403,'Administrator access required');
@@ -154,7 +152,7 @@ export async function listEmailDeliveries(request:Request) {
   if(legacy)rows=rows.filter(row=>row.createdAt===undefined||row.createdAt===null);
   if(status)rows=rows.filter(row=>row.status===status);if(eventType)rows=rows.filter(row=>row.eventType===eventType);
   rows.sort((a,b)=>+new Date(b.createdAt as string)-+new Date(a.createdAt as string));
-  return jsonResponse({success:true,deliveries:wireValue(rows.map(row=>({...row,html:undefined,text:undefined,subject:s(row.subject),recipientEmail:s(row.recipientEmail).replace(/(^.).*(@.*$)/,'$1***$2')}))),nextCursor:snapshot.docs.length>pageSize?page.at(-1)?.id:null});
+  return jsonResponse({success:true,deliveries:wireValue(rows.map(row=>({...row,html:undefined,text:undefined,event:undefined,subject:s(row.subject),recipientEmail:s(row.recipientEmail).replace(/(^.).*(@.*$)/,'$1***$2')}))),nextCursor:snapshot.docs.length>pageSize?page.at(-1)?.id:null});
 }
 
 function reminderDate(value:unknown){const match=/^(\d{4})-(\d{2})-(\d{2})/.exec(s(value));return match?`${match[1]}-${match[2]}-${match[3]}`:'';}
@@ -182,8 +180,7 @@ async function reminderIsCurrent(value:RecordData){
   const expectedSchedule=(due:string)=>{const parsed=Date.parse(`${due}T00:00:00Z`);return Number.isFinite(parsed)?new Date(parsed-Number(value.reminderOffset||0)*86400000).toISOString().slice(0,10):'';};
   if(value.eventType==='agreement.expiry_reminder'){const due=reminderDate(tenant.leaseEndDate||property.agreementEndDate);return due===s(value.reminderDueDate)&&expectedSchedule(due)===s(value.scheduledFor)&&s(tenant.agreementVersion||property.agreementVersion||property.tenancyRevision||value.reminderDueDate)===s(value.agreementVersion);}
   const ledger=isRecord(property.rentLedger)?property.rentLedger:{},period=s(value.rentPeriod);if(isRecord(ledger[period])&&ledger[period].status==='paid')return false;
-  const due=Number(tenant.paymentDueDate||property.paymentDueDate),match=/^(\d{4})-(\d{2})$/.exec(period);if(!match||!Number.isInteger(due)||due<1||due>31)return false;const year=Number(match[1]),month=Number(match[2]),day=Math.min(due,new Date(Date.UTC(year,month,0)).getUTCDate()),currentDue=`${period}-${String(day).padStart(2,'0')}`;
-  const currentAmount=rentAmountForDate({...property,...tenant,rentSchedule:Array.isArray(tenant.rentSchedule)?tenant.rentSchedule:property.rentSchedule},currentDue);
+  const resolved=rentForBillingPeriod(property,period,tenant),currentDue=resolved.dueDate,currentAmount=resolved.amount;
   return currentDue===s(value.reminderDueDate)&&expectedSchedule(currentDue)===s(value.scheduledFor)&&currentAmount===s(value.reminderAmount);
 }
 
@@ -193,6 +190,43 @@ export async function retryEmailDelivery(request:Request,id:string) {
   if(Object.keys(req).length)throw new ApiError(400,'Retry does not accept message or recipient changes');
   const ref=deliveries().doc(id);
   const snapshot=await ref.get();if(!snapshot.exists)throw new ApiError(404,'Delivery not found');if(!await reminderIsCurrent(snapshot.data()!))throw new ApiError(409,'Reminder is obsolete and cannot be retried');if(!await invitationIsCurrent(snapshot.data()!))throw new ApiError(409,'Invitation is obsolete and cannot be retried');
-  await getDatabase().runTransaction(async tx=>{const doc=await tx.get(ref);if(!doc.exists)throw new ApiError(404,'Delivery not found');const value=doc.data()!;if(!(['failed','pending'].includes(s(value.status))||value.status==='sending'&&Number(value.deliveryLeaseUntil?.toMillis?.()||new Date(value.deliveryLeaseUntil||0).getTime())<=Date.now())||Number(value.retryCount||0)>=5)throw new ApiError(409,'Delivery is not eligible for retry');tx.update(ref,{status:'pending',updatedAt:new Date(),errorSummary:'',nextRetryAt:null});});
-  after(()=>deliver(id));return jsonResponse({success:true,message:'Delivery queued for retry'});
+  await getDatabase().runTransaction(async tx=>{const doc=await tx.get(ref);if(!doc.exists)throw new ApiError(404,'Delivery not found');const value=doc.data()!;if(!(['failed','pending'].includes(s(value.status))||value.status==='sending'&&Number(value.deliveryLeaseUntil?.toMillis?.()||new Date(value.deliveryLeaseUntil||0).getTime())<=Date.now())||Number(value.retryCount||0)>=5)throw new ApiError(409,'Delivery is not eligible for retry');tx.update(ref,{status:'pending',recoveryAt:new Date(),updatedAt:new Date(),errorSummary:'',nextRetryAt:null});});
+  after(()=>recoverNotification(id));return jsonResponse({success:true,message:'Delivery queued for retry'});
+}
+
+/** An unresolved recipient is staged durably before the authoritative business write. */
+export async function stageUserEvent(tx:Transaction,event:UserEvent){
+ const id=idFor(`notification-intent:${event.eventType}:${event.eventId}`),ref=deliveries().doc(id),existing=await tx.get(ref),now=new Date();
+ const recipients=event.recipients||event.recipientUIDs?.map(uid=>({uid,role:'user'}))||[];
+ if(recipients.length>60)throw new ApiError(400,'Notification recipient limit exceeded');
+ const stored=JSON.parse(JSON.stringify(event)),mail:TransactionalEmailEvent[]=[],addresses=new Set<string>(),content=brandedEmail(event.title||event.subject,event.bodyHtml,event.bodyText,event.action);
+ // Resolve recipients before writes; provider calls are strictly post-commit.
+ for(const recipient of recipients){const e:TransactionalEmailEvent={eventType:event.eventType,eventId:event.eventId,recipientUID:recipient.uid,recipientRole:recipient.role,recipientEmail:'email' in recipient?recipient.email:undefined,propertyId:event.propertyId,recordId:event.recordId,templateId:event.templateId,templateVersion:1,subject:event.subject,...content};const address=await resolveRecipient(e);if(address&&!addresses.has(address)){addresses.add(address);e.recipientEmail=address;const existingMail=await tx.get(deliveries().doc(emailDeliveryId(e)));if(!existingMail.exists&&!mail.some(m=>emailDeliveryId(m)===emailDeliveryId(e)))mail.push(e);}}
+ return {id,write:()=>{if(!existing.exists)tx.create(ref,{id,kind:'notification_intent',eventType:'notification.intent',sourceEventType:event.eventType,event:stored,status:'pending',retryCount:0,recoveryAt:now,createdAt:now,updatedAt:now});writeEmailOutbox(tx,mail);}};
+}
+export function dispatchNotificationIntents(ids:string[]){try{after(async()=>{for(const id of ids)try{await recoverNotification(id);}catch{console.error('Notification recovery deferred');}});}catch{/* Durable intent remains pending. */}}
+export async function recoverNotification(id:string,sendChildren=true){
+ const ref=deliveries().doc(id),snapshot=await ref.get();if(!snapshot.exists)return 'skipped';const value=snapshot.data()!;
+ if(value.kind!=='notification_intent')return deliver(id);
+ const now=new Date(),lease=randomUUID();let claimed=false;
+ const finish=async(update:RecordData)=>getDatabase().runTransaction(async tx=>{const fresh=await tx.get(ref);if(fresh.data()?.deliveryLease===lease)tx.update(ref,update);});
+ await getDatabase().runTransaction(async tx=>{claimed=false;const doc=await tx.get(ref),v=doc.data();if(v&&['pending','failed','sending'].includes(s(v.status))&&Number(v.retryCount||0)>=5){tx.update(ref,{status:'exhausted',updatedAt:now});return;}if(!v||!['pending','failed','sending'].includes(s(v.status))||Number(v.retryCount||0)>=5||v.status==='sending'&&new Date(wireValue(v.deliveryLeaseUntil) as string).getTime()>now.getTime()||v.status==='failed'&&new Date(wireValue(v.recoveryAt) as string).getTime()>now.getTime())return;claimed=true;tx.update(ref,{status:'sending',deliveryLease:lease,deliveryLeaseUntil:new Date(now.getTime()+120000),recoveryAt:new Date(now.getTime()+120000)});});
+ if(!claimed)return 'skipped';
+ try{
+  const event=value.event as UserEvent,content=brandedEmail(event.title||event.subject,event.bodyHtml,event.bodyText,event.action),recipients:Array<{uid?:string;role:string;email?:string}>=event.recipients||event.recipientUIDs?.map(uid=>({uid,role:'user'}))||[],ids:string[]=[];
+  const addresses=new Set<string>();
+  for(const recipient of recipients){const mail:TransactionalEmailEvent={eventType:event.eventType,eventId:event.eventId,recipientUID:recipient.uid,recipientRole:recipient.role,recipientEmail:recipient.email,propertyId:event.propertyId,recordId:event.recordId,templateId:event.templateId,templateVersion:1,subject:event.subject,...content};const address=await resolveRecipient(mail);if(address&&!addresses.has(address)){addresses.add(address);const result=await enqueueTransactionalEmail(mail);if(result.id)ids.push(result.id);}}
+  // Admin previews contain policy text only; participant templates remain private.
+  if(/^(rent\.payment|maintenance\.|visit\.|negotiation\.|owner_verification\.|user\.(mobile|profile)|agent\.)/.test(event.eventType)){
+   const noticeId=event.eventType.startsWith('visit.')?idFor(`admin-activity:${event.eventType}:${event.eventId.replace(/:(requester|admin|owner)$/,'')}`):id;
+   const nref=getDatabase().collection(COLLECTIONS.adminNotifications).doc(noticeId);
+   await getDatabase().runTransaction(async tx=>{const existing=await tx.get(nref);if(!existing.exists)tx.create(nref,{id,type:event.eventType.startsWith('visit.')?'visit_update':event.eventType.startsWith('negotiation.')?'negotiation_update':event.eventType.startsWith('maintenance.')?'service_request':event.eventType,eventType:event.eventType,ownerId:recipients.find(r=>r.role==='owner')?.uid||'',userId:recipients.find(r=>r.role==='customer'||r.role==='requester')?.uid||'',title:'Administrative activity',message:`${event.eventType.replaceAll('.',' ').replaceAll('_',' ')} recorded. Review the authorized details.`,propertyId:event.propertyId||'',recordId:event.recordId||'',relatedId:event.recordId||'',actorUID:event.actorUID||'',eventId:event.eventId,lifecycle:true,isRead:false,readByUIDs:[],timestamp:now,createdAt:now,emailStatus:process.env.ADMIN_EMAIL?'queued':'unconfigured'});});
+   if(!event.eventType.startsWith('visit.')&&!recipients.some(r=>r.role==='admin')&&process.env.ADMIN_EMAIL&&!addresses.has(process.env.ADMIN_EMAIL.trim().toLowerCase())){const result=await enqueueTransactionalEmail({eventType:`admin.${event.eventType}`,eventId:event.eventId,recipientRole:'admin',recipientEmail:process.env.ADMIN_EMAIL,propertyId:event.propertyId,recordId:event.recordId,templateId:'admin-activity',templateVersion:1,subject:'PropBank administrative activity',...brandedEmail('Administrative activity',`<p>${event.eventType.replaceAll('.',' ').replaceAll('_',' ')} recorded.</p>`,`${event.eventType} recorded.`,{label:'Review notifications',path:'/admin?tab=notifications'})});if(result.id)ids.push(result.id);}
+  }
+  await finish({status:'processed',updatedAt:new Date(),deliveryLease:'',deliveryLeaseUntil:now});
+  if(sendChildren)for(const child of ids)try{await deliver(child);}catch{/* Pending child is independently recoverable. */}
+  return 'processed';
+ }catch{
+  const retryCount=Number(value.retryCount||0)+1;await finish({status:retryCount>=5?'exhausted':'failed',retryCount,recoveryAt:new Date(Date.now()+Math.min(60,5*2**retryCount)*60000),updatedAt:new Date(),errorSummary:'Notification staging failed; retry pending',deliveryLease:'',deliveryLeaseUntil:now});return 'failed';
+ }
 }

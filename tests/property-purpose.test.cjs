@@ -31,7 +31,7 @@ test('expiry flags owner review and removes previously approved investment from 
  const listing=await route(app,'properties').GET(request('/properties?listingType=sell'));assert.equal((await listing.json()).count,0);
 });
 test('existing rent/sale and legacy combined payloads retain their behavior',async()=>{
- for(const listingType of ['rent','sell','sell_rent']){const app=isolated({users}),{r,body}=await create(app,{listingType,rentalStatus:'available',monthlyRent:'20000',sellingPrice:'4000000'});assert.equal(r.status,200,JSON.stringify(body));assert.equal(app.state.properties[body.property.id].listingType,listingType);}
+ for(const listingType of ['rent','sell','sell_rent']){const app=isolated({users}),{r,body}=await create(app,{listingType,rentalStatus:'available',monthlyRent:'20000',securityDeposit:'0',sellingPrice:'4000000'});assert.equal(r.status,200,JSON.stringify(body));assert.equal(app.state.properties[body.property.id].listingType,listingType);}
 });
 test('investment cover publishes only after moderation; management photos never publish',async()=>{
  for(const listingType of ['pre_leased','manage']){

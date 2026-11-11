@@ -48,6 +48,11 @@ const AttachmentPreview = ({ url }: { url: string }) => {
 };
 
 export interface AdminServiceRequestsTabProps {
+  embedded?:boolean;
+  tabValue?:string;
+  title?:string;
+  description?:string;
+  onDelete?:(id:string)=>Promise<void>;
   loading: boolean;
   notifications: AdminNotification[];
   handleMarkComplete: (notificationId: string, completed: boolean) => Promise<void>;
@@ -62,6 +67,7 @@ export interface AdminServiceRequestsTabProps {
 }
 
 export const AdminServiceRequestsTab: React.FC<AdminServiceRequestsTabProps> = ({
+  embedded=false,tabValue='service-requests',title='Active Service Requests',description='Property sale requests and property enquiries - Owner/User details with Name, Email, Phone Number',onDelete,
   loading,
   notifications,
   handleMarkComplete,
@@ -74,13 +80,12 @@ export const AdminServiceRequestsTab: React.FC<AdminServiceRequestsTabProps> = (
   handleRemarkImageUpload,
   handleSaveRemarks
 }) => {
-  return (
-        <TabsContent value="service-requests" className={`${styles.requests} mt-6`}>
+  const content=(
           <Card className={styles.surface}>
             <CardHeader>
-              <CardTitle>Active Service Requests</CardTitle>
+              <CardTitle>{title}</CardTitle>
               <CardDescription>
-                Property sale requests and property enquiries - Owner/User details with Name, Email, Phone Number
+                {description}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1240,6 +1245,7 @@ export const AdminServiceRequestsTab: React.FC<AdminServiceRequestsTabProps> = (
                                 View Property Details
                               </Button>
                             )}
+                            {onDelete&&<Button type="button" variant="outline" disabled={updating===notification.id} onClick={()=>void onDelete(notification.id)}>Delete notification</Button>}
                           </div>
                         </div>
                       </CardContent>
@@ -1249,6 +1255,7 @@ export const AdminServiceRequestsTab: React.FC<AdminServiceRequestsTabProps> = (
               )}
             </CardContent>
           </Card>
-        </TabsContent>
+
   );
+  return embedded?<section className={`${styles.requests} mt-6`}>{content}</section>:<TabsContent value={tabValue} className={`${styles.requests} mt-6`}>{content}</TabsContent>;
 };

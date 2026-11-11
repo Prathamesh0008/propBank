@@ -54,7 +54,7 @@ const ArchivedProperties = () => {
   const queryClient=useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   
-  const { data: propertiesData, isLoading: loading, refetch } = useArchivedProperties(user?.uid);
+  const { data: propertiesData, isLoading: loading, refetch ,hasNextPage,fetchNextPage,isFetchingNextPage } = useArchivedProperties(user?.uid);
   const properties = propertiesData || [];
 
   useEffect(() => {
@@ -138,7 +138,7 @@ const ArchivedProperties = () => {
   };
 
   return (
-    <main className={styles.page}>
+    <main className={styles.page}>{hasNextPage&&<p role="status">Results cover loaded records; older memberships may require further pages. <Button variant="outline" disabled={isFetchingNextPage} onClick={()=>void fetchNextPage()}>Load more properties</Button></p>}
       <>
         <title>Archived Properties — PropBank</title>
         <meta name="description" content="View your archived property listings" />

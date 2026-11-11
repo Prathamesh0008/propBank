@@ -13,8 +13,8 @@ import { identity, propertyMember, readModel, readObject, knownFields, parseRFC3
 import { getProperty } from './properties';
 import { getUser } from './users';
 import { bestEffort, escapeHtml } from './property-effects';
-import {brandedEmail,dispatchEmailOutbox,persistUserEvent,type TransactionalEmailEvent} from './transactional-email';
-import { inquiryMail } from './group2-mail';
+import {brandedEmail,dispatchEmailOutbox,stageUserEvent,dispatchNotificationIntents,type TransactionalEmailEvent} from './transactional-email';
+import { inquiryMailEvent } from './group2-mail';
 import { indianMobile } from '../../indian-phone';
 import { indiaCalendarDate } from '../../form-validation';
 const collection=()=>getDatabase().collection(COLLECTIONS.adminNotifications);
@@ -75,8 +75,7 @@ export async function postNotification(request:Request) {
     req.propertyId='';req.serviceImage='';req.adminImage='';
     const now=new Date();
     const data=model('AdminNotification',{...req,id:randomUUID(),timestamp:now,createdAt:now,updatedAt:now});
-    const saved=await persistInquiry(request,storeModel('AdminNotification',data));notification=model('AdminNotification',saved.notification);duplicate=saved.duplicate;
-    if(!duplicate)await bestEffort(()=>inquiryMail(notification));
+    const event=inquiryMailEvent(data),saved=await persistInquiry(request,storeModel('AdminNotification',data),Date.now(),[event]);notification=model('AdminNotification',saved.notification);duplicate=saved.duplicate;if(!duplicate)dispatchEmailOutbox([event]);
   }else if(req.type==='property_enquiry'){
     const now=new Date(),data=model('AdminNotification',{...req,id:randomUUID(),timestamp:now,createdAt:now,updatedAt:now});
     const stored=storeModel('AdminNotification',data),content=brandedEmail('New property enquiry',`<p>A customer submitted an enquiry for <strong>${escapeHtml(s(data.propertyTitle)||'a property')}</strong>.</p><p>Name: ${escapeHtml(s(data.userName))}<br>Email: ${escapeHtml(s(data.userEmail))}<br>Contact: ${escapeHtml(s(data.userPhone)||'Not provided')}<br>Property ID: ${escapeHtml(s(data.propertyId))}</p>`,`New property enquiry for ${s(data.propertyTitle)||'a property'}. Customer: ${s(data.userName)}. Email: ${s(data.userEmail)}. Contact: ${s(data.userPhone)||'Not provided'}. Property ID: ${s(data.propertyId)}.`,{label:'Open enquiry inbox',path:'/admin?tab=enquiries'});
@@ -94,17 +93,17 @@ export async function listNotifications(request:Request) {
   const user=await identity(request);const params=new URL(request.url).searchParams;const propertyId=params.get('propertyId');
   let query=collection() as FirebaseFirestore.Query;
   if(propertyId) {if(!await propertyMember(user,propertyId))return plainError('Property not found',404);query=query.where('propertyId','==',propertyId);}
-  else {requireAdmin(user);query=params.get('unread')==='true'?query.where('isRead','==',false):params.get('unread')==='false'?query.where('isRead','==',true):query.orderBy('timestamp','desc');}
-  const snapshot=await query.get();let notifications:RecordData[]=[];
-  for(const doc of snapshot.docs)try{const data=doc.data();notifications.push({...model('AdminNotification',data),id:doc.id,...(typeof data.relatedId==='string'?{relatedId:data.relatedId}:{})});}catch{/* Skip malformed legacy records. */}
+  else {requireAdmin(user);query=query.orderBy('timestamp','desc');}
+  const snapshot=await query.limit(100).get();let notifications:RecordData[]=[];
+  for(const doc of snapshot.docs)try{const data=doc.data();if(user.role!=='admin'&&data.lifecycle===true)continue;const personalRead=Array.isArray(data.readByUIDs)&&data.readByUIDs.includes(user.uid);if(user.role==='admin'&&(params.get('unread')==='true'&&personalRead||params.get('unread')==='false'&&!personalRead))continue;notifications.push({...model('AdminNotification',data),isRead:user.role==='admin'?personalRead:data.isRead,id:doc.id,...(typeof data.relatedId==='string'?{relatedId:data.relatedId}:{})});}catch{/* Skip malformed legacy records. */}
   if(propertyId&&user.role!=='admin') {const property=await getProperty(propertyId);if(property?.ownerUID!==user.uid)notifications=notifications.filter(n=>n.userId===user.uid||['agreement_termination','agreement_renewal'].includes(s(n.type)));}
   notifications.sort((a,b)=>epoch(b.timestamp)-epoch(a.timestamp));return jsonResponse(notifications.map(n=>{const visible={...wireModel('AdminNotification',n),...(n.relatedId?{relatedId:n.relatedId}:{})};if(user.role!=='admin'&&n.type==='agreement_termination')Object.assign(visible,{message:'Agreement termination activity was updated.',ownerEmail:'',ownerPhone:'',tenantEmail:'',tenantPhone:'',userEmail:'',userPhone:''});return visible;}));
 }
 export async function readNotification(request:Request,id:string) {
-  requireAdmin(await identity(request));let archive=true;
+  const actor=await identity(request);requireAdmin(actor);let archive=true;
   if(Number(request.headers.get('Content-Length'))>0)try{const req=knownFields(await readObject(request),['action']);if(req.action==='unarchive')archive=false;}catch{/* Go ignores malformed optional bodies. */}
   const now=new Date();const action=archive?'archived':'unarchived';
-  await collection().doc(id).update({isRead:archive,updatedAt:now,archiveHistory:FieldValue.arrayUnion({action,timestamp:now}),...(archive?{resolvedAt:now}:{})});
+  await getDatabase().runTransaction(async tx=>{const ref=collection().doc(id),doc=await tx.get(ref);if(!doc.exists)throw new ApiError(404,'Notification not found');const read=Array.isArray(doc.data()?.readByUIDs)?doc.data()!.readByUIDs:[];tx.update(ref,{readByUIDs:archive?Array.from(new Set([...read,actor.uid])):read.filter((uid:string)=>uid!==actor.uid),archiveHistory:FieldValue.arrayUnion({action,timestamp:now,actorUID:actor.uid}),updatedAt:now});});
   return jsonResponse({message:`Notification ${action}`,id,action});
 }
 export async function remarksNotification(request:Request,id:string) {
@@ -114,9 +113,9 @@ export async function remarksNotification(request:Request,id:string) {
   const before=await collection().doc(id).get();if(!before.exists)throw new ApiError(404,'Notification not found');
   restoreFileReferences(COLLECTIONS.adminNotifications,id,req,before.data()!);
   if(adminImage)adminImage=await prepareFile(s(req.adminImage),actor,s(before.data()?.propertyId),'response',s(before.data()?.adminImage));
-  await saveMediaRecord(COLLECTIONS.adminNotifications,id,{...before.data(),adminRemarks:remarks,updatedAt:new Date(),...(adminImage?{adminImage}:{})},actor);
-  const profile=before.data()?.userId?await getUser(s(before.data()?.userId)):null;
-  if(profile?.email)await bestEffort(()=>persistUserEvent({eventType:'request.admin_response',eventId:`${id}:${String(before.data()?.updatedAt||'response')}:${remarks}`,recipients:[{uid:s(before.data()?.userId),role:'requester'}],propertyId:s(before.data()?.propertyId),recordId:id,templateId:'admin-response',subject:'Request response from PropBank',title:'PropBank request update',bodyHtml:`<p>${escapeHtml(remarks)}</p>`,bodyText:remarks,action:{label:'View your property',path:before.data()?.propertyId?`/manage-property/${s(before.data()?.propertyId)}`:'/manage-property'}}));
+  const intentIds:string[]=[];await saveMediaRecord(COLLECTIONS.adminNotifications,id,{...before.data(),adminRemarks:remarks,updatedAt:new Date(),...(adminImage?{adminImage}:{})},actor,false,async tx=>{const intent=await stageUserEvent(tx,{eventType:'request.admin_response',eventId:`${id}:${String(before.data()?.updatedAt||'response')}:${remarks}`,recipients:[{uid:s(before.data()?.userId),role:'requester'}],propertyId:s(before.data()?.propertyId),recordId:id,templateId:'admin-response',subject:'Request response from PropBank',title:'PropBank request update',bodyHtml:`<p>${escapeHtml(remarks)}</p>`,bodyText:remarks,action:{label:'View your property',path:before.data()?.propertyId?`/manage-property/${s(before.data()?.propertyId)}`:'/manage-property'}});intentIds.push(intent.id);return intent.write;});
+
+  dispatchNotificationIntents(intentIds);
   return jsonResponse({success:true,message:'Admin remarks updated successfully',id,remarks,adminImage});
 }
 export async function deleteNotification(request:Request,id:string) {

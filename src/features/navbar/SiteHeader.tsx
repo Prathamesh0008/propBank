@@ -48,7 +48,7 @@ const SiteHeader = () => {
 
   const getUserData = async (uid: string) => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/users/${uid}`, {
+      const response = await axios.get(`${API_BASE_URL}/users/${uid}?summary=true`, {
         headers: Object.fromEntries((await firebaseAuthorizationHeaders({
           "Content-Type": "application/json",
         })).entries()),

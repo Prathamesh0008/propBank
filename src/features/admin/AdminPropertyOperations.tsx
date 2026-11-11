@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState,useRef,useEffect } from 'react';
 import { Search, UserRoundCheck, Building2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { useNavigate } from '@/lib/navigation';
@@ -16,13 +16,16 @@ export default function AdminPropertyOperations({properties}:{properties:Propert
   const [results,setResults]=useState<Account[]>([]);
   const [selected,setSelected]=useState<Account|null>(null);
   const [propertyId,setPropertyId]=useState('');
+  const [nextCursor,setNextCursor]=useState<string|null>(null);const [searched,setSearched]=useState('');
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState('');
-  const search=async()=>{
+  const pendingSearch=useRef<AbortController|null>(null);useEffect(()=>()=>pendingSearch.current?.abort(),[]);
+  const search=async(append=false)=>{
+    pendingSearch.current?.abort();const controller=new AbortController();pendingSearch.current=controller;
     setLoading(true);setError('');setSelected(null);
-    try{const response=await apiFetch(`/api/admin/users/search?q=${encodeURIComponent(query)}`);const data=await response.json();if(!response.ok)throw new Error(data.message||'Search failed');setResults(data.users||[]);}
-    catch(error){setResults([]);setError(error instanceof Error?error.message:'Search failed');}
-    finally{setLoading(false);}
+    try{const response=await apiFetch(`/api/admin/users/search?q=${encodeURIComponent(query)}${append?'&cursor='+encodeURIComponent(nextCursor||''):''}`,{signal:controller.signal});const data=await response.json();if(controller.signal.aborted)return;if(!response.ok)throw new Error(data.message||'Search failed');setResults(old=>append?[...new Map([...old,...data.users||[]].map(u=>[u.uid,u])).values()]:data.users||[]);setNextCursor(data.nextCursor||null);setSearched(query);}
+    catch(error){if(controller.signal.aborted)return;setResults([]);setError(error instanceof Error?error.message:'Search failed');}
+    finally{if(pendingSearch.current===controller)setLoading(false);}
   };
   const active=selected?.isActive===true;
   return <section className={styles.panel} aria-labelledby="admin-property-operations-title">
@@ -32,8 +35,9 @@ export default function AdminPropertyOperations({properties}:{properties:Propert
     </div>
     <div className={styles.searchRow}>
       <label className={styles.field}><span>Registered user</span><input value={query} onChange={event=>setQuery(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();void search();}}} placeholder="Name, email or phone" /></label>
-      <Button type="button" variant="outline" onClick={search} disabled={loading||query.trim().length<2}><Search className="h-4 w-4 mr-2"/>{loading?'Searching…':'Search'}</Button>
+      <Button type="button" variant="outline" onClick={()=>void search()} disabled={loading||query.trim().length<2}><Search className="h-4 w-4 mr-2"/>{loading?'Searching…':'Search'}</Button>
     </div>
+    {nextCursor&&query===searched&&<p>More user records remain to be searched. <Button variant="outline" disabled={loading} onClick={()=>void search(true)}>Continue user search</Button></p>}
     {error&&<p className={styles.error} role="alert">{error}</p>}
     {!!results.length&&<div className={styles.results} role="list" aria-label="Matching registered users">{results.map(account=><button type="button" role="listitem" key={account.uid} className={selected?.uid===account.uid?styles.selected:styles.result} onClick={()=>setSelected(account)}>
       <strong>{account.name||'Unnamed account'}</strong><span>{account.email} · {account.phoneNumber||'No phone'}</span><small>{account.isActive?'Active account':'Inactive account'} · {account.role}</small>

@@ -1,3 +1,5 @@
+import {reconcileVerifiedEmail} from './verified-email';
+import {createHash} from 'node:crypto';
 import 'server-only';
 import {verifiedMobile,validContact,discoverFor} from './relationship-links';
 import {indianMobile} from '@/lib/indian-phone';
@@ -8,7 +10,7 @@ import {getFirebaseAdminAuth} from '../firebase-admin';
 import {ApiError,jsonResponse} from '../http';
 import {authMetadata,recordAuthActivity} from './auth-activity';
 import {isRecord,stringValue as s,wireValue,type RecordData} from './contracts';
-import {brandedEmail,dispatchEmailOutbox,persistUserEvent,writeEmailOutbox,type TransactionalEmailEvent} from './transactional-email';
+import {stageUserEvent,dispatchNotificationIntents} from './transactional-email';
 
 const users=()=>getDatabase().collection(COLLECTIONS.users);
 const clean=(value:unknown,max:number)=>s(value).trim().replace(/\s+/g,' ').slice(0,max);
@@ -17,7 +19,9 @@ const displayRole=(role:string)=>role==='admin'?'Administrator':role==='agent'?'
 const notify=async(input:{uid:string;eventType:string;eventId:string;subject:string;title:string;body:string;previousEmail?:string})=>{
   const recipients:Array<{uid?:string;role:string;email?:string}>=[{uid:input.uid,role:'user'}];
   if(input.previousEmail)recipients.push({role:'previous_email',email:input.previousEmail});
-  await persistUserEvent({eventType:input.eventType,eventId:input.eventId,recipients,recordId:input.uid,templateId:'account-security',subject:input.subject,title:input.title,bodyHtml:`<p>${input.body}</p><p>If you did not make this change, reset your password and contact PropBank support.</p>`,bodyText:`${input.body} If you did not make this change, reset your password and contact PropBank support.`,action:{label:'Review your account',path:'/my-account'}}).catch(()=>null);
+  const event={eventType:input.eventType,eventId:input.eventId,recipients,recordId:input.uid,templateId:'account-security',subject:input.subject,title:input.title,bodyHtml:`<p>${input.body}</p><p>If you did not make this change, reset your password and contact PropBank support.</p>`,bodyText:`${input.body} If you did not make this change, reset your password and contact PropBank support.`,action:{label:'Review your account',path:'/my-account'}};
+  const id=createHash('sha256').update(input.eventId).digest('hex');let intentId='';
+  await getDatabase().runTransaction(async tx=>{const ref=getDatabase().collection('auth_activity').doc(id),existing=await tx.get(ref),intent=await stageUserEvent(tx,event);intentId=intent.id;intent.write();if(!existing.exists)tx.create(ref,{id,eventType:input.eventType.replace('user.',''),actorUID:input.uid,targetUID:input.uid,context:{source:'firebase-client'},createdAt:new Date()});});dispatchNotificationIntents([intentId]);
 };
 
 async function self(request:Request){
@@ -37,18 +41,9 @@ async function activityFor(uid:string){
 }
 
 export async function readMyAccount(request:Request){
-  const {uid,ref,profile,account,identity}=await self(request);let current={...profile};
-  const firebaseEmail=(account.email||'').trim().toLowerCase(),storedEmail=s(profile.email).trim().toLowerCase();
-  // Firebase is authoritative for a completed verified email change. Sync only
-  // after Firebase marks the new address verified; a pending verification never
-  // changes the persisted profile or emits a completion notification.
-  if(account.emailVerified&&firebaseEmail&&firebaseEmail!==storedEmail){
-    const now=new Date(),eventId=`user:${uid}:email:${firebaseEmail}`,content=brandedEmail('Email address changed','<p>The verified email address for your PropBank account was changed.</p><p>If you did not make this change, reset your password and contact PropBank support.</p>','The verified email address for your PropBank account was changed. If you did not make this change, reset your password and contact PropBank support.',{label:'Review your account',path:'/my-account'});
-    const events:TransactionalEmailEvent[]=[{eventType:'user.email_changed',eventId,recipientUID:uid,recipientRole:'user',recipientEmail:firebaseEmail,recordId:uid,templateId:'account-security',templateVersion:1,subject:'Your PropBank email address changed',idempotencyKey:`${eventId}:new`,...content},...(storedEmail?[{eventType:'user.email_changed',eventId,recipientRole:'previous_email',recipientEmail:storedEmail,recordId:uid,templateId:'account-security',templateVersion:1,subject:'Your PropBank email address changed',idempotencyKey:`${eventId}:previous`,...content} as TransactionalEmailEvent]:[])];
-    await getDatabase().runTransaction(async tx=>{tx.set(ref,{email:firebaseEmail,emailVerified:true,updatedAt:now},{merge:true});writeEmailOutbox(tx,events);});dispatchEmailOutbox(events);
-    await recordAuthActivity({eventType:'email_changed',actorUID:uid,targetUID:uid,context:{source:'firebase'}}).catch(()=>null);
-    current={...current,email:firebaseEmail,emailVerified:true,updatedAt:now};
-  }
+  await reconcileVerifiedEmail(request);
+  const {uid,profile,account,identity}=await self(request);const current={...profile};
+  const firebaseEmail=(account.email||'').trim().toLowerCase();
   const metadata=authMetadata(account),activity=await activityFor(uid);
   return jsonResponse({success:true,account:wireValue({name:s(current.name),email:firebaseEmail||s(current.email),phoneNumber:s(current.phoneNumber),phoneVerified:!!await verifiedMobile(identity),photoURL:s(current.photoURL),role:s(current.role),roleLabel:displayRole(s(current.role)),isActive:current.isActive!==false,agencyName:s(current.agencyName),agencyPhone:s(current.agencyPhone),agencyWebsite:s(current.agencyWebsite),bio:s(current.bio),notificationPreferences:isRecord(current.notificationPreferences)?current.notificationPreferences:{productUpdates:true,activitySummaries:true,security:true},...metadata,activity})});
 }
@@ -72,13 +67,10 @@ export async function updateMyAccount(request:Request){
   if(s(profile.role)==='agent')Object.assign(updates,{agencyName:clean(body.agencyName,120),agencyPhone:clean(body.agencyPhone,20).replace(/[^0-9+]/g,''),agencyWebsite:url(body.agencyWebsite)});
   const changed=Object.keys(updates).filter(key=>key!=='updatedAt'&&JSON.stringify(updates[key])!==JSON.stringify(profile[key]));
   if(!changed.length)return jsonResponse({success:true,message:'No account changes were needed'});
-  await writeUserWithMobile(uid,updates,{expectedPhone:profile.phoneNumber});
+  const intentIds:string[]=[];await writeUserWithMobile(uid,updates,{expectedPhone:profile.phoneNumber,stage:async tx=>{const intent=await stageUserEvent(tx,{actorUID:uid,eventType:phoneChanged?'user.mobile_number_changed':'user.profile_changed',eventId:`${uid}:${(updates.updatedAt as Date).getTime()}`,recipients:[{uid,role:'user'},{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:uid,templateId:'account-security',subject:'Your PropBank profile changed',title:'Account profile updated',bodyHtml:'<p>Your PropBank account profile was changed. If this was unexpected, review your account.</p>',bodyText:'Your PropBank account profile was changed. If this was unexpected, review your account.',action:{label:'Review account',path:'/my-account'}});intentIds.push(intent.id);return intent.write;}});dispatchNotificationIntents(intentIds);
   try{if(name!==account.displayName||updates.photoURL!==account.photoURL)await getFirebaseAdminAuth().updateUser(uid,{displayName:name,photoURL:s(updates.photoURL)||null});}
   catch(error){await ref.set({name:profile.name||'',photoURL:profile.photoURL||'',updatedAt:profile.updatedAt||new Date()},{merge:true});throw error;}
   await recordAuthActivity({eventType:phoneChanged?'phone_changed':changed.length===1&&changed[0]==='notificationPreferences'?'notification_preferences_changed':'profile_changed',actorUID:uid,targetUID:uid,context:{source:'self'}}).catch(()=>null);
-  if(phoneChanged)await notify({uid,eventType:'user.mobile_number_changed',eventId:`user:${uid}:phone:${phone}`,subject:'Your PropBank mobile number changed',title:'Mobile number changed',body:'The verified mobile number for your PropBank account was changed.'});
-  if(changed.includes('name'))await notify({uid,eventType:'user.full_name_changed',eventId:`user:${uid}:name:${String(updates.updatedAt instanceof Date?updates.updatedAt.getTime():Date.now())}`,subject:'Your PropBank profile name changed',title:'Profile name changed',body:'The full name on your PropBank profile was changed.'});
-  if(s(profile.role)==='agent'&&changed.some(key=>['agencyName','agencyPhone','agencyWebsite'].includes(key)))await notify({uid,eventType:'agent.profile_changed',eventId:`agent:${uid}:profile:${String(updates.updatedAt instanceof Date?updates.updatedAt.getTime():Date.now())}`,subject:'Your PropBank agency profile changed',title:'Agency profile changed',body:'Important agency details on your PropBank profile were updated.'});
   await discoverFor(identity);
   return jsonResponse({success:true,message:'Account profile updated'});
 }
@@ -89,10 +81,8 @@ export async function recordAccountSecurityEvent(request:Request){
   if(!/^[0-9a-f-]{36}$/i.test(operationId))throw new ApiError(400,'A valid security operation reference is required');
   if(!authenticatedAt||Date.now()/1000-authenticatedAt>300)throw new AccessError(403,'Recent authentication is required for security changes');
   if(action==='password_changed'){
-    await recordAuthActivity({eventType:'password_changed',actorUID:uid,targetUID:uid,context:{source:'firebase-client'}});
     await notify({uid,eventType:'user.password_changed',eventId:`user:${uid}:password:${operationId}`,subject:'Your PropBank password changed',title:'Password changed',body:'The password for your PropBank account was changed successfully.'});
   }else if(action==='email_change_requested'){
-    await recordAuthActivity({eventType:'email_change_requested',actorUID:uid,targetUID:uid,context:{source:'firebase-client'}});
     await notify({uid,eventType:'user.email_change_requested',eventId:`user:${uid}:email-request:${operationId}`,subject:'PropBank email change requested',title:'Email change requested',body:'A request was made to change the email address for your PropBank account. The address will not change until Firebase verification is completed.'});
   }else throw new ApiError(400,'Unsupported security event');
   return jsonResponse({success:true,message:'Security activity recorded'});

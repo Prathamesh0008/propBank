@@ -10,7 +10,7 @@ const tenant=(uid,email,overrides={})=>({userUID:uid,firstName:uid==='tenant'?'T
 test('persisted admins can search registered users by name, email, or phone while others are denied',async()=>{
  const app=setup(),api=route(app,'admin/users/search');
  assert.equal((await api.GET(request('/admin/users/search?q=tenant','owner'))).status,403);
- for(const query of ['Tenant','tenant@test.invalid','456']){
+ for(const query of ['Tenant','tenant@test.invalid','9123456782']){
   const response=await api.GET(request(`/admin/users/search?q=${encodeURIComponent(query)}`,'admin'));
   assert.equal(response.status,200);const body=await response.json();assert.equal(body.users.length,1);assert.equal(body.users[0].uid,'tenant');assert.equal(body.users[0].isActive,true);
  }
@@ -18,7 +18,7 @@ test('persisted admins can search registered users by name, email, or phone whil
 
 test('admin-created property belongs to the selected active owner and remains pending review',async()=>{
  const app=setup();
- const response=await route(app,'properties').POST(request('/properties','admin','POST',{propertyTitle:'Assisted Listing',propertyType:'residential',location:'Owner address',ownerUID:'owner',listingType:'rent',monthlyRent:'30000'}));
+ const response=await route(app,'properties').POST(request('/properties','admin','POST',{propertyTitle:'Assisted Listing',propertyType:'residential',configuration:'2 BHK',location:'Owner address',ownerUID:'owner',listingType:'rent',securityDeposit:'0',monthlyRent:'30000'}));
  assert.equal(response.status,200,await response.clone().text());const property=(await response.json()).property,stored=app.state.properties[property.id];
  assert.equal(stored.ownerUID,'owner');assert.equal(stored.createdByUID,'admin');assert.equal(stored.adminCreatedForUID,'owner');assert.equal(stored.moderationStatus,'pending_review');assert.equal(stored.relationshipHistory[0].relationship,'owner');
  const deliveries=Object.values(app.state.email_deliveries);assert.equal(deliveries.length,2);assert.deepEqual(new Set(deliveries.map(row=>row.recipientUID||row.recipientEmail)),new Set(['owner','admin@test.invalid']));assert.ok(deliveries.every(row=>row.eventType==='property.submitted'&&row.html.includes('Assisted Listing')));
@@ -27,7 +27,7 @@ test('admin-created property belongs to the selected active owner and remains pe
 });
 
 test('non-admin cannot create a property for another account and inactive owners are rejected',async()=>{
- const app=setup(),api=route(app,'properties'),body={propertyTitle:'Forbidden',propertyType:'residential',location:'Address',ownerUID:'owner',listingType:'rent',monthlyRent:'100'};
+ const app=setup(),api=route(app,'properties'),body={propertyTitle:'Forbidden',propertyType:'residential',configuration:'2 BHK',location:'Address',ownerUID:'owner',listingType:'rent',securityDeposit:'0',monthlyRent:'100'};
  assert.equal((await api.POST(request('/properties','other','POST',body))).status,403);
  app.state.users.owner.isActive=false;
  assert.equal((await api.POST(request('/properties','admin','POST',body))).status,400);

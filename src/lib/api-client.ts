@@ -26,8 +26,22 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   const original=new Headers(input instanceof Request?input.headers:undefined);
   new Headers(init?.headers).forEach((value,key)=>original.set(key,value));
   const headers=await firebaseAuthorizationHeaders(original);
-  const response=await fetch(input,{...init,headers});
+  const startingUID=auth.currentUser?.uid;
+  let response=await fetch(input,{...init,headers});
   const method=(init?.method||(input instanceof Request?input.method:'GET')).toUpperCase();
+  // Reconcile email only with a fresh authoritative token. Replay safe reads once;
+  // never replay writes or refresh for unrelated authorization failures.
+  if(method==='GET'&&response.status===401&&startingUID) {
+    const problem=await response.clone().json().catch(()=>null);
+    if(problem?.code==='TOKEN_REFRESH_REQUIRED') {
+      const user=auth.currentUser;
+      if(user?.uid!==startingUID)throw new Error('Account changed; sign in again');
+      const token=await user.getIdToken(true);
+      if(auth.currentUser?.uid!==startingUID)throw new Error('Account changed; sign in again');
+      headers.set('Authorization',`Bearer ${token}`);
+      response=await fetch(input,{...init,headers});
+    }
+  }
   const domains=response.ok?mutationDomains(target.pathname,method):[];
   if(domains.length)publishDataRefresh(domains);
   return response;

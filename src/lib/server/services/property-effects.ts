@@ -1,10 +1,11 @@
+import {sameRentSchedule} from '@/lib/rent-resolution';
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { after } from 'next/server';
 import { COLLECTIONS, getDatabase } from '../firestore';
 import { model, storeModel, wireModel, wireValue, parsePrice, isRecord, stringValue as s, type RecordData } from './contracts';
 import { getUser, saveUser } from './users';
-import { brandedEmail, persistUserEvent, type TransactionalEmailEvent } from './transactional-email';
+import { brandedEmail, stageUserEvent, dispatchNotificationIntents, type UserEvent, type TransactionalEmailEvent } from './transactional-email';
 import {sendEmail as sendTransactionalEmail} from './resend';
 
 export interface Email { to:string; subject:string; html:string }
@@ -62,22 +63,24 @@ async function linkUsers(property:RecordData,tenants:RecordData[]) {
     });
   }
 }
-async function tenantAddedEmails(property:RecordData,previous:RecordData[],tenants:RecordData[]) {
+function tenantAddedEvents(property:RecordData,previous:RecordData[],tenants:RecordData[]) {
+ const events:UserEvent[]=[];
   const oldEmails=new Set(previous.map(t=>s(t.email).trim().toLowerCase()).filter(Boolean));
   for (const tenant of tenants) {
     const email=s(tenant.email);
     if ((email.trim() && oldEmails.has(email.trim().toLowerCase())) || (tenant.isActive!==true && tenant.isActive!=='true')) continue;
     if (![tenant.email,tenant.firstName,tenant.lastName,tenant.phone].some(v=>s(v).trim())) continue;
     const tenantUID=s(tenant.userUID);if(!tenantUID)continue;
-    await bestEffort(()=>persistUserEvent({eventType:'tenancy.tenant_assigned',eventId:`${s(property.id)}:${s(tenant.id)||tenantUID}:property-effect-assigned`,recipients:[...(property.ownerUID?[{uid:s(property.ownerUID),role:'owner'}]:[]),{uid:tenantUID,role:'tenant'}],propertyId:s(property.id),recordId:s(tenant.id)||s(property.id),templateId:'tenant-assigned',subject:'Tenant assignment confirmed',title:'Tenant relationship updated',bodyHtml:`<p>A tenant was assigned to <strong>${escapeHtml(s(property.title))}</strong>.</p>`,bodyText:`A tenant was assigned to ${s(property.title)}.`,action:{label:'View rental details',path:`/manage-property/${s(property.id)}`}}));
+    events.push({eventType:'tenancy.tenant_assigned',eventId:`${s(property.id)}:${s(tenant.id)||tenantUID}:property-effect-assigned`,recipients:[...(property.ownerUID?[{uid:s(property.ownerUID),role:'owner'}]:[]),{uid:tenantUID,role:'tenant'}],propertyId:s(property.id),recordId:s(tenant.id)||s(property.id),templateId:'tenant-assigned',subject:'Tenant assignment confirmed',title:'Tenant relationship updated',bodyHtml:`<p>A tenant was assigned to <strong>${escapeHtml(s(property.title))}</strong>.</p>`,bodyText:`A tenant was assigned to ${s(property.title)}.`,action:{label:'View rental details',path:`/manage-property/${s(property.id)}`}});
   }
+ return events;
 }
 export async function propertyCreatedEffects(property:RecordData) {
-  await bestEffort(()=>notify(property,'property_added'));
+  // Submission notifications are persisted atomically by writeProperty.
   const tenants=entries(property.tenants);
   if(property.createdAs==='tenant')return;
   if (tenants.length) {
-    await bestEffort(()=>tenantAddedEmails(property,[],tenants));
+
     await linkUsers(property,tenants);
   }
 }
@@ -87,11 +90,11 @@ export async function propertyUpdatedEffects(before:RecordData,property:RecordDa
   if (Array.isArray(updates.tenants)) {
     const raw=entries(updates.tenants);
     await linkUsers(property,raw);
-    await bestEffort(()=>tenantAddedEmails(property,previous,raw));
+
   }
   if (typeof updates.wantToSell==='boolean' && updates.wantToSell!==before.wantToSell) await bestEffort(()=>notify(property,updates.wantToSell?'want_to_sell':'want_to_sell_cancelled'));
-  const termsChanged=['monthlyRent','securityDeposit','paymentDueDate','agreementStartDate','agreementEndDate'].some(field=>field in updates&&updates[field]!==before[field])||Array.isArray(updates.tenants)&&tenants.some(tenant=>{const old=previous.find(entry=>entry.id===tenant.id);return old&&['monthlyRent','securityDeposit','paymentDueDate','leaseStartDate','leaseEndDate'].some(field=>tenant[field]!==old[field]);});
-  if(termsChanged)await bestEffort(()=>persistUserEvent({eventType:'tenancy.rental_terms_updated',eventId:`${s(property.id)}:${String(wireValue(property.updatedAt))}:terms`,recipients:[...(property.ownerUID?[{uid:s(property.ownerUID),role:'owner'}]:[]),...tenants.filter(tenant=>tenant.isActive===true&&tenant.userUID).map(tenant=>({uid:s(tenant.userUID),role:'tenant'}))],propertyId:s(property.id),recordId:s(property.id),templateId:'rental-terms-updated',subject:'Rental terms updated',title:'Rental terms updated',bodyHtml:`<p>The rental terms for <strong>${escapeHtml(s(property.title))}</strong> were updated.</p>`,bodyText:`The rental terms for ${s(property.title)} were updated.`,action:{label:'View rental details',path:`/manage-property/${s(property.id)}`}}));
+
+
 }
 
 export function propertyNotificationEvents(property:RecordData,submitter:RecordData,status='pending_review'):TransactionalEmailEvent[] {
@@ -115,4 +118,13 @@ export function propertyNotificationEvents(property:RecordData,submitter:RecordD
     events.push(make('admin','',(process.env.ADMIN_EMAIL||'').trim().toLowerCase(),adminBody,`/admin?tab=properties&propertyId=${encodeURIComponent(id)}`));
   }
   return events;
+}
+
+export async function stagePropertyParticipantEvents(tx:FirebaseFirestore.Transaction,before:RecordData|null,property:RecordData,updates:RecordData){
+ const previous=entries(before?.tenants),tenants=entries(property.tenants),events=property.createdAs==='tenant'?[]:tenantAddedEvents(property,previous,tenants);
+  const termsChanged=['monthlyRent','securityDeposit','paymentDueDate','agreementStartDate','agreementEndDate','rentSchedule'].some(field=>field in updates&&(field==='rentSchedule'?!sameRentSchedule(updates[field],before?.[field]):JSON.stringify(updates[field])!==JSON.stringify(before?.[field])))||Array.isArray(updates.tenants)&&tenants.some(tenant=>{const old=previous.find(entry=>entry.id===tenant.id);return old&&['monthlyRent','securityDeposit','paymentDueDate','leaseStartDate','leaseEndDate','rentSchedule'].some(field=>(field==='rentSchedule'?!sameRentSchedule(tenant[field],old[field]):JSON.stringify(tenant[field])!==JSON.stringify(old[field])));});
+ const effectiveNotice='rentSchedule'in updates&&!sameRentSchedule(updates.rentSchedule,before?.rentSchedule)?` Schedule changes take effect from ${s(property.rentEffectiveFrom)||'the authorized effective date'}; review the dated rent periods in your property details.`:'';
+ if(before&&termsChanged)events.push({eventType:'tenancy.rental_terms_updated',eventId:`${s(property.id)}:${String(wireValue(property.updatedAt))}:terms`,recipients:[...(property.ownerUID?[{uid:s(property.ownerUID),role:'owner'}]:[]),...tenants.filter(tenant=>tenant.isActive===true&&tenant.userUID).map(tenant=>({uid:s(tenant.userUID),role:'tenant'}))],propertyId:s(property.id),recordId:s(property.id),templateId:'rental-terms-updated',subject:'Rental terms updated',title:'Rental terms updated',bodyHtml:`<p>The rental terms for <strong>${escapeHtml(s(property.title))}</strong> were updated.${escapeHtml(effectiveNotice)}</p>`,bodyText:`The rental terms for ${s(property.title)} were updated.${effectiveNotice}`,action:{label:'View rental details',path:`/manage-property/${s(property.id)}`}});
+ for(const old of previous.filter(t=>t.isActive===true&&!tenants.some(n=>n.id===t.id&&n.isActive===true)))events.push({eventType:'tenancy.tenant_removed',eventId:`${s(property.id)}:${s(old.id)}:${String(wireValue(property.updatedAt))}:removed`,recipients:[...(property.ownerUID?[{uid:s(property.ownerUID),role:'owner'}]:[]),...(old.userUID?[{uid:s(old.userUID),role:'former_tenant'}]:[])],propertyId:s(property.id),recordId:s(old.id),templateId:'tenant-removed',subject:'Tenant relationship ended',bodyHtml:'<p>The tenancy relationship was ended. Review your property history.</p>',bodyText:'The tenancy relationship was ended. Review your property history.',action:{label:'View property',path:`/manage-property/${s(property.id)}`}});
+ const staged=[];for(const event of events)staged.push(await stageUserEvent(tx,event));return {ids:staged.map(i=>i.id),write:()=>staged.forEach(i=>i.write())};
 }

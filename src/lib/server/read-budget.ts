@@ -1,6 +1,6 @@
 import 'server-only';
 
-type ReadMetric='property_list'|'property_detail'|'delivery_page';
+type ReadMetric='property_list'|'property_detail'|'delivery_page'|'query_page';
 const counters=new Map<ReadMetric,{queries:number;documents:number;estimatedDocumentReads:number}>();
 
 /** Estimates exclude index billing, SDK retries and transaction retries. No customer data is logged. */

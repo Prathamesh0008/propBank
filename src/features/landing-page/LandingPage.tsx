@@ -15,7 +15,7 @@ const LandingPage = () => {
     properties,
     loading,
     loadingMore,
-    hasMore,
+    hasMore,coverageIncomplete,
     selectedProjectCondition,
     setSelectedProjectCondition,
     budgetRange,
@@ -78,6 +78,7 @@ const LandingPage = () => {
         handleSearch={handleSearch}
       />
 
+      {coverageIncomplete&&<p role="status">Showing loaded property pages. Continue browsing for remaining listings; filters apply to loaded records. <button type="button" disabled={loadingMore} onClick={()=>void loadMoreProperties(true)}>Continue browsing server pages</button></p>}
       <PropertiesSection
         properties={properties}
         loading={loading}

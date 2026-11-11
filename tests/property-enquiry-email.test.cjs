@@ -32,10 +32,10 @@ test('database transaction failure persists neither enquiry nor email job',async
   assert.equal(response.status,500);assert.equal(Object.keys(app.state.admin_notifications||{}).length,0);assert.equal(Object.keys(app.state.email_deliveries||{}).length,0);await app.flush();assert.equal(app.emails.length,0);
 });
 
-for(const [status,name,code] of [[403,'restricted_api_key','restricted_api_key'],[422,'validation_error','validation_error']])test(`Resend ${status} leaves a visible, retryable failure`,async()=>{
+for(const [status,name,code] of [[403,'restricted_api_key','restricted_api_key'],[422,'validation_error','validation_error']])test(`Resend ${status} leaves a visible, correctly classified failure`,async()=>{
   const app=setup({fetch:async()=>new Response(JSON.stringify({name,message:'sanitized provider rejection'}),{status,headers:{'Content-Type':'application/json'}})});
   assert.equal((await submit(app)).status,201);await app.flush();const mail=delivery(app);
-  assert.equal(mail.status,'failed');assert.equal(mail.providerStatus,status);assert.equal(mail.providerErrorCode,code);assert.equal(mail.errorSummary,'Email provider delivery failed');assert.equal(Object.keys(app.state.admin_notifications).length,1);
+  assert.equal(mail.status,status===422?'permanent_failure':'failed');assert.equal(mail.providerStatus,status);assert.equal(mail.providerErrorCode,code);assert.equal(mail.errorSummary,'Email provider delivery failed');assert.equal(Object.keys(app.state.admin_notifications).length,1);
 });
 
 test('missing mail configuration is operationally visible without losing the enquiry',async()=>{

@@ -94,6 +94,7 @@ const formSchema = z.object({
 type FormData = z.infer<typeof formSchema>;
 
 interface Property {
+  rentTermsVersion?:number;
   preLeased?: any;managementServices?:string[];managementDescription?:string;investment?:{monthlyRentalIncome:number;annualRentalIncome:number;grossYield:number;leaseEndDate:string;leaseReviewRequired:boolean;verificationStatus:string};
   userRole?:string;
   id: string;
@@ -525,6 +526,7 @@ const EditProperty = () => {
       }
 
       const updateData = {
+        expectedRentTermsVersion:property?.rentTermsVersion||0,
         ...Object.fromEntries(Object.entries(safeRestData).filter(([key])=>!["saleStatus","buyerFirstName","buyerLastName","buyerPhone"].includes(key))),
         title: propertyTitle,
         images: uploadedImages,

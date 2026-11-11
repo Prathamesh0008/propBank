@@ -1,3 +1,4 @@
+import {PRE_LEASED_EVIDENCE,requireDocumentAccess,privateLeaseEvidence,canReadLeaseEvidence} from './document-access';
 import 'server-only';
 import { createHash, randomUUID } from 'node:crypto';
 import { getDatabase, COLLECTIONS } from '../firestore';
@@ -32,12 +33,14 @@ export async function createDocument(request:Request) {
   }
   const profile=await getUser(user.uid);if(!profile)return failure('User not found: user not found',404);
   const property=await propertyMember(user,s(req.propertyId));if(!property)return failure('Property not found: property not found',404);
+  requireDocumentAccess(user,{},property);
   if(req.status&&!['submitted','verified','rejected'].includes(s(req.status)))return failure('Invalid document status',400);
   if(user.role!=='admin'||property.listingType==='pre_leased'&&supportingTypes.includes(s(req.documentType)))req.status='submitted';
   const documentId=idempotencyKey?createHash('sha256').update(`${user.uid}:${s(req.propertyId)}:${idempotencyKey}`).digest('hex'):randomUUID();
   const prior=await collection().doc(documentId).get();
   if(prior.exists){
     const existing:RecordData={...prior.data(),id:prior.id};
+    requireDocumentAccess(user,existing,property);
     if(existing.userId!==user.uid||existing.propertyId!==req.propertyId)throw new AccessError(403,'Document request does not belong to this account');
     const staged=mediaId(req.fileUrl);if(staged&&req.fileUrl!==existing.fileUrl)try{await cleanupMedia(staged,user,true);}catch{/* Durable cleanup state remains available to reconciliation. */}
     return jsonResponse({success:true,message:'Document already uploaded',document:wireValue(existing)},200);
@@ -54,21 +57,24 @@ export async function createDocument(request:Request) {
     const total=supporting.reduce((sum,doc)=>sum+Number(doc.data().size||0),0)+size;
     if(supporting.length>=5||total>20*1024*1024){const staged=mediaId(url);if(staged)try{await cleanupMedia(staged,user,true);}catch{}return failure(supporting.length>=5?'A property can have up to 5 supporting documents':'Supporting documents must total 20 MB or less',400);}
   }
-  const metadata:RecordData={contentType,size,...(idempotencyKey?{idempotencyKey}:{}),...Object.fromEntries(['financialYear','period','amount','status','receiptDate'].filter(key=>key in req).map(key=>[key,req[key]]))};
+  const metadata:RecordData={...(property.listingType==='pre_leased'?{accessScope:PRE_LEASED_EVIDENCE}:{}),contentType,size,...(idempotencyKey?{idempotencyKey}:{}),...Object.fromEntries(['financialYear','period','amount','status','receiptDate'].filter(key=>key in req).map(key=>[key,req[key]]))};
   await saveMediaRecord(COLLECTIONS.documents,s(document.id),{...storeModel('Document',document),...metadata},user,true);
   return jsonResponse({success:true,message:'Document uploaded successfully',document:{...wireModel('Document',document),...metadata}},201);
 }
 export async function listDocuments(request:Request,propertyId:string) {
   if(!propertyId)return failure('Property ID is required',400);
-  const user=await identity(request);if(!await propertyMember(user,propertyId))return failure('Property not found: property not found',404);
+  const user=await identity(request),property=await propertyMember(user,propertyId);if(!property)return failure('Property not found: property not found',404);
+  requireDocumentAccess(user,{},property);
   let documents:RecordData[];
   try{const type=new URL(request.url).searchParams.get('documentType');const base=collection().where('propertyId','==',propertyId);const snapshot=await (type?base.where('documentType','==',type):base).get();documents=snapshot.docs.map(doc=>({...doc.data(),id:doc.id}));}catch{return jsonResponse({success:false,message:'Failed to fetch documents',documents:[]},500);}
+  documents=documents.filter(d=>!privateLeaseEvidence(d,property)||canReadLeaseEvidence(user,property));
   const type=new URL(request.url).searchParams.get('documentType');if(type)documents=documents.filter(d=>d.documentType===type);
   documents.sort((a,b)=>epoch(b.createdAt)-epoch(a.createdAt));return jsonResponse({success:true,documents:documents.length?documents.map(wireValue):null});
 }
 export async function getDocument(request:Request,id:string) {
   const user=await identity(request);const snapshot=await collection().doc(id).get();const document:RecordData|null=snapshot.exists?{...snapshot.data(),id}:null;if(!document)return plainError('Document not found',404);
-  if(!await propertyMember(user,s(document.propertyId)))throw new AccessError(403,'Property access required');
+  const boundProperty=await propertyMember(user,s(document.propertyId));if(!boundProperty)throw new AccessError(403,'Property access required');
+  requireDocumentAccess(user,document,boundProperty);
   return jsonResponse({success:true,document:wireValue(document)});
 }
 export async function updateDocument(request:Request,id:string) {
@@ -82,7 +88,8 @@ export async function updateDocument(request:Request,id:string) {
 export async function deleteDocument(request:Request,id:string) {
   const user=await identity(request);const document=await getRecord(COLLECTIONS.documents,id,'Document');if(!document)return failure('Document not found: document not found',404);
   const property=await getProperty(s(document.propertyId));
-  if(!await propertyMember(user,s(document.propertyId)))throw new AccessError(403,'Property access required');
+  const boundProperty=await propertyMember(user,s(document.propertyId));if(!boundProperty)throw new AccessError(403,'Property access required');
+  requireDocumentAccess(user,document,boundProperty);
   if(user.role!=='admin'&&user.uid!==document.userId&&user.uid!==property?.ownerUID)throw new AccessError(403,'Document access required');
   const managed=mediaId(document.fileUrl);
   if(managed){await deleteDocumentMedia(managed,id,user);return jsonResponse({success:true,message:'Document and stored file deleted successfully'});}
@@ -92,6 +99,7 @@ export async function deleteDocument(request:Request,id:string) {
     const current=fresh.data()!,property=await tx.get(getDatabase().collection(COLLECTIONS.properties).doc(s(current.propertyId)));
     if(!property.exists)throw new AccessError(403,'Property access required');
     requirePropertyMember(user,filePropertyRelationships(property.data()!));
+    requireDocumentAccess(user,current,property.data()!);
     if(user.role!=='admin'&&user.uid!==current.userId&&user.uid!==property.data()?.ownerUID)throw new AccessError(403,'Document deletion access required');
     tx.create(getDatabase().collection('legacy_storage_cleanup').doc(id),{documentId:id,propertyId:current.propertyId,fileUrl:current.fileUrl||'',status:'approval_required',requestedBy:user.uid,createdAt:new Date()});
     tx.delete(ref);

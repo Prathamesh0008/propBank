@@ -58,15 +58,15 @@ export const useLandingProperties = () => {
   } = useSearch();
 
   const hasLoadedRef = useRef(false);
-  const loadGeneration=useRef(0);
+  const loadGeneration=useRef(0);const [serverCursor,setServerCursor]=useState<string|null>(null);
 
   const loadAllProperties = useCallback(async () => {
-    const generation=++loadGeneration.current;
+    const generation=++loadGeneration.current;setLoadingMore(false);
     try {
       setLoading(true);
       const response = await queryClient.fetchQuery({queryKey:['publicProperties','home'],queryFn:()=>propertyService.getAllPropertiesWithSettings(),staleTime:60_000,retry:false});
       if(generation!==loadGeneration.current)return;
-      const fetchedProperties = response.properties || [];
+      setServerCursor(response.nextCursor||null);const fetchedProperties = response.properties || [];
 
       const displayProperties = fetchedProperties.filter((property) => {
         const isInactive = property.status?.toLowerCase() === "inactive" || property.isActive === false;
@@ -118,26 +118,16 @@ export const useLandingProperties = () => {
     );
   }, [allProperties, searchQuery, searchType, selectedListingTypes, selectedCategories, selectedProjectCondition, budgetRange]);
 
-  const loadMoreProperties = useCallback(() => {
-    if (!hasMore || loadingMore) return;
-    setLoadingMore(true);
-
-    setTimeout(() => {
-      const startIndex = page * ITEMS_PER_PAGE;
-      const endIndex = startIndex + ITEMS_PER_PAGE;
-      const sourceProperties = isSearching ? getFilteredProperties() : allProperties;
-      const newProperties = sourceProperties.slice(startIndex, endIndex);
-
-      if (newProperties.length > 0) {
-        setProperties((prev) => [...prev, ...newProperties]);
-        setPage((prev) => prev + 1);
-        setHasMore(endIndex < sourceProperties.length);
-      } else {
-        setHasMore(false);
-      }
-      setLoadingMore(false);
-    }, 500);
-  }, [page, hasMore, loadingMore, isSearching, allProperties, getFilteredProperties]);
+  const loadMoreProperties = useCallback(async (manual?:unknown) => {
+    if ((!hasMore&&!serverCursor)||loadingMore)return;
+    const startIndex=page*ITEMS_PER_PAGE;let sourceProperties=isSearching?getFilteredProperties():allProperties;
+    if(startIndex>=sourceProperties.length&&serverCursor&&!manual)return;
+    const generation=loadGeneration.current;setLoadingMore(true);
+    try{
+      if(startIndex>=sourceProperties.length&&serverCursor){const response=await queryClient.fetchQuery({queryKey:['publicProperties','home',serverCursor],queryFn:()=>propertyService.getAllPropertiesWithSettings(serverCursor),staleTime:60000,retry:false});if(generation!==loadGeneration.current)return;const combined=[...new Map([...allProperties,...response.properties].map(p=>[p.id,p])).values()];setAllProperties(combined);setServerCursor(response.nextCursor||null);sourceProperties=isSearching?filterProperties(combined,searchQuery,searchType,selectedListingTypes,selectedCategories,selectedProjectCondition,budgetRange):combined;}
+      const endIndex=startIndex+ITEMS_PER_PAGE,newProperties=sourceProperties.slice(startIndex,endIndex);if(newProperties.length){setProperties(previous=>[...previous,...newProperties]);setPage(previous=>previous+1);}setHasMore(endIndex<sourceProperties.length);
+    }catch{toast({title:'Could not load the next property page',description:'Retry to continue browsing.',variant:'destructive'});}finally{if(generation===loadGeneration.current)setLoadingMore(false);}
+  },[page,hasMore,serverCursor,loadingMore,isSearching,allProperties,getFilteredProperties,queryClient,searchQuery,searchType,selectedListingTypes,selectedCategories,selectedProjectCondition,budgetRange,toast]);
 
   const handleSearch = useCallback(() => {
     const hasActiveFilters =
@@ -159,10 +149,10 @@ export const useLandingProperties = () => {
     if (filteredProperties.length === 0 && (searchQuery.trim() || selectedCategories.length > 0)) {
       toast({
         title: "No Results",
-        description: "No properties found matching your search criteria.",
+        description: serverCursor?"No matches in loaded records yet. Continue browsing the remaining pages.":"No properties found matching your search criteria.",
       });
     }
-  }, [searchQuery, selectedCategories, getFilteredProperties, setIsSearching, toast]);
+  }, [searchQuery, selectedCategories, getFilteredProperties, setIsSearching, toast,serverCursor]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -351,9 +341,10 @@ export const useLandingProperties = () => {
     navigate,
     properties,
     allProperties,
+    coverageIncomplete:!!serverCursor,
     loading,
     loadingMore,
-    hasMore,
+    hasMore:hasMore||!!serverCursor,
     selectedProjectCondition,
     setSelectedProjectCondition,
     budgetRange,

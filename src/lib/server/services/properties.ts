@@ -1,3 +1,11 @@
+import {sameRentSchedule,rentContract} from '@/lib/rent-resolution';
+import {documentPage,pageOptions,memberPropertyPage} from '../query-pages';
+import {stagePropertyParticipantEvents} from './property-effects';
+import {dispatchNotificationIntents} from './transactional-email';
+import {guardRentFields,reconcileRentTerms,rentProtectedFields} from './rent-terms';
+import {PRE_LEASED_EVIDENCE} from './document-access';
+import {validatePropertyMoney,validatePropertyRentSchedule} from './property-validation';
+import {stageAdminLifecycle,propertyLifecycleEvents} from './admin-lifecycle';
 import 'server-only';
 import {normalizePurpose,purposeFields,leaseExpired} from '@/lib/property-purpose';
 import {recordRead} from '../read-budget';
@@ -12,7 +20,7 @@ import { COLLECTIONS, SITE_SETTINGS_DOCUMENT, getDatabase } from '../firestore';
 import { requireOwnerOrAdmin, requireSelfOrAdmin, isPropertyTenant } from '../permissions';
 import { ApiError, jsonResponse } from '../http';
 import { projections } from './go-contracts';
-import { model, storeModel, propertyResponse, publicPropertyResponse, isRecord, stringValue as s, type RecordData } from './contracts';
+import { model, storeModel, propertyResponse, publicPropertyResponse, ownerReviewFields, isRecord, stringValue as s, type RecordData } from './contracts';
 import { schemas } from './go-contracts';
 import { getUser } from './users';
 import { getFirebaseAdminAuth } from '../firebase-admin';
@@ -21,7 +29,6 @@ import {prepareMediaBindings,restoreFileReferences} from './media';
 import {readObject} from './domain-contracts';
 import { propertyNotificationEvents, bestEffort, propertyCreatedEffects, propertyUpdatedEffects } from './property-effects';
 import { prepareLink, stageLinks, validContact } from './relationship-links';
-import {additionalRentPeriod,validateAdditionalRentSchedule,type RentScheduleRow} from '@/lib/rent-schedule';
 import {activeFurnishedItems,supportsFurnishedChecklist} from '@/lib/property-furnishing';
 
 import { writeEmailOutbox, dispatchEmailOutbox, type TransactionalEmailEvent } from './transactional-email';
@@ -36,20 +43,11 @@ function requirePropertyEditor(user:Awaited<ReturnType<typeof requireUser>>,prop
 }
 function fromDocument(doc:DocumentSnapshot,defaults=true):RecordData {
   const property={...doc.data(),...model('Property',doc.data() || {})};
+  property.id=doc.id;
   if (defaults) {
-    property.id=doc.id;
     if (!property.status) property.status=property.isActive?'active':'inactive';
   }
   return property;
-}
-async function queryProperties(query:Query,defaults=true):Promise<Array<{property:RecordData;raw:RecordData}>> {
-  const snapshot=await query.get();
-  recordRead('property_list',snapshot.docs.length);
-  const result:Array<{property:RecordData;raw:RecordData}>=[];
-  for (const doc of snapshot.docs) {
-    try { result.push({property:fromDocument(doc,defaults),raw:doc.data()}); } catch { /* Go skips invalid documents. */ }
-  }
-  return result;
 }
 export async function getProperty(id:string):Promise<RecordData|null> {
   const doc=await properties().doc(id).get();
@@ -60,12 +58,8 @@ const listResponse=(rows:RecordData[],extra:RecordData={})=>jsonResponse({succes
 function available(property:RecordData,raw:RecordData) {
   return publicListing({...property,isSold:raw.isSold,isRented:raw.isRented});
 }
-async function tenantProperties(uid:string,email='') {
-  const rows=await queryProperties(properties());
-  return rows.filter(({property})=>property.listingType!=='manage'&&Array.isArray(property.tenants) && property.tenants.some(t=>isRecord(t)&&t.isActive===true&&(t.userUID ? !!uid&&t.userUID===uid : t.linkConfirmationRequired!==true&&!!email&&s(t.email).toLowerCase()===email.toLowerCase()))).map(row=>row.property);
-}
 async function siteSettings():Promise<RecordData|null> {
-  const defaults={quote:'Manage your properties and plan visits with ease',quoteAuthor:'',heroTitle:'Your Smart Hub for Property Management',heroSubtitle:'Manage, list your properties and find your dream house— all in one platform',announcementText:'',isAnnouncementActive:false,bannerImages:[]};
+  const defaults={quote:'Manage your properties and plan visits with ease',quoteAuthor:'',heroTitle:'Your Smart Hub for Property Management',heroSubtitle:'Manage, list your properties and find your dream houseâ€” all in one platform',announcementText:'',isAnnouncementActive:false,bannerImages:[]};
   try {
     const doc=await getDatabase().collection(COLLECTIONS.siteSettings).doc(SITE_SETTINGS_DOCUMENT).get();
     if (!doc.exists) return defaults;
@@ -86,27 +80,22 @@ export async function listProperties(request:Request) {
   if (ownerUID) {
     const user=await requireUser(request);
     requireSelfOrAdmin(user,ownerUID);
-    const own=await queryProperties(properties().where('ownerUID','==',ownerUID));
-    const submitted=user.role==='agent'&&user.uid===ownerUID?await queryProperties(properties().where('submittedByUID','==',ownerUID)):[];
-    const rented=await tenantProperties(ownerUID,user.uid===ownerUID&&user.token.email_verified===true?user.token.email||'':'');
-    const merged=new Map(own.map(({property})=>[s(property.id),propertyResponse(property,'normal','owner')]));
-    for(const {property} of submitted.filter(row=>row.property.listingType!=='manage'))merged.set(s(property.id),propertyResponse(property,'normal','agent'));
-    // Match the dedicated tenant endpoint so the combined response can replace
-    // its duplicate request without losing fields such as the displayed price.
-    for (const property of rented) if(!merged.has(s(property.id))) merged.set(s(property.id),propertyResponse(property,'normal','tenant'));
-    return listResponse([...merged.values()],{ownerUID});
+    const target={...user,uid:ownerUID,role:user.uid===ownerUID?user.role:'individual' as const,token:user.uid===ownerUID?user.token:{...user.token,email:'',email_verified:false}};
+    const page=await memberPropertyPage(target,params.get('cursor')||'');
+    const rows=page.properties.map(p=>propertyResponse({...model('Property',p),...(p.ownerUID===ownerUID?Object.fromEntries(ownerReviewFields.filter(key=>key in p).map(key=>[key,p[key]])):{}),id:p.id,status:p.status||(p.isActive?'active':'inactive')},'normal',p.ownerUID===ownerUID?'owner':user.role==='agent'&&p.submittedByUID===ownerUID?'agent':'tenant'));
+    return listResponse(rows,{ownerUID,nextCursor:page.nextCursor,coverageComplete:page.coverageComplete,legacyCompatibilityScan:true});
   }
   if(params.get('admin')==='true') {
     const user=await requireUser(request);if(user.role!=='admin')throw new AccessError(403,'Administrator access required');
-    const rows=await queryProperties(properties());return listResponse(rows.map(row=>propertyResponse(row.property,'normal','admin')));
+    const {size,cursor}=pageOptions(params);const page=await documentPage(properties(),size,cursor);return listResponse(page.docs.map(doc=>propertyResponse(fromDocument(doc),'normal','admin')),{nextCursor:page.nextCursor,coverageComplete:!page.nextCursor});
   }
   const listingType=params.get('listingType')||'';
   if(listingType==='manage')return listResponse([],{listingType});
   let query:Query=properties().where('isActive','==',true).where('moderationStatus','==','approved');
-  if (listingType&&!['rent','sell','pre_leased'].includes(listingType)) query=query.where('listingType','==',listingType);
-  const rows=await queryProperties(query);
+  if(listingType)query=['rent','sell'].includes(listingType)?query.where('listingType','in',listingType==='rent'?['rent','sell_rent']:['sell','sell_rent','pre_leased']):query.where('listingType','==',listingType);
+  const {size,cursor}=pageOptions(params),page=await documentPage(query,size,cursor),rows=page.docs.map(doc=>({property:fromDocument(doc),raw:doc.data()}));
   const filtered=rows.filter(row=>available(row.property,row.raw)&&!(listingType==='rent'&&row.property.rentalStatus==='rented')&&(!listingType||row.property.listingType===listingType||listingType==='sell'&&row.property.listingType==='pre_leased'||row.property.listingType==='sell_rent'&&['rent','sell'].includes(listingType))).map(row=>publicPropertyResponse(listingType&&row.property.listingType==='sell_rent'?{...row.property,listingType}:row.property));
-  return listResponse(filtered,{...(await siteSettings() || {}),...(listingType?{listingType}:{})});
+  return listResponse(filtered,{...(!cursor?await siteSettings() || {}:{}),...(listingType?{listingType}:{}),nextCursor:page.nextCursor,coverageComplete:!page.nextCursor,candidatesInspected:page.examined});
 }
 export async function searchProperties(request:Request) {
   const params=new URL(request.url).searchParams;
@@ -115,9 +104,9 @@ export async function searchProperties(request:Request) {
   if(listingType==='manage')return listResponse([],{listingType});
   const projectCondition=params.get('projectCondition')||'';
   let query:Query=properties().where('isActive','==',true).where('moderationStatus','==','approved');
-  if (listingType&&!['rent','sell','pre_leased'].includes(listingType)) query=query.where('listingType','==',listingType);
+  if(listingType)query=['rent','sell'].includes(listingType)?query.where('listingType','in',listingType==='rent'?['rent','sell_rent']:['sell','sell_rent','pre_leased']):query.where('listingType','==',listingType);
   if (projectCondition&&projectCondition!=='Preleased') query=query.where('projectCondition','==',projectCondition);
-  const rows=await queryProperties(query,false);
+  const {size,cursor}=pageOptions(params),page=await documentPage(query,size,cursor),rows=page.docs.map(doc=>({property:fromDocument(doc,false),raw:doc.data()}));
   const search=term.trim().toLowerCase();
   const filtered=rows.filter(({property,raw})=>{
     if(projectCondition==='Preleased'&&property.listingType!=='pre_leased'&&property.projectCondition!=='Preleased')return false;
@@ -126,7 +115,7 @@ export async function searchProperties(request:Request) {
     const fields=['location','address','city','state','title','propertyType','configuration','unitNumber','floor'];
     return fields.some(key=>!!s(property[key])&&s(property[key]).toLowerCase().includes(search)) || ['bhk','rk'].some(tag=>search.includes(tag)&&s(property.configuration).toLowerCase().includes(tag));
   }).map(row=>publicPropertyResponse(listingType&&row.property.listingType==='sell_rent'?{...row.property,listingType}:row.property));
-  return listResponse(filtered,{query:term,...(listingType?{listingType}:{})});
+  return listResponse(filtered,{query:term,...(listingType?{listingType}:{}),nextCursor:page.nextCursor,coverageComplete:!page.nextCursor,candidatesInspected:page.examined,searchMode:'bounded-substring'});
 }
 export async function listTenantProperties(request:Request) {
   const params=new URL(request.url).searchParams;
@@ -139,8 +128,9 @@ export async function listTenantProperties(request:Request) {
   if (uid) requireSelfOrAdmin(user,uid);
   const effectiveEmail=tenantUID?email:headerUID?'':email;
   if (effectiveEmail && user.role!=='admin' && (user.token.email_verified!==true || user.token.email?.toLowerCase()!==effectiveEmail.toLowerCase())) throw new AccessError(403,'Access denied');
-  const rows=await tenantProperties(uid || (user.role==='admin'?'':user.uid),effectiveEmail);
-  return listResponse(rows.map(property=>propertyResponse(property,'normal','tenant')));
+  const target={...user,uid:uid||(user.role==='admin'?'':user.uid),token:{...user.token,email:effectiveEmail,email_verified:!!effectiveEmail}};
+  const page=await memberPropertyPage(target,params.get('cursor')||'',false);
+  return listResponse(page.properties.map(p=>propertyResponse({...model('Property',p),id:p.id,status:p.status||(p.isActive?'active':'inactive')},'normal','tenant')),{nextCursor:page.nextCursor,coverageComplete:page.coverageComplete,legacyCompatibilityScan:true});
 }
 export async function readProperty(request:Request,id:string) {
   const property=await getProperty(id);
@@ -157,7 +147,9 @@ export async function readProperty(request:Request,id:string) {
   return jsonResponse({success:true,property:publicPropertyResponse(property)});
 }
 const additiveFields=[...purposeFields,'propertyCategory','buildingName','plotArea','areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit','expectedRent','structure'];
-function validateProperty(input:RecordData) {
+function validateProperty(input:RecordData,previous?:RecordData) {
+  validatePropertyRentSchedule(input,previous);
+  validatePropertyMoney(input,previous);
   for(const key of Object.keys(input))if(key.includes('.')||key.includes('/')||key.startsWith('__'))throw new Error('Invalid property field');
   for(const key of additiveFields)if(!purposeFields.includes(key as typeof purposeFields[number])&&key in input&&typeof input[key]!=='string')throw new Error('Invalid property field');
   for(const [key,values] of Object.entries({listingType:['rent','sell','sell_rent','pre_leased','manage'],rentalStatus:['available','rented'],status:['active','inactive'],maintenanceToBePaidBy:['owner','tenant'],propertyCategory:['residential','commercial','industrial']}))if(input[key]) {const normalized=s(input[key]).toLowerCase();if(!values.includes(normalized))throw new Error(`Invalid ${key}`);input[key]=normalized;}
@@ -247,14 +239,6 @@ async function createPropertyRecord(request:Request) {
     if(dates.some(value=>!/^\d{4}-\d{2}-\d{2}$/.test(value)||!Number.isFinite(Date.parse(value)))||dates[1]<dates[0])return propertyError('Valid agreement start and end dates are required',400);
   }
   if(!tenantCreated&&req.rentalStatus==='rented')validContact(req.mobileNumber);
-  if(Array.isArray(req.rentSchedule)&&req.rentSchedule.length){
-    const rows=req.rentSchedule.filter(isRecord).map((row,index)=>({year:s(row.year),months:s(row.months)||additionalRentPeriod(s(req.agreementStartDate),s(req.agreementPeriod),index)?.months||'',amount:s(row.amount),fromDate:s(row.fromDate).slice(0,10),toDate:s(row.toDate).slice(0,10)}));
-    if(rows.length!==req.rentSchedule.length)return propertyError('Invalid year-wise rent schedule',400);
-    const legacyFirstYear=/^(?:1|1st|year 1)/i.test(rows[0].year);
-    if(legacyFirstYear){if(rows.some(row=>!Number.isFinite(Number(row.amount))||Number(row.amount)<=0))return propertyError('Year-wise rent amounts must be positive',400);}
-    else {const error=validateAdditionalRentSchedule(rows as RentScheduleRow[],s(req.agreementStartDate),s(req.agreementPeriod),s(req.agreementEndDate));if(error)return propertyError(error,400);}
-    req.rentSchedule=rows;
-  }
   if (!req.propertyTitle||!req.propertyType||!req.location||(!tenantCreated&&!req.ownerUID)) return propertyError('Missing required fields: propertyTitle, propertyType, location, ownerUID',400);
   if(!tenantCreated&&user.role!=='agent')requireSelfOrAdmin(user,s(req.ownerUID));
   if(req.listingType==='pre_leased'&&user.role!=='admin'&&user.uid!==req.ownerUID)return propertyError('Only the owner or an administrator may register existing tenant details',403);
@@ -320,6 +304,8 @@ export async function updateProperty(request:Request,id:string) {
   const existing=await getProperty(id);
   if(!existing) return propertyError('Property not found',404);
   requirePropertyEditor(user,existing);
+  guardRentFields(req,existing);const expectedRentVersion=req.expectedRentTermsVersion??Number(existing.rentTermsVersion||0);delete req.expectedRentTermsVersion;for(const key of rentProtectedFields)delete req[key];
+  if(!Number.isInteger(expectedRentVersion))return propertyError('Invalid rental terms version',400);
   if(user.role!=='admin'&&user.uid!==existing.ownerUID&&isRecord(req.preLeased)&&'existingTenant' in req.preLeased)return propertyError('Only the owner or an administrator may edit existing tenant details',403);
   if(user.role==='agent'&&existing.submittedByUID===user.uid) {
     const agentAllowed=new Set([...listingContentFields,'ownerUID','moderationAction','reason','expectedRevision']);
@@ -339,7 +325,7 @@ export async function updateProperty(request:Request,id:string) {
     if(furnishingContextChanged)req.furnishedChecklist=[];
     else delete req.furnishedChecklist;
   }else if('furnishedChecklist' in req)req.furnishedChecklist=activeFurnishedItems(req.furnishedChecklist,nextUnitCondition,nextStructure);
-  try {req=normalizePurpose(req,existing);validateProperty(req);model('Property',{...existing,...req},true);}catch(error){return propertyError(error instanceof Error?error.message:'Invalid property fields',400);}
+  try {req=normalizePurpose(req,existing);validateProperty(req,existing);delete req.rentScheduleVersion;model('Property',{...existing,...req},true);}catch(error){return propertyError(error instanceof Error?error.message:'Invalid property fields',400);}
   const allowed=new Set([...schemas.Property.map(field=>field.name),...additiveFields,'nextAgreementDraft','isRented']);
   for(const key of Object.keys(req))if(!allowed.has(key))return propertyError(`Unsupported property field: ${key}`,400);
   let images=existing.images;
@@ -358,6 +344,8 @@ export async function updateProperty(request:Request,id:string) {
       const valid=value.filter(t=>isRecord(t)&&['email','firstName','lastName','phone'].some(k=>s(t[k]).trim()));
       const established=Array.isArray(existing.tenants)?existing.tenants.filter(isRecord):[];
       for(const tenant of valid as RecordData[]) {
+        const prior=established.find(t=>t.id===tenant.id);
+        try{validatePropertyRentSchedule({...tenant,...('leaseStartDate'in tenant?{agreementStartDate:tenant.leaseStartDate}:{}),...('leaseEndDate'in tenant?{agreementEndDate:tenant.leaseEndDate}:{})},prior?{...prior,agreementStartDate:prior.leaseStartDate,agreementEndDate:prior.leaseEndDate}:undefined);}catch(error){return propertyError(error instanceof Error?error.message:'Invalid tenant rent schedule',400);}
         const protectedNames=['ownerUID','propertyId','userUID','id','createdAt','linkConfirmationRequired','phoneE164','linkedAt','linkedByUID'];
         if(Object.keys(tenant).some(key=>protectedNames.some(field=>field.toLowerCase()===key.toLowerCase()&&field!==key)))return propertyError('Relationship field aliases cannot be changed',403);
         const previous=established.find(t=>t.id&&t.id===tenant.id);
@@ -383,13 +371,13 @@ export async function updateProperty(request:Request,id:string) {
   updates.updatedAt=now;
   if(req.status==='inactive'||req.isActive===false)Object.assign(updates,{status:'inactive',isActive:false});
   else if(req.status==='active'||req.isActive===true)Object.assign(updates,{status:'active',isActive:true});
-  await writeProperty(id,updates,user);
+  await writeProperty(id,updates,user,false,undefined,Number(expectedRentVersion));
   const updated=await getProperty(id);
   if(!updated) throw new Error('Property disappeared after update');
   await propertyUpdatedEffects(existing,updated,updates);
   return jsonResponse({success:true,message:'Property updated successfully',property:propertyResponse(updated,'normal',user.role==='admin'?'admin':'owner')});
 }
-async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnType<typeof requireUser>>,create=false,submission?:{ref:FirebaseFirestore.DocumentReference;events:TransactionalEmailEvent[]}) {
+async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnType<typeof requireUser>>,create=false,submission?:{ref:FirebaseFirestore.DocumentReference;events:TransactionalEmailEvent[]}, expectedRentVersion?:number) {
   const db=getDatabase(),ref=properties().doc(id);
   if(Array.isArray(updates.tenants))for(const tenant of updates.tenants as RecordData[]) {tenant.id ||= randomUUID();tenant.createdAt ||= new Date();tenant.updatedAt=new Date();}
   const candidates:RecordData[]=[];
@@ -400,13 +388,17 @@ async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnTyp
   }
   const intents=create?candidates.map(claim=>({claimId:s(claim.id),email:claim.relationship==='owner'?(updates.reportedOwner as RecordData)?.email:(updates.tenants as RecordData[]|undefined)?.find(t=>t.id===claim.tenantId)?.email})):[];
   let invitationEvents:TransactionalEmailEvent[]=[];
+  const participantIds:string[]=[];
+  const submittedUpdates={...updates};let committedUpdates:RecordData={};
   const result=await db.runTransaction(async tx=>{
-    invitationEvents=[];
+    const updates:RecordData={...submittedUpdates,...(Array.isArray(submittedUpdates.tenants)?{tenants:submittedUpdates.tenants.map((t:RecordData)=>({...t}))}:{})};
+    invitationEvents=[];participantIds.length=0;
     if(submission&&(await tx.get(submission.ref)).exists)return false;
     const before=await tx.get(ref);
     if(create&&before.exists)throw new Error('Property ID conflict');
     if(!create) {if(!before.exists)throw new Error('Property not found');requirePropertyEditor(user,before.data()||{});}
     if(!create) {
+      reconcileRentTerms(before.data()!,updates,before.data()!,expectedRentVersion??Number(before.data()?.rentTermsVersion||0));
       applyListingEdit(before.data()||{},updates,user.uid);
       if(Array.isArray(updates.tenants)) {
         const current=Array.isArray(before.data()?.tenants)?before.data()!.tenants.filter(isRecord):[];
@@ -415,6 +407,7 @@ async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnTyp
           for(const key of ['agreementInventory','inventoryHistory']){if(key in tenant&&JSON.stringify(tenant[key])!==JSON.stringify(inventoryBefore?.[key]))throw new ApiError(403,'Use the tenancy inventory workflow');if(inventoryBefore&&key in inventoryBefore)tenant[key]=inventoryBefore[key];}
           if(Object.keys(tenant).some(key=>['agreementinventory','inventoryhistory'].includes(key.toLowerCase())&&!['agreementInventory','inventoryHistory'].includes(key)))throw new ApiError(403,'Inventory aliases cannot be changed');
           const prior=current.find((row:RecordData)=>row.id===tenant.id);
+          guardRentFields(tenant,prior);if(prior)reconcileRentTerms(prior,tenant,before.data()!,Number(prior.rentTermsVersion||0));
           if(prior?.userUID&&prior.userUID!==tenant.userUID)throw new ApiError(409,'Tenant identity changed; refresh before editing');
           if(prior?.linkConfirmationRequired===true&&tenant.linkConfirmationRequired!==true)throw new ApiError(409,'Pending tenancy must be confirmed through its invitation');
         }
@@ -423,27 +416,61 @@ async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnTyp
         if((updates.tenants as RecordData[]).length>50)throw new ApiError(409,'Tenant relationship history limit reached');
       }
     }
-    const records=Array.isArray(updates.tenants)?await tx.get(db.collection(COLLECTIONS.tenants).where('propertyId','==',id)):null;
+    const scheduleChanged=!create&&'rentSchedule'in updates&&!sameRentSchedule(updates.rentSchedule,before.data()?.rentSchedule);
+    const records=Array.isArray(updates.tenants)||scheduleChanged?await tx.get(db.collection(COLLECTIONS.tenants).where('propertyId','==',id).limit(51)):null;
+    if(records&&records.docs.length>50)throw new ApiError(409,'Tenant relationship history requires explicit reconciliation');
+    if(scheduleChanged) {
+      const prior=before.data()!,embedded:RecordData[]=Array.isArray(prior.tenants)?prior.tenants.filter(isRecord):[];
+      const active=records!.docs.filter(doc=>doc.data().isActive===true);
+      const next:RecordData[]=Array.isArray(updates.tenants)?updates.tenants:embedded.map(t=>({...t}));
+      // A property-wide edit cannot choose between independently negotiated contracts.
+      for(const doc of active) {
+        const tenant=doc.data(),old=embedded.find(t=>t.id===doc.id);
+        if(!old||old.isActive!==true||tenant.userUID!==old.userUID)throw new ApiError(409,'rentSchedule: tenancy relationships changed; use the tenancy workflow');
+        for(const source of [tenant,old]) {
+          if(Array.isArray(source.rentSchedule)&&source.rentSchedule.length&&!sameRentSchedule(source.rentSchedule,prior.rentSchedule))throw new ApiError(409,'rentSchedule: a tenancy has independent terms; use its agreement workflow');
+          if((source.leaseStartDate||prior.agreementStartDate)!==prior.agreementStartDate||(source.leaseEndDate||prior.agreementEndDate)!==prior.agreementEndDate)throw new ApiError(409,'rentSchedule: tenancy dates differ from the property agreement');
+        }
+        const target=next.find(t=>t.id===doc.id);
+        if(!target||target.isActive!==true)throw new ApiError(409,'rentSchedule: do not combine schedule edits with tenancy removal');
+        if('rentSchedule'in target&&!sameRentSchedule(target.rentSchedule,old.rentSchedule)&&!sameRentSchedule(target.rentSchedule,updates.rentSchedule))throw new ApiError(409,'rentSchedule: conflicting tenant schedule');
+        const patch:RecordData={rentSchedule:updates.rentSchedule,rentScheduleVersion:2};
+        for(const [root,field]of [['monthlyRent','monthlyRent'],['paymentDueDate','paymentDueDate'],['agreementStartDate','leaseStartDate'],['agreementEndDate','leaseEndDate']])if(root in updates)patch[field]=updates[root];
+        reconcileRentTerms({...rentContract(prior,tenant),rentTermsVersion:Number(tenant.rentTermsVersion||0)},patch,prior,Number(tenant.rentTermsVersion||0));
+        Object.assign(target,{...tenant,...target,...patch,updatedAt:updates.updatedAt});
+      }
+      for(const old of embedded.filter(t=>t.isActive===true))if(!active.some(doc=>doc.id===old.id))throw new ApiError(409,'rentSchedule: canonical tenancy is missing; reconcile the relationship first');
+      updates.tenants=next;
+    }
+    // Retain evidence scope atomically when a legacy Pre-Leased property changes purpose.
+    const evidence=before.data()?.listingType==='pre_leased'&&updates.listingType&&updates.listingType!=='pre_leased'?await tx.get(db.collection(COLLECTIONS.documents).where('propertyId','==',id).limit(101)):null;
+    if(evidence&&evidence.docs.length>100)throw new ApiError(409,'Evidence scope review is required before changing this property purpose');
     const bindMedia=await prepareMediaBindings(tx,user,'properties',id,id,{...(before.data()||{}),...updates},before.data()||{});
-    if(!create&&['agreementStartDate','agreementEndDate','monthlyRent','tenants'].some(key=>key in updates)) {
+    if(!create&&['agreementStartDate','agreementEndDate','monthlyRent','rentSchedule','tenants'].some(key=>key in updates)) {
       const history=Array.isArray(before.data()?.agreementHistory)?before.data()!.agreementHistory:[];
       if(history.length>=500)throw new Error('Agreement history limit reached');
       updates.agreementHistory=[...history,{action:'property_terms_updated',actorUID:user.uid,at:new Date(),previousTerms:Object.fromEntries(['monthlyRent','agreementStartDate','agreementEndDate','securityDeposit'].map(key=>[key,before.data()?.[key]??''])),previousTenants:before.data()?.tenants||[]}];
     }
-    const writeLinks=await stageLinks(tx,candidates,intents);invitationEvents=writeLinks.events;
+    const writeLinks=await stageLinks(tx,candidates,intents);invitationEvents=[...writeLinks.events];
+    const tenantRefs=Array.isArray(updates.tenants)?await Promise.all((updates.tenants as RecordData[]).map(t=>tx.get(db.collection(COLLECTIONS.tenants).doc(s(t.id))))):[];
+    const lifecycle=await stageAdminLifecycle(tx,propertyLifecycleEvents(id,create?null:before.data()!,{...(before.data()||{}),...updates},user.uid,`property:${id}:${create?'created':randomUUID()}`).map(event=>event.type==='property_added'&&submission?.events.some(mail=>mail.recipientRole==='admin')?{...event,emailDelivery:submission.events.find(mail=>mail.recipientRole==='admin')}:event));invitationEvents.push(...lifecycle.events);
+    const participants=await stagePropertyParticipantEvents(tx,create?null:before.data()!,{...(before.data()||{}),...updates,id},updates);participantIds.push(...participants.ids);
     if(Array.isArray(updates.tenants)) {
-      const tenantRefs=await Promise.all((updates.tenants as RecordData[]).map(t=>tx.get(db.collection(COLLECTIONS.tenants).doc(s(t.id)))));
       for(const tenantRef of tenantRefs)if(tenantRef.exists&&tenantRef.data()?.propertyId!==id)throw new AccessError(403,'Tenant belongs to another property');
       for(const record of records?.docs||[])if(!(updates.tenants as RecordData[]).some(t=>t.id===record.id))tx.update(record.ref,{isActive:false,updatedAt:new Date()});
       for(const tenant of updates.tenants as RecordData[])tx.set(db.collection(COLLECTIONS.tenants).doc(s(tenant.id)),storeModel('Tenant',model('Tenant',{...tenant,propertyId:id,ownerUID:updates.ownerUID||before.data()?.ownerUID})),{merge:true});
       if(!create)updates.rentalStatus=(updates.tenants as RecordData[]).some(t=>t.isActive===true)?'rented':'available';
     }
+    for(const doc of evidence?.docs||[])if(doc.data().accessScope!==PRE_LEASED_EVIDENCE)tx.set(doc.ref,{accessScope:PRE_LEASED_EVIDENCE},{merge:true});
     writeLinks();
+    lifecycle.write();participants.write();
     bindMedia();
     if(create)tx.create(ref,updates);else tx.update(ref,updates);
     if(submission){tx.create(submission.ref,{propertyId:id,submitterUID:user.uid,createdAt:new Date()});writeEmailOutbox(tx,submission.events);}
-    return true;
+    committedUpdates=updates;return true;
   });
+  if(result)Object.assign(updates,committedUpdates);
+  if(result)dispatchNotificationIntents(participantIds);
   if(result&&invitationEvents.length)dispatchEmailOutbox(invitationEvents);
   return result;
 }
@@ -483,7 +510,8 @@ async function moderateListing(req:RecordData,id:string,user:Awaited<ReturnType<
     const at=new Date(),revision=Number(before.moderationRevision||0)+1;
     const status=action==='approve'?'approved':action==='reject'?'rejected':action==='request_changes'?'changes_requested':'pending_review';
     events=propertyNotificationEvents({...before,id,moderationRevision:revision,moderationReason:reason},recipient||{},status);
-    writeEmailOutbox(tx,events);
+    const lifecycle=await stageAdminLifecycle(tx,[{type:`property_${status}`,propertyId:id,actorUID:user.uid,eventId:`property:${id}:${revision}:${status}`,title:'Property moderation updated',message:`Listing decision: ${status.replaceAll('_',' ')}.`}]);
+    events.push(...lifecycle.events);lifecycle.write();writeEmailOutbox(tx,events.filter(e=>!lifecycle.events.includes(e)));
     tx.update(ref,{moderationStatus:status,moderationRevision:revision,moderationReason:reason,updatedAt:at,...(action==='resubmit'?{moderationSubmittedAt:at}:{moderationReviewedAt:at,moderationReviewerUID:user.uid}),moderationHistory:[...history,{action,actorUID:user.uid,reason,at,revision}]});
   });
   dispatchEmailOutbox(events);

@@ -1,0 +1,13 @@
+﻿.editor{display:grid;gap:12px;min-width:0;border-top:1px solid var(--pb-line,#dedbd1);padding-top:16px}.editor header{display:flex;align-items:center;justify-content:space-between;gap:12px}.editor h2{font-size:1rem;font-weight:600}.row{display:grid;grid-template-columns:70px 65px minmax(100px,1fr) minmax(145px,1fr) minmax(145px,1fr) auto;gap:10px;align-items:start;padding:10px 0;border-bottom:1px solid var(--pb-line,#dedbd1)}.row label{display:grid;gap:6px;font-size:.75rem;min-width:0}.row strong{display:flex;align-items:center;min-height:40px}.row input{min-width:0;width:100%}.editor p{font-size:.8rem;color:var(--pb-slate,#616960)}.editor .error{color:#a12c30}.suggestion{text-align:left;font-size:.7rem;color:#235741;text-decoration:underline}@media(max-width:850px){.row{grid-template-columns:repeat(2,minmax(0,1fr))}.row label:nth-child(3){grid-column:1/-1}.editor header{flex-wrap:wrap}}
+
+/* Opt-in tenant Add Property layout; other forms retain their existing editor. */
+.compact{border-top:0;padding-top:0;gap:16px}
+.compact header{gap:16px;align-items:center}
+.compact .row{grid-template-columns:minmax(85px,.65fr) minmax(65px,.45fr) minmax(110px,.8fr) minmax(160px,1.4fr) minmax(160px,1.4fr) auto;gap:20px;padding:22px 24px;border:1px solid #e1e7ee;border-radius:14px;background:#f9fbfd;box-shadow:0 1px 2px rgb(24 60 50 / 4%)}
+.compact .row label{display:grid;gap:8px;font-size:.8125rem;color:#64748b}
+.compact .row label input{height:44px;color:var(--pw-ink,#242b28);background:#fffefa}
+.compact .row label button{height:44px;min-width:0;max-width:100%;background:#fff;text-overflow:ellipsis;overflow:hidden}
+.compact .row>button{align-self:center;margin-top:22px}
+.compact .suggestion{margin-top:2px;background:transparent}
+@media(max-width:900px){.compact .row{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding:16px}.compact .row label:nth-child(3){grid-column:1/-1}.compact .row>button{margin-top:0;justify-self:start}}
+@media(max-width:460px){.compact .row{grid-template-columns:minmax(0,1fr)}.compact .row label:nth-child(3){grid-column:auto}}

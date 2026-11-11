@@ -1,6 +1,7 @@
+const {registrySeed}=require('./fixtures/mobile-registry.cjs');
 const test=require('node:test');const assert=require('node:assert/strict');
 const {isolated,users,properties,request,route,context}=require('./fixtures/native-server.cjs');
-const seed=()=>({users:structuredClone(users),properties:structuredClone(properties)});
+const seed=()=>({...registrySeed(users),properties:structuredClone(properties)});
 
 test('unverified email identities cannot enter protected workflows',async()=>{const app=isolated(seed());app.claims.owner={email_verified:false};const auth=app.load('@/lib/server/auth');await assert.rejects(()=>auth.requireUser(request('/private','owner')),error=>error.status===403&&error.code==='EMAIL_VERIFICATION_REQUIRED'&&/Verify/.test(error.message));});
 
