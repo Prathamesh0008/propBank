@@ -14,7 +14,7 @@ import { Building2, Plus, MoreVertical, Users, UserPlus, Eye, Edit, Archive, Wre
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { useNavigate, useSearchParams } from "@/lib/navigation";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { auth } from "../../firebase";
 import { User, onAuthStateChanged } from "firebase/auth";
 import { useUserProperties } from "../../hooks/useProperties";
@@ -202,15 +202,18 @@ const ManageProperty = () => {
     return () => unsubscribe();
   }, []);
 
+  const sellToggleBaseline = useRef<{uid:string|undefined;values:Record<string,boolean>}>({uid:undefined,values:{}});
   useEffect(() => {
-    if (ownedProperties.length > 0) {
-      const initialToggles: { [key: string]: boolean } = {};
-      ownedProperties.forEach((p: Property) => {
-        initialToggles[p.id] = p.wantToSell || false;
-      });
-      setWantToSellToggles(initialToggles);
-    }
-  }, [ownedProperties]);
+    if (propertiesData === undefined) return;
+    const sameUser=sellToggleBaseline.current.uid===user?.uid;
+    const previousServer=sameUser?sellToggleBaseline.current.values:{};
+    const serverValues=Object.fromEntries(ownedProperties.map((p:Property)=>[p.id,!!p.wantToSell]));
+    setWantToSellToggles(current=>{
+      const next=Object.fromEntries(Object.entries(serverValues).map(([id,value])=>[id,sameUser&&Object.prototype.hasOwnProperty.call(current,id)&&Object.prototype.hasOwnProperty.call(previousServer,id)&&previousServer[id]===value?current[id]:value]));
+      return Object.keys(current).length===Object.keys(next).length&&Object.keys(next).every(id=>current[id]===next[id])?current:next;
+    });
+    sellToggleBaseline.current={uid:user?.uid,values:serverValues};
+  }, [ownedProperties, user?.uid, propertiesData === undefined]);
 
   // Filter properties based on current filter criteria
   const applyFilters = () => {
@@ -621,7 +624,7 @@ const ManageProperty = () => {
 
 
   return (
-    <main className={workspaceStyles.workspace}>{hasNextPage&&<p role="status">Results cover loaded records; older memberships may require further pages. <Button variant="outline" disabled={isFetchingNextPage} onClick={()=>void fetchNextPage()}>Load more properties</Button></p>}
+    <main className={workspaceStyles.workspace}>{hasNextPage&&<p role="status">Showing loaded properties. Load more to view older records. <Button variant="outline" disabled={isFetchingNextPage} onClick={()=>void fetchNextPage()}>Load more properties</Button></p>}
       <>
         <title>Manage Property — PropBank</title>
         <meta name="description" content="Manage your property listings, update property details, unit numbers, and building information." />
