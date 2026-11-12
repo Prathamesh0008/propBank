@@ -108,9 +108,8 @@ export function ProductDashboard({ admin = false }: { admin?: boolean }) {
   const data = query.data;
   if (!data) return <>{pending}</>;
   if (!admin) return (
-    <div className={hubStyles.actionStrip} aria-label="Portfolio actions">{data.truncated&&<p role="status">Actions cover the displayed property/activity pages. Open a property hub to inspect its full history.</p>}{Object.entries(data.negotiationPages||{}).filter(([,next])=>next).map(([role,next])=><Link key={role} to={`/manage-property?negotiationRole=${role}&negotiationCursor=${encodeURIComponent(next!)}`}>Next {role==='brokerUID'?'assigned offer':'customer offer'} page </Link>)}
+    <div className={hubStyles.actionStrip} aria-label="Portfolio actions">{Object.entries(data.negotiationPages||{}).filter(([,next])=>next).map(([role,next])=><Link key={role} to={`/manage-property?negotiationRole=${role}&negotiationCursor=${encodeURIComponent(next!)}`}>Next {role==='brokerUID'?'assigned offer':'customer offer'} page </Link>)}
       {!!data.actions.length && <section className={hubStyles.compactAttention} aria-label="Actions required">
-        {data.truncated && <p className={hubStyles.notice}>Actions cover the current property/activity page; more records may remain.</p>}
         <CompactActions actions={data.actions} propertyTitles />
         {data.actions.some((a) => ["broker", "customer"].includes(a.role)) && (
           <details className={hubStyles.compactDisclosure} id="assigned-offers">
