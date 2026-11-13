@@ -6,7 +6,7 @@ import { AccessError, completedProfile, requireUser, verifyFirebaseIdentity } fr
 import { COLLECTIONS, getDatabase } from '../firestore';
 import { getFirebaseAdminAuth } from '../firebase-admin';
 import { ApiError, dependencyDiagnostic, jsonResponse } from '../http';
-import { canonicalMobile, writeUserWithMobile } from '../mobile-registry';
+import { authorizeContactRepair, canonicalMobile, writeUserWithMobile } from '../mobile-registry';
 import {indianMobile} from '@/lib/indian-phone';
 import {stageUserEvent,dispatchNotificationIntents,type UserEvent} from './transactional-email';
 import { authMetadata, recordAuthActivity } from './auth-activity';
@@ -184,11 +184,19 @@ export async function createUser(request:Request,authRegistration=false) {
     const target=await getFirebaseAdminAuth().getUser(uid);
     if(target.disabled||target.email?.toLowerCase()!==stringValue(req.email).toLowerCase())return fail('Email must match Firebase identity',400);
   }
-  if(req.hasPhoneNumber&&!indianMobile(req.phoneNumber))canonicalMobile(req.phoneNumber);
+  if(req.hasPhoneNumber&&!indianMobile(req.phoneNumber)&&!indianMobile(existing?.phoneNumber))canonicalMobile(req.phoneNumber);
   const phone=indianMobile(stringValue(existing?.phoneNumber))||indianMobile(req.phoneNumber);
   if(!phone)return jsonResponse({success:false,message:'Enter a valid 10-digit Indian mobile number starting with 6, 7, 8 or 9',fieldErrors:{phoneNumber:'Mobile number is required and must contain 10 digits starting with 6, 7, 8 or 9'}},400);
   const now=new Date();
-  let metadata:RecordData={};try{metadata=authMetadata(await getFirebaseAdminAuth().getUser(uid));}catch{/* Identity token validation remains authoritative. */}
+  const account=await getFirebaseAdminAuth().getUser(uid);
+  if(account.disabled)throw new AccessError(403,'Active user profile required');
+  const metadata:RecordData=authMetadata(account);
+  const repairContact=!!existing&&!indianMobile(existing.phoneNumber);
+  if(repairContact){
+    if(uid!==identity.token.uid)throw new AccessError(403,'Only the account owner can correct the registered mobile number');
+    authorizeContactRepair(identity.token);
+    if(!account.emailVerified)throw new AccessError(403,'Verify your email before correcting your mobile number');
+  }
   const user={...existing,...metadata,...model('User',{...req,phoneNumber:phone,isActive:existing?.isActive!==false,createdAt:existing?.createdAt||now,updatedAt:now})};
   if(!identity.admin && existing?.role)user.role=existing.role;
   if (authRegistration && existing) {
@@ -197,9 +205,9 @@ export async function createUser(request:Request,authRegistration=false) {
     else if (existing.role && req.role==='individual') user.role=existing.role;
   }
   const intentIds:string[]=[],events:UserEvent[]=[];if(authRegistration&&!existing)events.push({eventType:'user.registration_welcome',eventId:`user:${uid}:registered`,recipients:[{uid,role:'user'}],recordId:uid,templateId:'registration-welcome',subject:'Welcome to PropBank',title:'Welcome to PropBank',bodyHtml:'<p>Your PropBank account is ready. You can now manage property and rental activity from your secure account.</p>',bodyText:'Your PropBank account is ready. You can now manage property and rental activity from your secure account.',action:{label:'Open your account',path:'/manage-property'}});if(authRegistration&&!existing&&user.role==='agent')events.push({eventType:'agent.registration',eventId:`agent:${uid}:registered`,recipients:[{uid,role:'agent'},{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:uid,templateId:'agent-registration',subject:'Real estate agent account registered',title:'Agent account registered',bodyHtml:'<p>A Real Estate Agent account was registered with PropBank. Email verification is required before protected access.</p>',bodyText:'A Real Estate Agent account was registered with PropBank. Email verification is required before protected access.',action:{label:'Open PropBank',path:'/manage-property'}});
-  await writeUserWithMobile(uid,{...user,...storeModel('User',user)}, {createOnly:!existing,expectedPhone:existing?.phoneNumber,stage:async tx=>{const staged=[];for(const event of events)staged.push(await stageUserEvent(tx,event));intentIds.push(...staged.map(i=>i.id));return()=>staged.forEach(i=>i.write());}});dispatchNotificationIntents(intentIds);
+  const writeResult=await writeUserWithMobile(uid,{...user,...storeModel('User',user)}, {createOnly:!existing,expectedPhone:existing?.phoneNumber,repairContact,metadataOnly:!!existing&&!repairContact,confirmPending:authRegistration,stage:async tx=>{const staged=[];for(const event of events)staged.push(await stageUserEvent(tx,event));intentIds.push(...staged.map(i=>i.id));return()=>staged.forEach(i=>i.write());}});dispatchNotificationIntents(intentIds);
   if(uid===identity.token.uid && identity.token.email_verified===true)await discoverFor({uid,token:identity.token,role:user.role as 'admin'|'agent'|'individual',email:stringValue(user.email),phoneNumber:''});
-  if(authRegistration&&!existing)await recordAuthActivity({eventType:'registration',actorUID:uid,targetUID:uid,context:{providerIds:metadata.providerIds||[],emailVerified:metadata.emailVerified===true,source:'firebase'}}).catch(()=>null);
+  if(authRegistration&&writeResult.created)await recordAuthActivity({eventType:'registration',actorUID:uid,targetUID:uid,context:{providerIds:metadata.providerIds||[],emailVerified:metadata.emailVerified===true,source:'firebase'}}).catch(()=>null);
 
 
   return success(authRegistration?(existing?'User updated successfully':'User created successfully'):'User created/updated successfully',user,authRegistration?200:201);
@@ -234,10 +242,13 @@ export async function updateUser(request:Request,uid:string) {
     const phone=canonicalMobile(req.phoneNumber);
     if(phone!==indianMobile(existing.phoneNumber)){
       if(uid!==identity.token.uid)return fail('Only the account owner can change the registered mobile number',403);
+      if(!indianMobile(existing.phoneNumber))authorizeContactRepair(identity.token);
+      else {
       const authenticatedAt=Number(identity.token.auth_time||0),verifiedPhone=indianMobile(identity.token.phone_number);
       if(!authenticatedAt||Date.now()/1000-authenticatedAt>300)return fail('Recent authentication is required to change the mobile number',403);
       validContact(phone);
       if(!verifiedPhone||verifiedPhone!==phone||await verifiedMobile({uid,token:identity.token,role:existing.role as 'admin'|'agent'|'individual',email:stringValue(existing.email),phoneNumber:''})!==phone)return fail('Verified phone ownership is not configured or the new number has not been verified',503);
+      }
       phoneChanged=true;
     }
     existing.phoneNumber=phone;
@@ -245,8 +256,8 @@ export async function updateUser(request:Request,uid:string) {
   if (['admin','agent','individual'].includes(stringValue(req.role))) existing.role=req.role;
   if('isActive' in req){if(!identity.admin)throw new AccessError(403,'Administrator access required to change account status');existing.isActive=req.isActive;}
   existing.updatedAt=new Date();
-  existing.phoneNumber=canonicalMobile(existing.phoneNumber);
-  const ids:string[]=[];await writeUserWithMobile(uid,{...existing,...storeModel('User',existing)}, {expectedPhone,stage:async tx=>{const event=await stageUserEvent(tx,{eventType:phoneChanged?'user.mobile_number_changed':'user.profile_changed',eventId:`${uid}:${(existing.updatedAt as Date).getTime()}`,recipients:[{uid,role:'user'},{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:uid,templateId:'account-security',subject:'PropBank profile updated',bodyHtml:'<p>Your account profile was updated.</p>',bodyText:'Your account profile was updated.'});ids.push(event.id);return event.write;}});dispatchNotificationIntents(ids);
+  const repairContact=phoneChanged&&!indianMobile(expectedPhone);
+  const ids:string[]=[];await writeUserWithMobile(uid,{...existing,...storeModel('User',existing)}, {expectedPhone,repairContact,metadataOnly:!phoneChanged,stage:async tx=>{const event=await stageUserEvent(tx,{eventType:phoneChanged?'user.mobile_number_changed':'user.profile_changed',eventId:`${uid}:${(existing.updatedAt as Date).getTime()}`,recipients:[{uid,role:'user'},{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:uid,templateId:'account-security',subject:'PropBank profile updated',bodyHtml:'<p>Your account profile was updated.</p>',bodyText:'Your account profile was updated.'});ids.push(event.id);return event.write;}});dispatchNotificationIntents(ids);
   if('isActive' in req)await getFirebaseAdminAuth().updateUser(uid,{disabled:req.isActive===false});
   if(previousRole!==existing.role)await recordAuthActivity({eventType:'role_changed',actorUID:identity.token.uid,targetUID:uid,context:{previousRole,role:existing.role,source:'admin'}}).catch(()=>null);
   if(previousStatus!==(existing.isActive!==false))await recordAuthActivity({eventType:'account_status_changed',actorUID:identity.token.uid,targetUID:uid,context:{previousStatus:previousStatus?'active':'inactive',status:existing.isActive===false?'inactive':'active',source:'admin'}}).catch(()=>null);

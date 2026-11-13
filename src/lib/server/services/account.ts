@@ -3,7 +3,7 @@ import {createHash} from 'node:crypto';
 import 'server-only';
 import {verifiedMobile,validContact,discoverFor} from './relationship-links';
 import {indianMobile} from '@/lib/indian-phone';
-import {canonicalMobile,writeUserWithMobile} from '../mobile-registry';
+import {authorizeContactRepair,canonicalMobile,reconcileMobileConfirmation,writeUserWithMobile} from '../mobile-registry';
 import {AccessError,requireUser} from '../auth';
 import {COLLECTIONS,getDatabase} from '../firestore';
 import {getFirebaseAdminAuth} from '../firebase-admin';
@@ -54,20 +54,25 @@ export async function updateMyAccount(request:Request){
   const allowed=new Set(['name','phoneNumber','photoURL','bio','agencyName','agencyPhone','agencyWebsite','notificationPreferences']);
   if(Object.keys(body).some(key=>!allowed.has(key)))throw new ApiError(400,'Account role, status and email cannot be changed through profile settings');
   const name=clean(body.name,100);if(name.length<2)throw new ApiError(400,'Enter a valid full name');
-  const phone=canonicalMobile('phoneNumber' in body?body.phoneNumber:profile.phoneNumber);
+  const submitted='phoneNumber' in body?body.phoneNumber:profile.phoneNumber;
+  const unchanged=submitted===profile.phoneNumber||!!indianMobile(submitted)&&indianMobile(submitted)===indianMobile(profile.phoneNumber);
+  const phone=unchanged?s(profile.phoneNumber):canonicalMobile(submitted);
   const oldPhone=s(profile.phoneNumber),phoneChanged=phone!==oldPhone&&(!indianMobile(phone)||indianMobile(phone)!==indianMobile(oldPhone));
   if(phoneChanged){
+    if(!indianMobile(oldPhone))authorizeContactRepair(identity.token);
+    else {
     const authenticatedAt=Number(identity.token.auth_time||0),verifiedPhone=clean(identity.token.phone_number,20).replace(/[^0-9+]/g,'');
     if(!authenticatedAt||Date.now()/1000-authenticatedAt>300)throw new AccessError(403,'Recent authentication is required to change the mobile number');
     validContact(phone);
     if(!verifiedPhone||indianMobile(verifiedPhone)!==indianMobile(phone)||await verifiedMobile(identity)!==indianMobile(phone))throw new ApiError(503,'Phone verification is not configured or the new number has not been verified');
+    }
   }
   const preferences=isRecord(body.notificationPreferences)?{productUpdates:body.notificationPreferences.productUpdates!==false,activitySummaries:body.notificationPreferences.activitySummaries!==false,security:true}:isRecord(profile.notificationPreferences)?profile.notificationPreferences:{productUpdates:true,activitySummaries:true,security:true};
   const updates:RecordData={name,phoneNumber:phone,photoURL:url(body.photoURL),bio:clean(body.bio,500),notificationPreferences:preferences,updatedAt:new Date()};
   if(s(profile.role)==='agent')Object.assign(updates,{agencyName:clean(body.agencyName,120),agencyPhone:clean(body.agencyPhone,20).replace(/[^0-9+]/g,''),agencyWebsite:url(body.agencyWebsite)});
   const changed=Object.keys(updates).filter(key=>key!=='updatedAt'&&JSON.stringify(updates[key])!==JSON.stringify(profile[key]));
-  if(!changed.length)return jsonResponse({success:true,message:'No account changes were needed'});
-  const intentIds:string[]=[];await writeUserWithMobile(uid,updates,{expectedPhone:profile.phoneNumber,stage:async tx=>{const intent=await stageUserEvent(tx,{actorUID:uid,eventType:phoneChanged?'user.mobile_number_changed':'user.profile_changed',eventId:`${uid}:${(updates.updatedAt as Date).getTime()}`,recipients:[{uid,role:'user'},{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:uid,templateId:'account-security',subject:'Your PropBank profile changed',title:'Account profile updated',bodyHtml:'<p>Your PropBank account profile was changed. If this was unexpected, review your account.</p>',bodyText:'Your PropBank account profile was changed. If this was unexpected, review your account.',action:{label:'Review account',path:'/my-account'}});intentIds.push(intent.id);return intent.write;}});dispatchNotificationIntents(intentIds);
+  if(!changed.length){await reconcileMobileConfirmation(uid,profile);return jsonResponse({success:true,message:'No account changes were needed'});}
+  const intentIds:string[]=[];await writeUserWithMobile(uid,updates,{expectedPhone:profile.phoneNumber,repairContact:phoneChanged&&!indianMobile(oldPhone),metadataOnly:!phoneChanged,stage:async tx=>{const intent=await stageUserEvent(tx,{actorUID:uid,eventType:phoneChanged?'user.mobile_number_changed':'user.profile_changed',eventId:`${uid}:${(updates.updatedAt as Date).getTime()}`,recipients:[{uid,role:'user'},{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:uid,templateId:'account-security',subject:'Your PropBank profile changed',title:'Account profile updated',bodyHtml:'<p>Your PropBank account profile was changed. If this was unexpected, review your account.</p>',bodyText:'Your PropBank account profile was changed. If this was unexpected, review your account.',action:{label:'Review account',path:'/my-account'}});intentIds.push(intent.id);return intent.write;}});dispatchNotificationIntents(intentIds);
   try{if(name!==account.displayName||updates.photoURL!==account.photoURL)await getFirebaseAdminAuth().updateUser(uid,{displayName:name,photoURL:s(updates.photoURL)||null});}
   catch(error){await ref.set({name:profile.name||'',photoURL:profile.photoURL||'',updatedAt:profile.updatedAt||new Date()},{merge:true});throw error;}
   await recordAuthActivity({eventType:phoneChanged?'phone_changed':changed.length===1&&changed[0]==='notificationPreferences'?'notification_preferences_changed':'profile_changed',actorUID:uid,targetUID:uid,context:{source:'self'}}).catch(()=>null);

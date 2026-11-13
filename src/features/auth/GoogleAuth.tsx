@@ -35,7 +35,14 @@ export default function GoogleAuth(){
      setMobileTouched(true);if(!/^[6-9]\d{9}$/.test(mobile))return;
      if(name.trim().length<2)throw new Error('Enter your full name.');
      let registering=completionUser;
-     if(!registering){const credential=await createUserWithEmailAndPassword(auth,email.trim(),password);registering=credential.user;setCompletionUser(registering);}
+     if(!registering){
+       // Fail before creating an Auth identity when readiness or ownership is
+       // inconclusive. The final profile write independently rechecks ownership.
+       const check=await fetch('/api/auth/registration-check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phoneNumber:`+91${mobile}`})});
+       const result=await check.json().catch(()=>null);
+       if(!check.ok||result?.success!==true)throw new Error(result?.message||'Registration availability could not be verified. Please try again.');
+       const credential=await createUserWithEmailAndPassword(auth,email.trim(),password);registering=credential.user;setCompletionUser(registering);
+     }
      await updateProfile(registering,{displayName:name.trim()});await registerProfile(registering,name.trim(),registrationRole,mobile);
      if(typeof window!=='undefined')window.dispatchEvent(new Event('propbank:profile-completed'));
      setCompletionUser(null);setMode('signin');
