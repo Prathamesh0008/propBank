@@ -1,7 +1,7 @@
 "use client";
 import {useQueryClient} from '@tanstack/react-query';
 import {createContext,useContext,useEffect,useState,useRef,useCallback,type ReactNode} from 'react';
-import {apiFetch,loadAuthProfile} from '@/lib/api-client';
+import {apiFetch,loadAuthProfile,invalidateAuthProfile} from '@/lib/api-client';
 import {useToast} from '@/hooks/use-toast';
 import {ToastAction} from '@/ui/toast';
 import {auth} from '@/firebase';
@@ -19,30 +19,37 @@ export const AuthProvider=({children}:{children:ReactNode})=>{
   const queryClient=useQueryClient(),{toast,dismiss}=useToast();
   const previousUID=useRef<string|undefined>(undefined),publishedUID=useRef<string|undefined>(undefined);
   const discoveredIdentity=useRef<string|undefined>(undefined);
+  const validatingIdentity=useRef<string|undefined>(undefined);
   const [user,setUser]=useState<User|null>(null),[loading,setLoading]=useState(true),[profileStatus,setProfileStatus]=useState<ProfileStatus>('checking'),[profileError,setProfileError]=useState(''),[profileRevision,setProfileRevision]=useState(0);
   const [fileAccess,setFileAccess]=useState(privateFileSession.snapshot);
   const notice=useRef<string|undefined>(undefined),readyRevision=useRef(-1);
   const retryFileAccess=useCallback(()=>privateFileSession.retry(),[]);
-  const refreshProfile=useCallback(async()=>{setProfileRevision(value=>value+1);},[]);
+  const refreshProfile=useCallback(async()=>{if(auth.currentUser)invalidateAuthProfile(auth.currentUser.uid);setProfileRevision(value=>value+1);},[]);
 
   useEffect(()=>privateFileSession.subscribe(setFileAccess),[]);
   useEffect(()=>subscribeDataRefresh(event=>{const keys=[...new Set(event.domains.flatMap(domain=>queryKeysByDomain[domain]))];void Promise.all(keys.map(key=>queryClient.invalidateQueries({queryKey:[key],refetchType:document.visibilityState==='hidden'?'none':'active'},{cancelRefetch:false})));}),[queryClient]);
-  useEffect(()=>{const refresh=()=>setProfileRevision(value=>value+1);window.addEventListener('propbank:profile-completed',refresh);return()=>window.removeEventListener('propbank:profile-completed',refresh);},[]);
+  useEffect(()=>{const refresh=()=>{if(auth.currentUser)invalidateAuthProfile(auth.currentUser.uid);setProfileRevision(value=>value+1);};window.addEventListener('propbank:profile-completed',refresh);return()=>window.removeEventListener('propbank:profile-completed',refresh);},[]);
   useEffect(()=>{
     let generation=0;
     // Do not hold the Firebase observer open while acquiring tokens or cookies.
     const unsubscribe=onIdTokenChanged(auth,identity=>{
-      const firebaseUser=identity?.emailVerified===true?identity:null,current=++generation;
+      const firebaseUser=identity?.emailVerified===true?identity:null;
+      const validationKey=firebaseUser?`${firebaseUser.uid}:${firebaseUser.email||''}`:undefined;
+      if(validationKey&&validatingIdentity.current===validationKey)return;
+      const current=++generation;validatingIdentity.current=validationKey;
       const identityChanged=previousUID.current!==firebaseUser?.uid;
       if(identityChanged){queryClient.clear();discoveredIdentity.current=undefined;}
       previousUID.current=firebaseUser?.uid;
       if(!firebaseUser){void privateFileSession.setUser(null);publishedUID.current=undefined;setUser(null);setProfileError('');setProfileStatus(identity?'incomplete':'anonymous');setLoading(false);return;}
-      if(publishedUID.current!==firebaseUser.uid)setLoading(true);
-      setProfileStatus('checking');setProfileError('');setUser(null);if(identityChanged)void privateFileSession.setUser(null);
+      // Background token renewal must not unmount an already validated account.
+      // New identities remain gated until the authoritative profile check finishes.
+      if(publishedUID.current!==firebaseUser.uid){setLoading(true);setProfileStatus('checking');setUser(null);}
+      setProfileError('');if(identityChanged)void privateFileSession.setUser(null);
       void loadAuthProfile(firebaseUser.uid).then(async ({response,data})=>{
         if(current!==generation||auth.currentUser?.uid!==firebaseUser.uid)return;
         if(!response.ok){publishedUID.current=undefined;setUser(null);if(response.status>=500){setProfileError(data.message||'Unable to load your account right now. Please try again.');setProfileStatus('unavailable');}else setProfileStatus('incomplete');setLoading(false);return;}
-        if(data.profileComplete!==true){publishedUID.current=undefined;setProfileStatus('incomplete');setLoading(false);return;}
+        if(typeof data.profileComplete!=='boolean')throw new Error('Invalid account profile response');
+        if(data.profileComplete!==true){publishedUID.current=undefined;setUser(null);setProfileStatus('incomplete');setLoading(false);return;}
         await privateFileSession.setUser(firebaseUser);
         if(current!==generation||auth.currentUser?.uid!==firebaseUser.uid)return;
         publishedUID.current=firebaseUser.uid;setUser(firebaseUser);setProfileStatus('complete');setLoading(false);
@@ -51,12 +58,12 @@ export const AuthProvider=({children}:{children:ReactNode})=>{
           discoveredIdentity.current=discoveryKey;
           void apiFetch('/api/relationship-links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'discover'})}).catch(()=>{if(discoveredIdentity.current===discoveryKey)discoveredIdentity.current=undefined;});
         }
-      }).catch(()=>{if(current===generation){publishedUID.current=undefined;setUser(null);setProfileError('Unable to load your account right now. Please try again.');setProfileStatus('unavailable');setLoading(false);}});
-    });
+      }).catch(()=>{if(current===generation){publishedUID.current=undefined;setUser(null);setProfileError('Unable to load your account right now. Please try again.');setProfileStatus('unavailable');setLoading(false);}}).finally(()=>{if(current===generation)validatingIdentity.current=undefined;});
+    },()=>{generation++;validatingIdentity.current=undefined;publishedUID.current=undefined;setUser(null);setProfileError('Unable to initialize your account. Please try again.');setProfileStatus('unavailable');setLoading(false);void privateFileSession.setUser(null);});
     const renew=()=>{void privateFileSession.renew();};
     const interval=window.setInterval(renew,10*60*1000);
     window.addEventListener('online',renew);window.addEventListener('focus',renew);
-    return ()=>{generation++;unsubscribe();window.clearInterval(interval);window.removeEventListener('online',renew);window.removeEventListener('focus',renew);};
+    return ()=>{generation++;validatingIdentity.current=undefined;unsubscribe();window.clearInterval(interval);window.removeEventListener('online',renew);window.removeEventListener('focus',renew);};
   },[queryClient,profileRevision]);
 
   useEffect(()=>{
@@ -64,7 +71,9 @@ export const AuthProvider=({children}:{children:ReactNode})=>{
       readyRevision.current=fileAccess.revision;
       void Promise.all(['userProperties','property','productHub','documents'].map(key=>queryClient.invalidateQueries({queryKey:[key]})));
     }
-    if(fileAccess.phase!=='failed'){if(notice.current){dismiss(notice.current);notice.current=undefined;}return;}
+    // Optional background setup must not announce platform denial as file authorization.
+    // The document viewer retains the failed state and offers contextual manual retry.
+    if(fileAccess.phase!=='failed'||fileAccess.failure==='platform_blocked'){if(notice.current){dismiss(notice.current);notice.current=undefined;}return;}
     if(!user||fileAccess.uid!==user.uid||auth.currentUser?.uid!==user.uid||!claimFileSessionNotice(fileAccess.revision))return;
     notice.current=toast({title:'Secure file access',description:fileAccess.message,variant:'destructive',action:<ToastAction altText="Retry secure file access" onClick={()=>void retryFileAccess()}>Retry</ToastAction>}).id;
   },[fileAccess,user,queryClient,toast,dismiss,retryFileAccess]);

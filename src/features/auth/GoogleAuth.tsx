@@ -1,11 +1,13 @@
 "use client";
-import {useEffect,useMemo,useState} from 'react';
+import {useAuth} from '@/contexts/AuthContext';
+import {authDestination,safeAuthNext} from '@/lib/auth-navigation';
+import {useCallback,useEffect,useRef,useState} from 'react';
 import {FirebaseError} from 'firebase/app';
 import {GoogleAuthProvider,createUserWithEmailAndPassword,linkWithCredential,sendEmailVerification,sendPasswordResetEmail,signInWithEmailAndPassword,updateProfile,type AuthCredential,type User} from 'firebase/auth';
 import {Eye,EyeOff} from 'lucide-react';
 import {auth,signInWithGoogle,signOutUser} from '@/firebase';
 import {apiFetch,loadAuthProfile} from '@/lib/api-client';
-import {useNavigate} from '@/lib/navigation';
+import {useNavigate,useSearchParams} from '@/lib/navigation';
 import styles from './AuthAccount.module.css';
 import RegistrationMobileField from './RegistrationMobileField';
 
@@ -16,12 +18,22 @@ const messageFor=(error:unknown)=>{const code=error instanceof FirebaseError?err
 export default function GoogleAuth(){
  const navigate=useNavigate(),[mode,setMode]=useState<Mode>('signin'),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[name,setName]=useState(''),[registrationRole,setRegistrationRole]=useState<RegistrationRole>('individual'),[showPassword,setShowPassword]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[verificationUser,setVerificationUser]=useState<User|null>(null),[pendingGoogle,setPendingGoogle]=useState<AuthCredential|null>(null);
  const [mobile,setMobile]=useState(''),[mobileTouched,setMobileTouched]=useState(false),[completionUser,setCompletionUser]=useState<User|null>(null);
- const destination=useMemo(()=>{if(typeof window==='undefined')return '';const value=new URLSearchParams(window.location.search).get('next')||'';return value.startsWith('/')&&!value.startsWith('//')?value:'';},[]);
- useEffect(()=>{if(auth.currentUser&&!verificationUser&&!completionUser&&!auth.currentUser.emailVerified)setVerificationUser(auth.currentUser);},[verificationUser,completionUser]);
- useEffect(()=>{const current=auth.currentUser;if(!current?.emailVerified||completionUser||verificationUser)return;let active=true;void loadAuthProfile(current.uid).then(({response,data})=>{if(active&&response.ok&&data.profileComplete!==true)beginCompletion(current);}).catch(()=>{});return()=>{active=false;};},[completionUser,verificationUser]);
+ const {loading:authLoading,profileStatus,profileError,refreshProfile}=useAuth();
+ const attemptedAuth=useRef(false),redirected=useRef(false);
+ const [redirecting,setRedirecting]=useState(false);
+ const [params]=useSearchParams();
+ const destination=safeAuthNext(params.get('next'));
+ const navigateOnce=useCallback((role?:string)=>{if(redirected.current)return;redirected.current=true;setRedirecting(true);navigate(authDestination(destination,role),{replace:true});},[destination,navigate]);
+ const beginCompletion=useCallback((user:User)=>{setCompletionUser(user);setVerificationUser(null);setMode('register');setEmail(user.email||'');setName(current=>current||user.displayName||'');setPassword('');setNotice('Complete your account details to continue. Your mobile number is contact information only.');},[]);
+ useEffect(()=>{
+   if(authLoading||profileStatus==='checking'||busy||attemptedAuth.current)return;
+   const current=auth.currentUser;if(!current)return;
+   if(!current.emailVerified){setVerificationUser(current);return;}
+   if(profileStatus==='incomplete'){beginCompletion(current);return;}
+   if(profileStatus==='complete')navigateOnce();
+ },[authLoading,profileStatus,busy,beginCompletion,navigateOnce]);
  const registerProfile=async(user:User,displayName:string,role:RegistrationRole,phone:string)=>{const response=await apiFetch('/api/auth/user',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:user.uid,email:user.email||'',name:displayName||user.displayName||user.email?.split('@')[0]||'User',photoURL:user.photoURL||'',role,phoneNumber:`+91${phone}`})});const data=await response.json();if(!response.ok)throw new Error(data.message||'Account profile could not be created.');};
- const establish=async(user:User,linked=false)=>{await user.getIdToken(true);const response=await apiFetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:user.uid})});const data=await response.json().catch(()=>({}));if(!response.ok){const message=typeof data.message==='string'?data.message:'';if(response.status===403&&/verify/i.test(message))throw new Error('Verify your email before accessing PropBank.');if(response.status===403&&/active user profile/i.test(message))throw new Error('This account is disabled. Contact support if you believe this is an error.');throw new Error('Your Firebase sign-in succeeded, but the PropBank server session could not be established. Please try again.');}if(linked)await apiFetch('/api/auth/activity',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'account_linked'})});navigate(destination||(data.user?.role==='admin'?'/admin':'/manage-property'));};
- const beginCompletion=(user:User)=>{setCompletionUser(user);setVerificationUser(null);setMode('register');setEmail(user.email||'');setName(current=>current||user.displayName||'');setPassword('');setNotice('Complete your account details to continue. Your mobile number is contact information only.');};
+ const establish=async(user:User,linked=false)=>{await user.getIdToken(true);const response=await apiFetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:user.uid})});const data=await response.json().catch(()=>({}));if(!response.ok){const message=typeof data.message==='string'?data.message:'';if(response.status===403&&/verify/i.test(message))throw new Error('Verify your email before accessing PropBank.');if(response.status===403&&/active user profile/i.test(message))throw new Error('This account is disabled. Contact support if you believe this is an error.');throw new Error('Your Firebase sign-in succeeded, but the PropBank server session could not be established. Please try again.');}if(linked)await apiFetch('/api/auth/activity',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'account_linked'})});navigateOnce(data.user?.role);};
  const completeOrSignIn=async(user:User,linked=false)=>{
    const {response,data}=await loadAuthProfile(user.uid);
    if(!response.ok||typeof data.profileExists!=='boolean')throw new Error(data.message||'Account profile could not be checked.');
@@ -29,7 +41,7 @@ export default function GoogleAuth(){
    if(!user.emailVerified){setVerificationUser(user);setNotice('Verify your email before accessing your account.');return;}
    await establish(user,linked);
  };
- async function submit(event:React.FormEvent){event.preventDefault();if(busy)return;setBusy(true);setError('');setNotice('');try{
+ async function submit(event:React.FormEvent){event.preventDefault();if(busy||redirected.current)return;attemptedAuth.current=true;setBusy(true);setError('');setNotice('');try{
    if(mode==='reset'){await sendPasswordResetEmail(auth,email.trim());await fetch('/api/auth/activity',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'password_reset_requested',email:email.trim()})}).catch(()=>null);setNotice('If this email belongs to an account, Firebase will send reset instructions.');return;}
    if(mode==='register'){
      setMobileTouched(true);if(!/^[6-9]\d{9}$/.test(mobile))return;
@@ -52,9 +64,11 @@ export default function GoogleAuth(){
    const credential=await signInWithEmailAndPassword(auth,email.trim(),password);let linked=false;if(pendingGoogle){await linkWithCredential(credential.user,pendingGoogle);setPendingGoogle(null);linked=true;}
    await completeOrSignIn(credential.user,linked);
  }catch(caught){setError(caught instanceof Error&&!('code' in caught)?caught.message:messageFor(caught));}finally{setBusy(false);}}
- async function google(){if(busy)return;setBusy(true);setError('');setNotice('');try{const credential=await signInWithGoogle();await completeOrSignIn(credential.user);}catch(caught){if(caught instanceof FirebaseError&&caught.code==='auth/account-exists-with-different-credential'){const pending=GoogleAuthProvider.credentialFromError(caught);if(pending){setPendingGoogle(pending);setMode('signin');setEmail(typeof caught.customData?.email==='string'?caught.customData.email:'');setError('Sign in with your existing email and password to securely link Google.');}else setError(messageFor(caught));}else setError(caught instanceof Error&&!('code' in caught)?caught.message:messageFor(caught));}finally{setBusy(false);}}
+ async function google(){if(busy||redirected.current)return;attemptedAuth.current=true;setBusy(true);setError('');setNotice('');try{const credential=await signInWithGoogle();await completeOrSignIn(credential.user);}catch(caught){if(caught instanceof FirebaseError&&caught.code==='auth/account-exists-with-different-credential'){const pending=GoogleAuthProvider.credentialFromError(caught);if(pending){setPendingGoogle(pending);setMode('signin');setEmail(typeof caught.customData?.email==='string'?caught.customData.email:'');setError('Sign in with your existing email and password to securely link Google.');}else setError(messageFor(caught));}else setError(caught instanceof Error&&!('code' in caught)?caught.message:messageFor(caught));}finally{setBusy(false);}}
  async function resend(){if(!verificationUser||busy)return;setBusy(true);setError('');try{await sendEmailVerification(verificationUser);setNotice('A new verification email was sent.');}catch(caught){setError(messageFor(caught));}finally{setBusy(false);}}
- async function checked(){if(!verificationUser||busy)return;setBusy(true);setError('');try{await verificationUser.reload();if(!verificationUser.emailVerified){setNotice('Email verification is still pending.');return;}await completeOrSignIn(verificationUser);}catch(caught){setError(messageFor(caught));}finally{setBusy(false);}}
+ async function checked(){if(!verificationUser||busy)return;attemptedAuth.current=true;setBusy(true);setError('');try{await verificationUser.reload();if(!verificationUser.emailVerified){setNotice('Email verification is still pending.');return;}await completeOrSignIn(verificationUser);}catch(caught){setError(messageFor(caught));}finally{setBusy(false);}}
+ if(redirecting||(!busy&&(authLoading||profileStatus==='checking')))return <div className={styles.panel} role="status" aria-live="polite">{redirecting?'Opening your account...':'Preparing your account...'}</div>;
+ if(!busy&&profileStatus==='unavailable'&&!error)return <div className={styles.panel}><p className={styles.error} role="alert">{profileError||'Unable to load your account. Please try again.'}</p><button className={styles.primary} onClick={()=>void refreshProfile()}>Retry</button><button className={styles.textButton} onClick={()=>void signOutUser()}>Sign out / switch account</button></div>;
  if(verificationUser)return <div className={styles.panel}><h3>Verify your email</h3><p>We sent a verification link to <strong>{verificationUser.email}</strong>. Verification is required before account access.</p>{notice&&<p className={styles.notice} role="status">{notice}</p>}{error&&<p className={styles.error} role="alert">{error}</p>}<button className={styles.primary} disabled={busy} onClick={()=>void checked()}>I have verified my email</button><button className={styles.secondary} disabled={busy} onClick={()=>void resend()}>Resend verification</button><button className={styles.textButton} disabled={busy} onClick={()=>void signOutUser().then(()=>setVerificationUser(null))}>Use another account</button></div>;
  return <div className={styles.panel}>
    {!completionUser&&<div className={styles.tabs} aria-label="Authentication options">{(['signin','register'] as Mode[]).map(value=><button key={value} type="button" aria-pressed={mode===value} className={mode===value?styles.activeTab:styles.tab} onClick={()=>{setMode(value);setError('');setNotice('');}}>{value==='signin'?'Sign in':'Create account'}</button>)}</div>}

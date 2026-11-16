@@ -51,3 +51,11 @@ test('account switching during forced refresh prevents replay with another ident
  const client=loadProfileClient(async()=>{calls++;return Response.json({code:'TOKEN_REFRESH_REQUIRED'},{status:401});},auth);
  await assert.rejects(()=>client.loadAuthProfile('member'),/Account changed/);assert.equal(calls,1);
 });
+
+test('explicit completion invalidates a stale in-flight profile check without changing normal deduplication',async()=>{
+ let release,calls=0;const held=new Promise(resolve=>{release=resolve;});
+ const client=loadProfileClient(async()=>{calls++;return calls===1?held:Response.json({profileComplete:true});});
+ const stale=client.loadAuthProfile('member');await new Promise(setImmediate);client.invalidateAuthProfile('member');
+ const fresh=await client.loadAuthProfile('member');assert.equal(fresh.data.profileComplete,true);assert.equal(calls,2);
+ release(Response.json({profileComplete:false}));assert.equal((await stale).data.profileComplete,false);
+});

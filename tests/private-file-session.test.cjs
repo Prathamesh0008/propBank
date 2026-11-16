@@ -71,3 +71,15 @@ test('failed retries stop without an endless background loop, and explicit retry
 test('initialization does not require the browser-specific AbortSignal.timeout helper',async()=>{
  const original=AbortSignal.timeout;try{AbortSignal.timeout=undefined;const h=setup();await h.setUser(h.makeUser());assert.equal(h.session.snapshot().phase,'ready');}finally{AbortSignal.timeout=original;}
 });
+
+for(const blockedMethod of ['DELETE','POST'])test(`platform-denied ${blockedMethod} remains unavailable with only user-controlled retries`,async()=>{
+ const h=setup({request:async method=>method===blockedMethod?new Response('Blocked',{status:403,headers:{'X-Vercel-Mitigated':'deny'}}):ok()}),identity=h.makeUser();
+ await h.setUser(identity);assert.equal(h.session.snapshot().phase,'failed');assert.equal(h.session.snapshot().failure,'platform_blocked');assert.match(h.session.snapshot().message,/temporarily blocked by site security/);assert.equal(h.waits.length,0);assert.equal(h.refreshes.filter(row=>row.refresh).length,0);
+ const count=h.calls.length;await h.setUser(identity);h.advance(20*60000);await h.session.renew();assert.equal(h.calls.length,count);
+ await Promise.all([h.session.retry(),h.session.retry()]);assert.equal(h.calls.length,count+1);assert.equal(h.session.snapshot().phase,'failed');assert.notEqual(h.session.snapshot().readyRevision,h.session.snapshot().revision);
+});
+test('application labels and unrelated mitigation values cannot classify a generic 403 as platform denial',async()=>{
+ for(const headers of [{},{'x-vercel-mitigated':'challenge'}]){
+  const h=setup({request:async()=>new Response(JSON.stringify({code:'platform_blocked'}),{status:403,headers})});await h.setUser(h.makeUser());assert.equal(h.session.snapshot().failure,'forbidden');
+ }
+});

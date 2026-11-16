@@ -23,6 +23,9 @@ export default function ApplicationShell({children}:{children:ReactNode}){
   },[checking,completionRequired,authRoute,pathname,router]);
   useEffect(()=>{if(!completionRequired||authRoute)redirecting.current='';},[completionRequired,authRoute]);
 
+  // Keep the auth subtree mounted through token/profile transitions so an
+  // in-flight sign-in or onboarding form cannot be reset by the global gate.
+  if(authRoute)return <div className="flex min-h-screen flex-col bg-[#f8f6f0]">{!checking&&!completionRequired&&<SiteHeader/>}<PublicMain key="auth-content">{children}</PublicMain>{!checking&&!completionRequired&&<SiteFooter/>}</div>;
   if(checking)return loading;
   if(completionRequired){
     if(!authRoute)return loading;

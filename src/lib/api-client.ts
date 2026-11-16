@@ -49,6 +49,8 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
 
 export type AuthProfileResult={response:Response;data:{profileExists?:boolean;profileComplete?:boolean;status?:string;message?:string;code?:string}};
 const authProfileRequests=new Map<string,Promise<AuthProfileResult>>();
+// Explicit profile completion/retry must not reuse a check started before the write.
+export function invalidateAuthProfile(uid:string){authProfileRequests.delete(uid);}
 export function loadAuthProfile(uid:string):Promise<AuthProfileResult>{
   const existing=authProfileRequests.get(uid);if(existing)return existing;
   const request=(async()=>{
