@@ -39,3 +39,7 @@ test('incomplete accounts on public and protected URLs render nothing sensitive 
 test('the auth completion route is the only rendered route and has no global navigation',()=>{
   const result=render({status:'incomplete',path:'/auth',href:'http://local/auth?mode=complete'});assert.match(result.html,/PAGE/);assert.doesNotMatch(result.html,/site-header|site-footer/);assert.deepEqual(result.redirects,[]);
 });
+
+test('auth route retains its page subtree during initialization without competing completion redirects',()=>{
+ const result=render({status:'checking',loading:true,path:'/auth'});assert.match(result.html,/PAGE/);assert.doesNotMatch(result.html,/site-header|site-footer/);assert.deepEqual(result.redirects,[]);
+});

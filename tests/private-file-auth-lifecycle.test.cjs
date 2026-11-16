@@ -5,7 +5,7 @@ const core={};new Function('exports',compile('src/lib/private-file-session.ts'))
 const ok=()=>new Response(null,{status:204}),tick=()=>new Promise(setImmediate);
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done;});return {promise,resolve};};
 function harness(options={}){
- const auth={currentUser:options.user||null},observers=new Set(),calls=[],notices=[],dismissed=[],invalidated=[],slots=[],effects=[],timers=new Set(),events=new Map();
+ const auth={currentUser:options.user||null},observers=new Set(),observerErrors=new Set(),calls=[],notices=[],dismissed=[],invalidated=[],slots=[],effects=[],timers=new Set(),events=new Map();
  let cursor=0,dirty=false,tree,lastNotice=-1,clearCount=0,profileComplete=options.profileComplete!==false;
  const manager=core.createPrivateFileSession({ready:()=>options.ready||Promise.resolve(),currentUser:()=>auth.currentUser,wait:async()=>{},request:async(method,token)=>{calls.push({method,token});return options.request?options.request(method,token):ok();}});
  function state(initial){const key=cursor++;if(!(key in slots))slots[key]=typeof initial==='function'?initial():initial;return [slots[key],value=>{const next=typeof value==='function'?value(slots[key]):value;if(!Object.is(next,slots[key])){slots[key]=next;dirty=true;}}];}
@@ -16,15 +16,16 @@ function harness(options={}){
  const window={setInterval:fn=>{timers.add(fn);return fn;},clearInterval:id=>timers.delete(id),addEventListener:(name,fn)=>{if(!events.has(name))events.set(name,new Set());events.get(name).add(fn);},removeEventListener:(name,fn)=>events.get(name)?.delete(fn)};
  const scoped=name=>{
   if(name==='react')return fakeReact;if(name==='@tanstack/react-query')return {useQueryClient:()=>queryClient};
-  if(name==='@/firebase')return {auth};if(name==='firebase/auth')return {onIdTokenChanged:(_,fn)=>{observers.add(fn);assert.equal(fn(auth.currentUser),undefined);return ()=>observers.delete(fn);}};
+  if(name==='@/firebase')return {auth};if(name==='firebase/auth')return {onIdTokenChanged:(_,fn,onError)=>{observers.add(fn);if(onError)observerErrors.add(onError);assert.equal(fn(auth.currentUser),undefined);return ()=>{observers.delete(fn);observerErrors.delete(onError);};}};
   if(name==='@/lib/private-file-session')return core;if(name==='@/lib/private-file-client')return {privateFileSession:manager,claimFileSessionNotice:revision=>{if(lastNotice===revision)return false;lastNotice=revision;return true;}};
   if(name==='@/lib/data-refresh')return {queryKeysByDomain:{properties:[],documents:[]},subscribeDataRefresh:()=>()=>{}};
-  if(name==='@/hooks/use-toast')return {useToast:()=>({toast,dismiss})};if(name==='@/ui/toast')return {ToastAction:()=>null};if(name==='@/lib/api-client'){const apiFetch=async url=>new Response(url==='/api/auth/user'?JSON.stringify({success:true,profileComplete}):'{"success":true}');return {apiFetch,loadAuthProfile:async()=>{const response=await apiFetch('/api/auth/user');return {response,data:await response.clone().json()};}};}return require(name);
+  if(name==='@/hooks/use-toast')return {useToast:()=>({toast,dismiss})};if(name==='@/ui/toast')return {ToastAction:()=>null};if(name==='@/lib/api-client'){const apiFetch=async url=>url==='/api/auth/user'&&options.profileResponse?options.profileResponse():new Response(url==='/api/auth/user'?JSON.stringify({success:true,profileComplete}):'{"success":true}');return {apiFetch,invalidateAuthProfile:()=>{},loadAuthProfile:async()=>{const response=await apiFetch('/api/auth/user');return {response,data:await response.clone().json()};}};}return require(name);
  };
  const output={};new Function('exports','require','window',compile('src/contexts/AuthContext.tsx'))(output,scoped,window);
  const render=()=>{cursor=0;dirty=false;tree=output.AuthProvider({children:null});for(const effect of effects)if(effect?.pending){const fn=effect.pending;effect.pending=null;effect.cleanup=fn();}return tree.props.value;};
  const settle=async()=>{for(let i=0;i<8;i++){await tick();if(dirty)render();}return tree.props.value;};
  return {auth,calls,notices,dismissed,invalidated,timers,observers,render,settle,manager,value:()=>tree.props.value,clearCount:()=>clearCount,
+  failInitialization(){for(const fn of observerErrors)fn(new Error('isolated auth failure'));},
   emit(user){auth.currentUser=user;for(const fn of [...observers])assert.equal(fn(user),undefined);},
   completeProfile(){profileComplete=true;for(const fn of events.get('propbank:profile-completed')||[])fn();},
   strictRemount(){for(const effect of effects)effect?.cleanup?.();effects.length=0;return render();},
@@ -53,4 +54,21 @@ test('API token acquisition cancels the request if the Firebase UID changes whil
 });
 test('API requests cannot silently switch UID while Firebase readiness is pending',async()=>{
  const ready=deferred(),auth={currentUser:user('A'),authStateReady:()=>ready.promise},output={},calls=[];new Function('exports','require','fetch','window',compile('src/lib/api-client.ts'))(output,name=>name==='@/firebase'?{auth}:name==='@/lib/data-refresh'?{mutationDomains:()=>[],publishDataRefresh:()=>{}}:require(name),async(...args)=>{calls.push(args);return ok();},{location:{origin:'https://public.example'}});const request=output.apiFetch('/api/media/file');auth.currentUser=user('B');ready.resolve();await assert.rejects(()=>request,error=>error.name==='AbortError');assert.equal(calls.length,0);
+});
+
+for(const blockedMethod of ['DELETE','POST'])test(`background ${blockedMethod} platform denial leaves authenticated homepage usable without a global permission toast`,async()=>{
+ const identity=user('A'),h=harness({user:identity,request:async method=>method===blockedMethod?new Response('Blocked',{status:403,headers:{'x-vercel-mitigated':'deny'}}):ok()});
+ h.render();await h.settle();assert.equal(h.value().loading,false);assert.equal(h.value().profileStatus,'complete');assert.equal(h.value().user.uid,'A');assert.equal(h.value().fileAccess.phase,'failed');assert.equal(h.value().fileAccess.failure,'platform_blocked');assert.equal(h.notices.length,0);
+ const count=h.calls.length;h.render();h.emit(identity);await h.settle();await h.manager.renew();assert.equal(h.calls.length,count);assert.equal(h.notices.length,0);
+ await h.value().retryFileAccess();await h.settle();assert.equal(h.calls.length,count+1);assert.equal(h.notices.length,0);assert.equal(h.value().fileAccess.phase,'failed');h.unmount();
+});
+test('genuine application forbidden session still reports permission failure',async()=>{
+ const h=harness({user:user('A'),request:async method=>method==='POST'?new Response('{}',{status:403}):ok()});h.render();await h.settle();assert.equal(h.value().fileAccess.failure,'forbidden');assert.equal(h.notices.length,1);assert.equal(h.notices[0].description,"You don't have permission to access these files.");h.unmount();
+});
+test('private document actions keep their ready gate and contextual explicit retry',()=>{
+ const source=fs.readFileSync('src/features/services/AttachDocuments.tsx','utf8');
+ assert.match(source,/fileUrl\.startsWith\('\/api\/media\/'\)&&fileAccess\.phase!=='ready'/);
+ assert.match(source,/fileAccess\.message\|\|'Preparing secure file access/);
+ assert.match(source,/!\['preparing','retrying'\]\.includes\(fileAccess\.phase\)/);
+ assert.match(source,/onClick=\{\(\)=>void retryFileAccess\(\)\}/);
 });

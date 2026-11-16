@@ -1,10 +1,10 @@
 export interface FileSessionUser {uid:string;emailVerified:boolean;getIdToken:(refresh?:boolean)=>Promise<string>}
-export type FileSessionFailure='network'|'unauthenticated'|'forbidden'|'configuration'|'cookies'|'server';
+export type FileSessionFailure='platform_blocked'|'network'|'unauthenticated'|'forbidden'|'configuration'|'cookies'|'server';
 export type FileSessionState={phase:'idle'|'preparing'|'retrying'|'ready'|'profile_required'|'failed';uid:string|null;message:string;failure?:FileSessionFailure;revision:number;readyRevision?:number};
 export const INITIAL_FILE_SESSION:FileSessionState={phase:'idle',uid:null,message:'',revision:0};
 type Dependencies={ready:()=>Promise<void>;currentUser:()=>FileSessionUser|null;request:(method:'POST'|'GET'|'DELETE',token:string|undefined,signal:AbortSignal)=>Promise<Response>;wait?:(ms:number,signal:AbortSignal)=>Promise<void>;now?:()=>number;timeoutMs?:number};
 class SessionFailure extends Error {constructor(public kind:FileSessionFailure,public retryable=false,public profileRequired=false){super(kind);}}
-const messages:Record<FileSessionFailure,string>={network:'Secure file access is temporarily unavailable. Please try again.',unauthenticated:'Sign in again to prepare secure file access.',forbidden:"You don't have permission to access these files.",configuration:'Secure file access is unavailable. Please contact support.',cookies:'Allow cookies for this site, then retry secure file access.',server:'Secure file access is unavailable. Please contact support.'};
+const messages:Record<FileSessionFailure,string>={platform_blocked:'Secure file access is temporarily blocked by site security. Retry when the restriction is lifted.',network:'Secure file access is temporarily unavailable. Please try again.',unauthenticated:'Sign in again to prepare secure file access.',forbidden:"You don't have permission to access these files.",configuration:'Secure file access is unavailable. Please contact support.',cookies:'Allow cookies for this site, then retry secure file access.',server:'Secure file access is unavailable. Please contact support.'};
 function delay(ms:number,signal:AbortSignal){return new Promise<void>((resolve,reject)=>{if(signal.aborted){reject(new Error('Cancelled'));return;}const finish=()=>{signal.removeEventListener('abort',cancel);resolve();};const timer=setTimeout(finish,ms);function cancel(){clearTimeout(timer);reject(new Error('Cancelled'));}signal.addEventListener('abort',cancel,{once:true});});}
 
 /** One instance per browser app, including across Strict Mode effect remounts.
@@ -25,6 +25,9 @@ export function createPrivateFileSession(deps:Dependencies){
   }
   async function check(response:Response){
     if(response.ok)return;
+    // Only the platform response header identifies mitigation; a generic 403
+    // or an application error label is not evidence of a WAF denial.
+    if(response.status===403&&response.headers.get('x-vercel-mitigated')==='deny')throw new SessionFailure('platform_blocked');
     let code='';try{const body=await response.json();code=typeof body.code==='string'?body.code:'';}catch{/* Ignore raw error text. */}
     if(code==='ACCOUNT_PROFILE_REQUIRED')throw new SessionFailure('forbidden',false,true);
     if(code==='FILE_SESSION_CONFIGURATION')throw new SessionFailure('configuration');
