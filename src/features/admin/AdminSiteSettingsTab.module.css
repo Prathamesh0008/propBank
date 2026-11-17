@@ -4,3 +4,4 @@
 .input{background:#fffefa;border:1px solid #c9c7bc;border-radius:5px;min-height:44px;color:#242b28;outline-offset:2px}
 .input:focus-visible{outline:2px solid #a25c42;border-color:#a25c42}
 @media(max-width:650px){.settings{min-width:0}.settings input{max-width:100%}}
+.settings{font-family:var(--pb-ui)}.settings h2{font-weight:500}.settings input,.settings textarea,.settings select{accent-color:var(--pb-forest)}.input{background:white;border-color:var(--pb-limestone);border-radius:3px}
