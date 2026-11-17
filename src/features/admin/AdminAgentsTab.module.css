@@ -5,3 +5,4 @@
 .personRow{padding:15px 2px;border:0;border-top:1px solid #e5e0d7;border-radius:0;background:transparent;min-width:0}
 .personRow:hover{background:#f1eee7}.personRow h3{color:#242b28;letter-spacing:-.01em}
 @media(max-width:650px){.personRow{align-items:flex-start;flex-direction:column;gap:12px}.personRow>div{max-width:100%;min-width:0;flex-wrap:wrap}.directory{overflow-wrap:anywhere}}
+.directory{font-family:var(--pb-ui)}.personRow:hover{background:#fafaf7}.personRow h3{font-size:14px;font-weight:500}.intro h2{font-size:22px;font-weight:500}

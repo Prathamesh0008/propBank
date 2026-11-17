@@ -1,0 +1,36 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),ts=require('typescript'),React=require('react'),{renderToStaticMarkup}=require('react-dom/server');
+function harness(property,options={}){
+ let section='overview',query,requests=[];const retry=()=>{};
+ function load(file){const out={};const scoped=name=>{
+  if(name.endsWith('.css'))return {__esModule:true,default:new Proxy({},{get:(_,key)=>String(key)})};
+  if(name==='react')return {...React,useState:()=>[section,value=>section=value],useEffect:()=>{}};
+  if(name==='@tanstack/react-query')return {useQuery:config=>{query=config;return {data:options.data,isLoading:!!options.loading,error:options.error,refetch:async()=>{}};}};
+  if(name==='@/contexts/AuthContext')return {useAuth:()=>({fileAccess:options.fileAccess||{phase:'ready'},retryFileAccess:retry})};
+  if(name==='@/lib/api-client')return {apiFetch:async(url)=>{requests.push(url);return new Response(JSON.stringify({success:true,documents:[],reports:[]}));}};
+  if(name==='@/lib/navigation')return {Link:({to,children})=>React.createElement('a',{href:to},children)};
+  if(name==='@/components/SessionMediaImage')return {__esModule:true,default:props=>React.createElement('img',props)};
+  if(name.includes('ListingModeration'))return {__esModule:true,default:props=>React.createElement('div',{'data-moderation':props.property.id,'data-admin':props.admin},'Original moderation controls')};
+  if(name.includes('OwnerVerification'))return {__esModule:true,default:()=>React.createElement('div',null,'Original ownership controls')};
+  if(name.includes('PropertyPurposeSummary'))return {__esModule:true,default:()=>null};
+  if(name==='@/ui/dialog')return Object.fromEntries(['Dialog','DialogContent','DialogHeader','DialogTitle','DialogDescription'].map(n=>[n,({children})=>React.createElement(n==='DialogTitle'?'h2':'div',null,children)]));
+  if(name==='@/ui/badge')return {Badge:({children})=>React.createElement('span',null,children)};
+  if(name==='@/ui/scroll-area')return {ScrollArea:({children})=>React.createElement('div',null,children)};
+  if(name.startsWith('@/lib/'))return load('src/lib/'+name.slice(6)+'.ts');
+  if(name.startsWith('./')||name.startsWith('../'))return load(path.join(path.dirname(file),name)+'.ts');
+  return require(name);
+ };new Function('exports','require',ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText)(out,scoped);return out;}
+ const Component=load('src/features/admin/AdminPropertyDetailsDialog.tsx').default;
+ const render=()=>renderToStaticMarkup(React.createElement(Component,{property,isOpen:true,onOpenChange:()=>{}}));
+ return {render,select:value=>section=value,query:()=>query,requests};
+}
+const property={id:'P',title:'Oak home',ownerUID:'owner',ownerName:'Owner',listingType:'rent',propertyType:'residential',createdAt:'2026-11-01',updatedAt:'2026-11-02',moderationStatus:'pending_review',moderationRevision:3,images:[],tenants:[],monthlyRent:'25000',securityDeposit:'50000',furnishedChecklist:[{name:'Bed',quantity:2,condition:'Good'}]};
+test('compact header, supported navigation and field rows render without eagerly querying related records',()=>{const h=harness(property),html=h.render();assert.match(html,/Back to properties/);assert.match(html,/Oak home/);assert.match(html,/Occupancy unknown/);assert.match(html,/Property detail sections/);assert.match(html,/Inventory/);assert.equal(h.query().enabled,false);assert.equal(h.requests.length,0);});
+test('section navigation controls query activation and preserves stable document cache key',async()=>{const h=harness({...property,createdAs:'tenant'});h.render();h.select('documents');assert.match(h.render(),/aria-current="page"[^>]*>Documents/);assert.equal(h.query().enabled,true);const key=h.query().queryKey;await h.query().queryFn({signal:new AbortController().signal});assert.equal(h.requests.length,1);assert.match(h.requests[0],/documents\/property\/P$/);h.select('ownership');h.render();assert.deepEqual(h.query().queryKey,key);h.select('services');h.render();await h.query().queryFn({signal:new AbortController().signal});assert.match(h.requests[1],/inspection-reports\/property\/P$/);});
+test('management properties omit financial and agreement navigation while preserving unknown occupancy',()=>{const h=harness({...property,listingType:'manage'});const html=h.render();assert.doesNotMatch(html,/>Financials<|>Agreement<|>Vacant</);assert.match(html,/Private registration/);});
+test('sale and pre-leased overview uses recorded selling price and investment income',()=>{const h=harness({...property,listingType:'pre_leased',sellingPrice:'10000000',preLeased:{monthlyRentalIncome:45000,leaseEndDate:'2027-12-31'}});const html=h.render();assert.match(html,/1,00,00,000/);assert.match(html,/45,000/);assert.match(html,/Investment lease/);assert.match(html,/Tenancy/);});
+test('inventory is a compact table preserving names, quantities and conditions',()=>{const h=harness(property);h.select('inventory');const html=h.render();assert.match(html,/<th>Item<\/th><th>Quantity<\/th><th>Condition/);assert.match(html,/<td>Bed<\/td><td>2<\/td><td>Good/);assert.match(html,/Agreement-specific snapshots remain/);});
+test('private media session failure removes download link and offers contextual explicit retry',()=>{const h=harness(property,{data:{documents:[{id:'D',documentName:'Lease',fileUrl:'/api/media/private'}]},fileAccess:{phase:'failed',message:'Blocked by site security'}});h.select('documents');const html=h.render();assert.match(html,/Blocked by site security/);assert.match(html,/Retry secure file access/);assert.doesNotMatch(html,/href="\/api\/media\/private"/);});
+test('ready media session retains the authorized document control',()=>{const h=harness(property,{data:{documents:[{id:'D',documentName:'Lease',fileUrl:'/api/media/private'}]}});h.select('documents');assert.match(h.render(),/href="\/api\/media\/private"/);});
+test('related records expose errors and loading truthfully',()=>{const h=harness(property,{error:Error('Documents unavailable')});h.select('documents');assert.match(h.render(),/role="alert"/);assert.match(h.render(),/Documents unavailable/);const pending=harness(property,{loading:true});pending.select('documents');assert.match(pending.render(),/Loading property documents/);});
+test('moderation receives original property revision and all existing action destinations survive',()=>{const h=harness(property),html=h.render();assert.match(html,/data-moderation="P" data-admin="true"/);for(const route of ['/add-tenant/P?admin=1','/attach-documents/P','/inspection-report/P','/review/P','/manage-property/P'])assert.ok(html.includes(route),route);});
+test('activity contains only recorded timestamps and decisions ordered chronologically',()=>{const h=harness({...property,moderationHistory:[{action:'approve',at:'2026-11-03',actorUID:'admin'}]});h.select('activity');const html=h.render();assert.match(html,/Recorded activity/);assert.match(html,/Property created/);assert.match(html,/Property updated/);assert.ok(html.indexOf('<strong>Property created')<html.indexOf('<strong>Property updated'));});

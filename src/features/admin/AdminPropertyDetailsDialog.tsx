@@ -8,6 +8,10 @@ import {Link} from '@/lib/navigation';
 import { apiFetch } from '@/lib/api-client';
 
 import React from "react";
+import {useAuth} from '@/contexts/AuthContext';
+import {useQuery} from '@tanstack/react-query';
+import {adminAvailability,confirmedAdminTenants} from '@/lib/admin-property-views';
+import {resolveRent,localRentDate} from '@/lib/rent-resolution';
 import SessionMediaImage from '@/components/SessionMediaImage';
 import ListingModeration from '@/features/properties/ListingModeration';
 import OwnerVerification from './OwnerVerification';
@@ -42,7 +46,7 @@ import {
 } from "lucide-react";
 import { Property } from "@/services/propertyService";
 import { API_BASE_URL } from "../../utils/config";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 interface TenantInfo {
     firstName: string;
     lastName: string;
@@ -81,62 +85,32 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
     onOpenChange,
     onVerificationChange,
 }) => {
-    const [inspectionReports, setInspectionReports] = useState<any[]>([]);
-    const [loadingReports, setLoadingReports] = useState(false);
-    const [documents, setDocuments] = useState<any[]>([]);
-    const [loadingDocs, setLoadingDocs] = useState(false);
-    const [documentsError,setDocumentsError]=useState('');
-    const [reportsError,setReportsError]=useState('');
-
-    useEffect(() => {
-        if (isOpen && property?.id) {
-            fetchInspectionReports();
-            fetchDocuments();
-        }
-    }, [isOpen, property?.id]);
-
-    const fetchInspectionReports = async () => {
-        setLoadingReports(true);
-        setReportsError('');
-        try {
-            const response = await apiFetch(`${API_BASE_URL}/inspection-reports/property/${property?.id}`);
-            const data = await response.json();
-            if (data.success) {
-                setInspectionReports(data.reports || []);
-            }
-        } catch (error) {
-            setReportsError('Inspection reports could not be loaded.');
-            console.error("Failed to fetch inspection reports:", error);
-        } finally {
-            setLoadingReports(false);
-        }
-    };
-
-    const fetchDocuments = async () => {
-        setLoadingDocs(true);
-        setDocumentsError('');
-        try {
-            const response = await apiFetch(`${API_BASE_URL}/documents/property/${property?.id}`);
-            const data = await response.json();
-            if (data.success) {
-                setDocuments(data.documents || []);
-            }
-        } catch (error) {
-            setDocumentsError('Documents could not be loaded.');
-            console.error("Failed to fetch documents:", error);
-        } finally {
-            setLoadingDocs(false);
-        }
-    };
+    const [activeSection,setActiveSection]=useState('overview');
+    const bodyRef=useRef<HTMLDivElement|null>(null);
+    const selectSection=(section:string)=>{setActiveSection(section);if(bodyRef.current)bodyRef.current.scrollTop=0;};
+    const {user,fileAccess,retryFileAccess}=useAuth();
+    useEffect(()=>{setActiveSection('overview');},[property?.id,isOpen]);
+    const relatedKind=activeSection==='services'?'services':'documents';
+    const related=useQuery({queryKey:['adminPropertyRelated',user?.uid,property?.id,relatedKind],enabled:isOpen&&!!property?.id&&['documents','services','ownership'].includes(activeSection),staleTime:60000,refetchOnWindowFocus:false,retry:false,queryFn:async({signal})=>{
+        const path=activeSection==='services'?`inspection-reports/property/${property?.id}`:`documents/property/${property?.id}`;
+        const response=await apiFetch(`${API_BASE_URL}/${path}`,{signal});const data=await response.json();
+        if(!response.ok||!data.success)throw Error(activeSection==='services'?'Inspection reports could not be loaded.':'Documents could not be loaded.');
+        return activeSection==='services'?{reports:data.reports||[],documents:[]}:{documents:data.documents||[],reports:[]};
+    }});
+    const documents=related.data?.documents||[],inspectionReports=related.data?.reports||[];
+    const loadingDocs=related.isLoading&&activeSection==='documents',loadingReports=related.isLoading&&activeSection==='services';
+    const documentsError=related.error&&activeSection!=='services'?related.error.message:'',reportsError=related.error&&activeSection==='services'?related.error.message:'';
 
     if (!property) return null;
 
     const formatDate = (dateString?: string) => {
-        if (!dateString) return "N/A";
+        if (!dateString) return "Not recorded";
         const dateOnly=/^(\d{4})-(\d{2})-(\d{2})$/.exec(dateString);
         if(dateOnly)return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
         try {
-            return new Date(dateString).toLocaleDateString('en-GB', {
+            const parsed=new Date(dateString);
+            if(Number.isNaN(parsed.getTime()))return 'Not recorded';
+            return parsed.toLocaleDateString('en-GB', {timeZone:'Asia/Kolkata',
                 day: '2-digit',
                 month: '2-digit',
                 year: 'numeric'
@@ -146,87 +120,35 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
         }
     };
 
-    const SectionTitle = ({ title, icon: Icon }: { title: string, icon: any }) => (
-        <div className="flex items-center gap-3 mb-6 pb-3 border-b border-gray-100 text-slate-800">
-            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
-                <Icon className="w-5 h-5" />
-            </div>
-            <h3 className="font-bold text-xl tracking-tight">{title}</h3>
-        </div>
-    );
-
-    const DataRow = ({ label, value, icon: Icon, className }: { label: string, value: string | number | undefined | null, icon?: any, className?: string }) => (
-        <div className={`flex flex-col p-4 bg-gray-50/50 rounded-xl border border-gray-100 min-w-0 overflow-hidden ${className || ''}`}>
-            <div className="flex items-center gap-2 text-sm text-slate-500 mb-1.5 font-medium">
-                {Icon && <Icon className="w-4 h-4 flex-shrink-0 text-slate-400" />}
-                <span className="truncate">{label}</span>
-            </div>
-            <div className="text-base font-semibold text-slate-900 break-words whitespace-pre-wrap capitalize">{value===undefined||value===null||value==='' ? "Not provided" : value}</div>
-        </div>
-    );
+    const SectionTitle=({title,icon:Icon}:{title:string;icon:any})=><div className={styles.sectionTitle}><Icon size={17} aria-hidden="true"/><h3>{title}</h3></div>;
+    const humanLabel=(value:string)=>value.replaceAll('_',' ').replace(/\b\w/g,letter=>letter.toUpperCase());
+    const DataRow=({label,value}:{label:string;value:string|number|undefined|null;icon?:any;className?:string})=><div className={styles.dataRow}><span>{label}</span><span>{value===undefined||value===null||value===''?'Not recorded':typeof value==='string'&&/status|category|structure|layout|condition|purpose|origin|verification|maintenance paid by/i.test(label)?humanLabel(value):value}</span></div>;
 
     const hasImages = (property.images && property.images.length > 0) || (property.internalImages && property.internalImages.length > 0);
     const propertyName=property.title?.trim()||property.buildingName?.trim()||`Property ${property.id}`;
     const propertyLocation=[property.location||property.address,property.city,property.zipCode].filter(value=>String(value||'').trim()).join(', ')||'Location not provided';
     const listingLabel=(property.listingType||'manage').replace('_',' and ');
-    const area=(value?:string,unit?:string)=>value?[value,unit].filter(Boolean).join(' '):undefined;
-    const money=(value?:string)=>value!==undefined&&value!==''?`₹${Number(value).toLocaleString('en-IN',{maximumFractionDigits:2})}`:undefined;
+    const area=(value?:string,unit?:string)=>value?[Number.isFinite(Number(value))?Number(value).toLocaleString('en-IN'):value,unit?({sqft:'sq ft',sq_ft:'sq ft',sqm:'sq m',sq_m:'sq m'}[unit]||unit.replaceAll('_',' ')):undefined].filter(Boolean).join(' '):undefined;
+    const money=(value?:string|number|null)=>value!==undefined&&value!==null&&value!==''&&Number.isFinite(Number(value))?`₹${Number(value).toLocaleString('en-IN',{maximumFractionDigits:2})}`:undefined;
     const rentalPurpose=['rent','sell_rent'].includes(property.listingType||'');
-    const salePurpose=['sell','sell_rent'].includes(property.listingType||'');
+    const salePurpose=['sell','sell_rent','pre_leased'].includes(property.listingType||'');
 
-    return (
-        <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className={`${styles.detailsDialog} max-w-[100vw] w-screen h-[100dvh] max-h-[100dvh] sm:max-w-[100vw] sm:rounded-none border-0 p-0 flex flex-col gap-0 overflow-hidden`}>
-                <DialogHeader className={`${styles.dialogHeading} p-6 pb-6 border-b shrink-0 z-10 relative`}>
-                    {property.createdAs==='tenant'&&<section className="max-w-6xl mx-auto mb-4 p-3 border rounded bg-amber-50"><p className="font-semibold">Tenant-submitted property · Owner verification {property.ownershipVerification}</p><p>Submitted by: {property.submittedByUID}</p><dl className="grid sm:grid-cols-2 gap-2 text-sm">{Object.entries(property.reportedOwner||{}).map(([key,value])=><div key={key} className="break-words"><dt className="font-medium">{({companyName:'Owner company',personName:'Owner person',phone:'Owner contact',alternatePhone:'Alternate contact',email:'Owner email',workingProfile:'Working profile'} as Record<string,string>)[key]||key}</dt><dd>{value||'Not supplied'}</dd></div>)}</dl></section>}
-                    <div className="max-w-6xl mx-auto w-full flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pr-6">
-                        <div>
-                            <DialogTitle className="text-3xl font-bold mb-2 text-slate-800 tracking-tight">{propertyName}</DialogTitle>
-                            <DialogDescription className="flex items-center gap-1.5 text-base text-slate-500 font-medium">
-                                <MapPin className="w-4 h-4 text-blue-600" />
-                                {propertyLocation}
-                            </DialogDescription>
-                        </div>
-                        <div className="flex flex-wrap gap-2 md:mr-12">
-                            <Badge variant={property.listingType === 'sell' ? 'default' : 'secondary'} className="capitalize pointer-events-none px-3 py-1 text-sm font-medium">
-                                For {listingLabel}
-                            </Badge>
-                            {rentalPurpose && (
-                                <Badge variant={property.rentalStatus === 'rented' || property.isRented ? 'destructive' : 'outline'} className="capitalize pointer-events-none px-3 py-1 text-sm font-medium">
-                                    {property.rentalStatus === 'rented' || property.isRented ? 'Rented' : 'Available'}
-                                </Badge>
-                            )}
-                            {salePurpose && (
-                                <Badge variant={property.isSold ? 'destructive' : 'outline'} className="capitalize pointer-events-none px-3 py-1 text-sm font-medium">
-                                    {property.isSold ? 'Sold' : 'Available'}
-                                </Badge>
-                            )}
-                            <Badge variant={property.status === 'active' ? 'default' : 'secondary'} className="bg-green-100 text-green-800 border-green-200 capitalize pointer-events-none px-3 py-1 text-sm font-medium">
-                                {property.status}
-                            </Badge>
-                        </div>
-                    </div>
-                    
-                    <button 
-                        onClick={() => onOpenChange(false)}
-                        className="absolute right-4 top-4 md:right-8 md:top-8 rounded-full p-2 bg-white border border-gray-200 shadow-sm text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-colors z-20"
-                        aria-label="Close dialog"
-                    >
-                        <X className="w-5 h-5" />
-                    </button>
-                </DialogHeader>
+    const sections=[['overview','Overview'],['ownership','Ownership'],...((property.tenants?.length||property.buyers?.length||property.listingType==='pre_leased')?[['tenancy','Tenancy']]:[]),...(property.listingType!=='manage'?[['financials','Financials']]:[]),...(rentalPurpose||property.listingType==='pre_leased'?[['agreement','Agreement']]:[]),...(property.furnishedChecklist?.length?[['inventory','Inventory']]:[]),['documents','Documents'],['services','Services & Inspections'],['moderation','Moderation'],['activity','Activity History']];
+    return <Dialog open={isOpen} onOpenChange={onOpenChange}><DialogContent className={styles.detailsDialog}>
+    <DialogHeader className={styles.dialogHeading}><button type="button" className={styles.back} onClick={()=>onOpenChange(false)}>Back to properties</button><div className={styles.identity}>{property.images?.[0]&&<SessionMediaImage src={property.images[0]} alt="" className={styles.thumbnail}/>}<div><DialogTitle>{propertyName}</DialogTitle><DialogDescription>{propertyLocation}</DialogDescription><p className={styles.reference}>{property.id} / {[property.propertyCategory||property.propertyType,property.configuration,property.unitNumber].filter(Boolean).map(value=>humanLabel(String(value))).join(' / ')}</p></div></div><div className={styles.headerStatus}><span>{purposeLabel(property.listingType)}</span><span>{confirmedAdminTenants(property).length?'Confirmed tenancy':adminAvailability(property)==='available'?'Available':'Occupancy unknown'}</span><button type="button" onClick={()=>selectSection('moderation')}>{humanLabel(property.moderationStatus||'unreviewed')}</button></div></DialogHeader>
+    <div className={styles.summary} aria-label="Property highlights">
+    {rentalPurpose&&<><DataRow label="Current monthly rent" value={money(resolveRent(property,localRentDate(property)).amount)}/><DataRow label="Security deposit" value={money(property.securityDeposit)}/><DataRow label="Carpet area" value={area(property.carpetArea,property.carpetAreaUnit||property.areaUnit)}/></>}
+    {salePurpose&&!rentalPurpose&&<><DataRow label="Selling price" value={money(property.sellingPrice)}/>{property.listingType==='pre_leased'?<><DataRow label="Reported monthly income" value={money(property.investment?.monthlyRentalIncome??property.preLeased?.monthlyRentalIncome)}/><DataRow label="Lease expiry" value={formatDate(property.investment?.leaseEndDate||property.preLeased?.leaseEndDate)}/></>:<DataRow label="Carpet area" value={area(property.carpetArea,property.carpetAreaUnit||property.areaUnit)}/>}</>}
+    {property.listingType==='manage'&&<><DataRow label="Management" value="Private registration"/><DataRow label="Property status" value={property.status}/><DataRow label="Carpet area" value={area(property.carpetArea,property.carpetAreaUnit||property.areaUnit)}/></>}
+    <DataRow label="Occupancy" value={confirmedAdminTenants(property).length?'Confirmed tenancy':'Unknown'}/></div>
 
-                <ScrollArea className="flex-1 p-6 md:p-10 overflow-y-auto">
-                    <ListingModeration key={`${property.id}:${property.moderationRevision||0}`} property={property} admin/>
-                    {property.createdAs==='tenant'&&<OwnerVerification key={property.id} propertyId={property.id} status={property.ownershipVerification} version={property.ownershipVerificationVersion} reason={property.ownershipVerificationReason} history={property.ownershipVerificationHistory} evidenceDocuments={documents} onDecision={onVerificationChange}/>}
-                    <div className="max-w-6xl mx-auto w-full flex flex-col gap-8 pb-16">
-
-                        {/* Basic Info */}
+    <nav className={styles.sectionNav} aria-label="Property detail sections">{sections.map(([id,label])=><button key={id} type="button" aria-current={activeSection===id?'page':undefined} onClick={()=>selectSection(id)}>{label}</button>)}</nav><div ref={bodyRef} className={styles.workspace}><div className={styles.sectionBody}>
+    <section hidden={activeSection!=='overview'}>{/* Basic Info */}
                         <div className="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">
                             <SectionTitle title="Core Details" icon={Info} />
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                 <DataRow label="Property Name" value={propertyName} icon={Home} />
-                                <PropertyPurposeSummary property={property}/>
+                                {property.listingType!=='pre_leased'&&<PropertyPurposeSummary property={property}/>}
 <DataRow label="Property Category" value={property.propertyCategory||property.propertyType} />
                                 <DataRow label="Property Type / Structure" value={property.structure} />
                                 <DataRow label="Residential Layout" value={property.configuration} />
@@ -242,9 +164,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                                     <DataRow label="Possession Date" value={formatDate(property.possessionDate)} icon={Calendar} />
                                 )}
                             </div>
-                        </div>
-
-                        {/* Property Photos Section */}
+                        </div>{/* Property Photos Section */}
                         {hasImages && (
                             <div className="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">
                                 <SectionTitle title="Property Photos" icon={ImageIcon} />
@@ -300,26 +220,14 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                                     )}
                                 </div>
                             </div>
-                        )}
-
-                        {/* Area Details */}
+                        )}{/* Comments */}
                         <div className="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">
-                            <SectionTitle title="Area & Pricing" icon={Maximize} />
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <DataRow label="Carpet Area" value={area(property.carpetArea,property.carpetAreaUnit||property.areaUnit)} className="bg-blue-50/50 border-blue-100" />
-                                <DataRow label="Built-up / Constructed Area" value={area(property.constructedArea,property.constructedAreaUnit||property.areaUnit)} className="bg-blue-50/50 border-blue-100" />
-                                {property.plotArea && (
-                                    <DataRow label="Plot Area" value={area(property.plotArea,property.plotAreaUnit||property.areaUnit)} className="bg-blue-50/50 border-blue-100" />
-                                )}
-                                <DataRow label="Listing Purpose" value={property.listingType?.replace('_',' and ')} className="bg-blue-50/50 border-blue-100 capitalize" />
-                                {salePurpose&&<DataRow label="Expected Selling Price" value={money(property.sellingPrice)} icon={IndianRupee} className="bg-green-50/50 border-green-100" />}
-                                {rentalPurpose&&<DataRow label="Expected Monthly Rent" value={money(property.expectedRent)} icon={IndianRupee} className="bg-green-50/50 border-green-100" />}
-                                {rentalPurpose&&<DataRow label="Finalized Monthly Rent" value={money(property.monthlyRent)} icon={IndianRupee} className="bg-green-50/50 border-green-100" />}
-                                <DataRow label="Maintenance Charges" value={money(property.maintenanceCharges)} icon={IndianRupee} className="bg-green-50/50 border-green-100" />
+                            <SectionTitle title="Specific Comments" icon={FileText} />
+                            <div className="p-5 bg-gray-50/80 rounded-xl text-base text-slate-700 whitespace-pre-wrap border border-gray-100 min-h-[100px]">
+                                {property.specificComments || "No specific comments provided."}
                             </div>
-                        </div>
-
-                        {/* Tenant/Owner Info */}
+                        </div></section>
+    <section hidden={activeSection!=='ownership'}>{/* Tenant/Owner Info */}
                         <div className="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">
                             <SectionTitle title={property.ownerRole === "agent" ? "Agent Details" : "Owner Details"} icon={User} />
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -330,11 +238,8 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                                 <DataRow label="Identity Status" value={property.ownerUID?property.ownershipVerification==='pending'?'Account assigned; verification pending':'Linked account':'Reported owner only — not linked'} className="bg-amber-50/50 border-amber-100" />
                                 <DataRow label="Submitted By UID" value={property.submittedByUID} className="bg-amber-50/50 border-amber-100" />
                             </div>
-                        </div>
-
-
-
-                        {/* Tenants List */}
+                        </div>{property.createdAs==='tenant'&&activeSection==='ownership'&&<><p>Tenant-submitted property / Owner verification: {property.ownershipVerification||'pending'}</p><div>{Object.entries(property.reportedOwner||{}).map(([key,value])=><DataRow key={key} label={key} value={String(value||'')}/>)}</div>{related.isLoading&&<p role="status">Loading ownership evidence...</p>}{documentsError&&<p role="alert">{documentsError}</p>}<OwnerVerification key={property.id} propertyId={property.id} status={property.ownershipVerification} version={property.ownershipVerificationVersion} reason={property.ownershipVerificationReason} history={property.ownershipVerificationHistory} evidenceDocuments={documents} onDecision={onVerificationChange}/></>}</section>
+    <section hidden={activeSection!=='tenancy'}>{property.listingType==='pre_leased'&&<PropertyPurposeSummary property={property}/>}<Link to={`/add-tenant/${property.id}?admin=1`}>Manage tenancy and agreement inventory</Link>{/* Tenants List */}
                         {property.tenants && property.tenants.length > 0 && (
                             <div className="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">
                                 <SectionTitle title="All Registered Tenants" icon={Users} />
@@ -365,10 +270,8 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                                     ))}
                                 </div>
                             </div>
-                        )}
-
-                        {/* Pre-leased Info */}
-                        {property.isPreLeased && (
+                        )}{/* Pre-leased Info */}
+                        {(property.isPreLeased||property.listingType==='pre_leased') && (
                             <div className="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">
                                 <SectionTitle title="Pre-leased Details" icon={Briefcase} />
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -387,9 +290,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                                     </div>
                                 </div>
                             </div>
-                        )}
-
-                        {/* Buyers List */}
+                        )}{/* Buyers List */}
                         {property.buyers && property.buyers.length > 0 && (
                             <div className="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">
                                 <SectionTitle title="Interested Buyers" icon={Users} />
@@ -414,9 +315,24 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                                     ))}
                                 </div>
                             </div>
-                        )}
-
-                        {/* Agreement Details */}
+                        )}</section>
+    <section hidden={activeSection!=='financials'}>{rentalPurpose&&<><DataRow label="Security deposit" value={money(property.securityDeposit)}/><DataRow label="Rent due day" value={property.paymentDueDate}/></>}{/* Area Details */}
+                        <div className="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">
+                            <SectionTitle title="Area & Pricing" icon={Maximize} />
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <DataRow label="Carpet Area" value={area(property.carpetArea,property.carpetAreaUnit||property.areaUnit)} className="bg-blue-50/50 border-blue-100" />
+                                <DataRow label="Built-up / Constructed Area" value={area(property.constructedArea,property.constructedAreaUnit||property.areaUnit)} className="bg-blue-50/50 border-blue-100" />
+                                {property.plotArea && (
+                                    <DataRow label="Plot Area" value={area(property.plotArea,property.plotAreaUnit||property.areaUnit)} className="bg-blue-50/50 border-blue-100" />
+                                )}
+                                <DataRow label="Listing Purpose" value={property.listingType?.replace('_',' and ')} className="bg-blue-50/50 border-blue-100 capitalize" />
+                                {salePurpose&&<DataRow label="Expected Selling Price" value={money(property.sellingPrice)} icon={IndianRupee} className="bg-green-50/50 border-green-100" />}
+                                {rentalPurpose&&<DataRow label="Expected Monthly Rent" value={money(property.expectedRent)} icon={IndianRupee} className="bg-green-50/50 border-green-100" />}
+                                {rentalPurpose&&<DataRow label="Finalized Monthly Rent" value={money(property.monthlyRent)} icon={IndianRupee} className="bg-green-50/50 border-green-100" />}
+                                <DataRow label="Maintenance Charges" value={money(property.maintenanceCharges)} icon={IndianRupee} className="bg-green-50/50 border-green-100" />
+                            </div>
+                        </div><p>Payment history, payment status and outstanding balances are not included in this property response. Use the authorized payment ledger.</p><Link to={`/manage-property/${property.id}`}>Open Property Hub</Link></section>
+    <section hidden={activeSection!=='agreement'}>{/* Agreement Details */}
                         {rentalPurpose && (
                             <div className="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">
                                 <SectionTitle title="Agreement & Security" icon={Shield} />
@@ -456,10 +372,10 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                                                         {property.rentSchedule.map((item: any, idx: number) => (
                                                             <tr key={idx} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50">
                                                                 <td className="px-4 py-2 text-slate-700 font-medium">{item.year}</td>
-                                                                <td className="px-4 py-2 text-slate-600">{item.months || '11'}</td>
+                                                                <td className="px-4 py-2 text-slate-600">{item.months || 'Not recorded'}</td>
                                                                 <td className="px-4 py-2 text-slate-700 font-medium">₹{Number(item.amount).toLocaleString()}</td>
-                                                                <td className="px-4 py-2 text-slate-500">{item.fromDate ? new Date(item.fromDate).toLocaleDateString() : 'N/A'}</td>
-                                                                <td className="px-4 py-2 text-slate-500">{item.toDate ? new Date(item.toDate).toLocaleDateString() : 'N/A'}</td>
+                                                                <td className="px-4 py-2 text-slate-500">{formatDate(item.fromDate)}</td>
+                                                                <td className="px-4 py-2 text-slate-500">{formatDate(item.toDate)}</td>
                                                             </tr>
                                                         ))}
                                                     </tbody>
@@ -469,81 +385,24 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                                     </div>
                                 )}
                             </div>
-                        )}
-
-                        {/* Furnished Checklist */}
+                        )}{property.listingType==='pre_leased'&&<><SectionTitle title="Investment lease" icon={Calendar}/><DataRow label="Lease start" value={formatDate(property.preLeased?.leaseStartDate)}/><DataRow label="Lease end" value={formatDate(property.preLeased?.leaseEndDate)}/><p>Investment tenancy evidence is separate from internal tenancy agreements.</p></>}</section>
+    <section hidden={activeSection!=='inventory'}>{/* Furnished Checklist */}
                         {property.furnishedChecklist && property.furnishedChecklist.length > 0 && (
                             <div className="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">
                                 <SectionTitle title="Furnished Checklist" icon={CheckCircle2} />
-                                <div className="flex flex-wrap gap-3">
-                                    {property.furnishedChecklist.map((item: any, idx) => (
-                                        <Badge key={idx} variant="outline" className="bg-slate-50 border-slate-200 text-slate-700 px-4 py-1.5 text-sm font-medium">
-                                            {typeof item === 'string' ? item : item.name || JSON.stringify(item)}
-                                        </Badge>
-                                    ))}
-                                </div>
+                                <div className={styles.tableScroll}><table><thead><tr><th>Item</th><th>Quantity</th><th>Condition</th></tr></thead><tbody>{property.furnishedChecklist.map((item:any,index:number)=><tr key={index}><td>{typeof item==='string'?item:item.name||'Not recorded'}</td><td>{typeof item==='string'?'Not recorded':item.quantity??'Not recorded'}</td><td>{typeof item==='string'?'Not recorded':item.condition||'Not recorded'}</td></tr>)}</tbody></table></div>
                             </div>
-                        )}
-
-                        {/* Comments */}
-                        <div className="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">
-                            <SectionTitle title="Specific Comments" icon={FileText} />
-                            <div className="p-5 bg-gray-50/80 rounded-xl text-base text-slate-700 whitespace-pre-wrap border border-gray-100 min-h-[100px]">
-                                {property.specificComments || "No specific comments provided."}
-                            </div>
-                        </div>
-
-                        {/* Attached Documents */}
-                        <div aria-live="polite">{loadingDocs&&<p>Loading property documents…</p>}{documentsError&&<p role="alert">{documentsError}</p>}{!loadingDocs&&!documentsError&&!documents.length&&<p>No property documents have been submitted.</p>}{loadingReports&&<p>Loading inspection reports…</p>}{reportsError&&<p role="alert">{reportsError}</p>}{!loadingReports&&!reportsError&&<p>{inspectionReports.length?`${inspectionReports.length} inspection report${inspectionReports.length===1?'':'s'} available.`:'No inspection reports have been submitted.'}</p>}</div>
-                        {documents && documents.length > 0 && (
-                            <div className="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">
-                                <SectionTitle title="Attached Documents" icon={FileText} />
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {documents.map((doc, idx) => (
-                                        <div key={idx} className="flex flex-col p-5 bg-blue-50/30 rounded-xl border border-blue-100 shadow-sm transition-all hover:shadow-md">
-                                            <div className="flex justify-between items-start mb-3">
-                                                <div className="flex items-center gap-2 text-base font-semibold text-slate-800">
-                                                    <FileText className="w-5 h-5 text-blue-600" />
-                                                    <span className="truncate max-w-[200px]" title={doc.documentName}>{doc.documentName}</span>
-                                                </div>
-                                                <Badge variant="outline" className="text-xs bg-white border-blue-200 text-blue-700 capitalize">
-                                                    {doc.documentType}
-                                                </Badge>
-                                            </div>
-                                            {doc.description && (
-                                                <p className="text-sm text-slate-600 mb-4 line-clamp-2">{doc.description}</p>
-                                            )}
-                                            <p className="mb-2 text-xs text-slate-500">Status: {doc.status||'submitted'}</p>
-                                            <p className="mb-2 text-xs text-slate-500">Evidence reference: {doc.id}</p>
-                                            <div className="mt-auto flex justify-between items-center pt-3 border-t border-blue-100">
-                                                <span className="text-xs font-medium text-slate-500">{formatDate(doc.createdAt)}</span>
-                                                <a 
-                                                    href={doc.fileUrl} 
-                                                    target="_blank" 
-                                                    rel="noopener noreferrer"
-                                                    className="text-sm font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors"
-                                                >
-                                                    <Eye className="w-4 h-4" />
-                                                    View
-                                                </a>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="flex flex-wrap gap-4 mt-6"><Link to={`/add-tenant/${property.id}?admin=1`}>Assign, replace or remove tenant</Link><Link to={`/attach-documents/${property.id}`}>Documents, receipts and report verification</Link><Link to={`/inspection-report/${property.id}`}>Inspection history</Link><Link to={`/review/${property.id}`}>Review history</Link></div>
-                        {/* Timestamps */}
-                        <div className="mt-8 pt-6 border-t border-gray-300 flex justify-between text-xs font-bold text-slate-400 uppercase tracking-widest">
-                            <span>Created: {formatDate(property.createdAt)}</span>
-                            <span>Last Updated: {formatDate(property.updatedAt)}</span>
-                        </div>
-                    </div>
-                </ScrollArea>
-            </DialogContent>
-        </Dialog>
-    );
+                        )}<p>Original property inventory. Agreement-specific snapshots remain in the tenancy agreement workflow.</p></section>
+    <section hidden={activeSection!=='documents'}><SectionTitle title="Property documents" icon={FileText}/>{loadingDocs&&<p role="status">Loading property documents...</p>}{documentsError&&<div role="alert"><p>{documentsError}</p><button type="button" onClick={()=>void related.refetch()}>Retry documents</button></div>}{!loadingDocs&&!documentsError&&!documents.length&&<p>No property documents have been submitted.</p>}{!!documents.length&&<div className={styles.tableScroll}><table><thead><tr><th>Document</th><th>Type</th><th>Status</th><th>Uploaded</th><th>Action</th></tr></thead><tbody>{documents.map((doc:any)=><tr key={doc.id}><td><strong>{doc.documentName||'Unnamed document'}</strong>{doc.description&&<p>{doc.description}</p>}<small>{doc.id}</small></td><td>{doc.documentType||'Not recorded'}</td><td>{doc.status||'submitted'}</td><td>{formatDate(doc.createdAt)}</td><td>{doc.fileUrl?.startsWith('/api/media/')&&fileAccess.phase!=='ready'?<div role="status"><p>{fileAccess.message||'Secure file access is not ready.'}</p>{!['preparing','retrying'].includes(fileAccess.phase)&&<button type="button" onClick={()=>void retryFileAccess()}>Retry secure file access</button>}</div>:doc.fileUrl?<a href={doc.fileUrl} target="_blank" rel="noopener noreferrer">View document</a>:'File unavailable'}</td></tr>)}</tbody></table></div>}</section>
+    <section hidden={activeSection!=='services'}><SectionTitle title="Services & Inspections" icon={Briefcase}/>{loadingReports&&<p role="status">Loading inspection reports...</p>}{reportsError&&<p role="alert">{reportsError}</p>}{!loadingReports&&!reportsError&&!inspectionReports.length&&<p>No inspection reports recorded.</p>}<ul className={styles.timeline}>{inspectionReports.map((report:any,index:number)=><li key={report.id||index}><strong>{report.title||report.reportType||'Inspection report'}</strong><span>{report.status||'Status not recorded'} / {formatDate(report.createdAt)}</span></li>)}</ul><p>Service request history is available through the existing operations workspace.</p><Link to={`/inspection-report/${property.id}`}>Inspection history</Link></section>
+    <section hidden={activeSection!=='moderation'}><SectionTitle title="Listing review" icon={Shield}/><DataRow label="Status" value={property.moderationStatus||'unreviewed'}/><DataRow label="Submitted" value={formatDate(property.createdAt)}/><DataRow label="Revision" value={property.moderationRevision}/><p>Use the listing review panel for decisions and recorded review history.</p></section>
+    <section hidden={activeSection!=='activity'}><SectionTitle title="Recorded activity" icon={Clock}/><p>Available history includes property timestamps and recorded moderation decisions.</p><ol className={styles.timeline}>{[{at:property.createdAt,action:'Property created'},...(property.moderationHistory||[]).map(entry=>({at:entry.at,action:entry.action,reason:entry.reason})),{at:property.updatedAt,action:'Property updated'}].filter(entry=>entry.at).sort((a,b)=>String(a.at).localeCompare(String(b.at))).map((entry,index)=><li key={index}><strong>{entry.action.replaceAll('_',' ')}</strong><span>{formatDate(entry.at)}</span>{'reason' in entry&&<p>{entry.reason}</p>}</li>)}</ol></section>
+    <footer className={styles.actions}><Link to={`/add-tenant/${property.id}?admin=1`}>Manage tenancy</Link><Link to={`/attach-documents/${property.id}`}>Documents & verification</Link><Link to={`/inspection-report/${property.id}`}>Inspections</Link><Link to={`/review/${property.id}`}>Review history</Link></footer>
+    </div><aside className={styles.reviewColumn} aria-label="Property administration">
+    <section><h3>Ownership</h3><strong className={styles.personName}>{property.ownerName||property.reportedOwner?.personName||property.reportedOwner?.companyName||'Not recorded'}</strong><p>{property.ownerEmail||property.reportedOwner?.email||'Email not recorded'}</p><p>{property.ownerPhone||property.reportedOwner?.phone||'Phone not recorded'}</p><DataRow label="Verification" value={property.ownershipVerification||'Not recorded'}/><button type="button" onClick={()=>selectSection('ownership')}>Ownership details</button></section>
+    {!!property.tenants?.length&&<section><h3>Tenancy</h3>{property.tenants.map((tenant,index)=><div className={styles.tenantSummary} key={tenant.userUID||index}><strong>{[tenant.firstName,tenant.lastName].filter(Boolean).join(' ')||'Name not recorded'}</strong><p>{tenant.isActive?tenant.userUID&&!tenant.linkConfirmationRequired?'Active linked record':'Awaiting confirmation':'Past tenancy'}</p><p>{money(resolveRent(property,localRentDate(property),tenant).amount)||'Rent not recorded'} / month</p><p>{formatDate(tenant.leaseStartDate)} to {formatDate(tenant.leaseEndDate)}</p></div>)}<Link to={`/add-tenant/${property.id}?admin=1`}>Manage tenancy & inventory</Link></section>}
+    <section className={styles.reviewPanel}><h3>Listing review</h3><ListingModeration key={`${property.id}:${property.moderationRevision||0}`} property={property} admin/></section>
+    <div className={styles.quickActions}><Link to={`/add-tenant/${property.id}?admin=1`}>Manage tenancy</Link><Link to={`/attach-documents/${property.id}`}>Documents & verification</Link><button type="button" onClick={()=>selectSection('services')}>Services & inspections</button></div>
+    </aside></div></DialogContent></Dialog>;
 };
-
 export default AdminPropertyDetailsDialog;

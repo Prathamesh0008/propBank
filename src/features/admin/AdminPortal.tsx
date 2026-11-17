@@ -39,9 +39,10 @@ const AdminAgentsTab=dynamic(()=>import('./AdminAgentsTab').then(module=>module.
 const AdminSiteSettingsTab=dynamic(()=>import('./AdminSiteSettingsTab').then(module=>module.AdminSiteSettingsTab));
 const AdminEmailDeliveries=dynamic(()=>import('./AdminEmailDeliveries'));
 const propertySections:Record<string,AdminPropertySection>={properties:'all',approvals:'pending',available:'available',archived:'archived'};
-const navigation=[{heading:'OVERVIEW',items:[['dashboard','Dashboard',LayoutDashboard],['notifications','Notifications',Bell],['approvals','Pending Approvals',ClipboardCheck]]},{heading:'PROPERTIES',items:[['properties','All Properties',Building2],['rented','Rented Properties',KeyRound],['available','Available Properties',DoorOpen],['archived','Archived Properties',Archive]]},{heading:'OPERATIONS',items:[['service-requests','Service Requests / Issues',AlertCircle],['agents','Agents & Users',Users],['offers','Offers & Enquiries',MessageSquareText],['visits','Property Visits',CalendarDays]]},{heading:'ADMINISTRATION',items:[['settings','Site Settings',Settings2]]}] as const;
+const navigation=[{heading:'OVERVIEW',items:[['dashboard','Dashboard',LayoutDashboard],['notifications','Notifications',Bell]]},{heading:'PROPERTY MANAGEMENT',items:[['properties','All Properties',Building2],['approvals','Pending Approvals',ClipboardCheck],['rented','Rented Properties',KeyRound],['available','Available Properties',DoorOpen],['archived','Archived Properties',Archive]]},{heading:'CUSTOMER MANAGEMENT',items:[['agents','Agents & Users',Users]]},{heading:'OPERATIONS',items:[['offers','Offers & Enquiries',MessageSquareText],['visits','Visit Planner / Property Visits',CalendarDays],['service-requests','Service Requests / Issues',AlertCircle]]},{heading:'SETTINGS',items:[['settings','Site Settings',Settings2]]}] as const;
 const AdminPortal = () => {
   const cache=useQueryClient(),{user}=useAuth();
+  const [navigationOpen,setNavigationOpen]=useState(false);
   const [activeTab,setActiveTab]=useState("dashboard");
   const [notificationView,setNotificationView]=useState('all'),[offerView,setOfferView]=useState('offers');
   const [unreadCount,setUnreadCount]=useState<number|undefined>();
@@ -388,26 +389,29 @@ const AdminPortal = () => {
 
   return (
     <main className={styles.workspace}>
-      <Tabs orientation="vertical" value={activeTab} onValueChange={setActiveTab} className={styles.panel}>
+      <header className={styles.appHeader}><div><span className={styles.brand}>PropBank<span>.</span></span><span className={styles.workspaceLabel}>Administration</span></div><button type="button" className={styles.menuButton} aria-expanded={navigationOpen} aria-controls="admin-navigation" onClick={()=>setNavigationOpen(value=>!value)}>{navigationOpen?'Close navigation':'Menu'}</button></header>
+      <Tabs orientation="vertical" value={activeTab} onValueChange={value=>{setActiveTab(value);setNavigationOpen(false);}} className={styles.panel}>
         <div className={styles.panelGrid}>
-        <aside className={styles.sidebar} aria-label="Administration sections">
+        <aside id="admin-navigation" data-open={navigationOpen} className={styles.sidebar} aria-label="Administration sections">
           <TabsList aria-label="Admin workspace" className={styles.navigation}>
             {navigation.map(group=><div key={group.heading} className={styles.navGroup}><p className={styles.sidebarLabel}>{group.heading}</p>{group.items.map(([value,label,Icon])=><TabsTrigger key={value} value={value} className={styles.navItem}><Icon size={16} aria-hidden="true"/><span>{label}</span>{value==='notifications'&&unreadCount!==undefined&&<span className={styles.navCount}>{unreadCount}</span>}{value==='approvals'&&propertiesData&&<span className={styles.navCount}>{allProperties.filter((p:Property)=>matchesAdminPropertySection(p,'pending')).length}</span>}</TabsTrigger>)}</div>)}
           </TabsList>
         </aside>
         <div className={styles.content}>
 
-        <TabsContent value="dashboard"><section className={styles.overview}><header><p className={styles.sidebarLabel}>OVERVIEW</p><h1>Dashboard</h1></header>{(propertiesError||overview.error)&&<p role="alert">Some summary data could not be loaded. Open the relevant section to retry.</p>}<div className={styles.summary}>
+        <TabsContent value="dashboard"><section className={styles.overview}><header><p className={styles.sidebarLabel}>OVERVIEW</p><h1>Portfolio workspace</h1></header>{(propertiesError||overview.error)&&<p role="alert">Some summary data could not be loaded. Open the relevant section to retry.</p>}<div className={styles.summary}>
         {[
-          ['Total properties',propertiesData?adminPropertyDirectory(allProperties).all.length:undefined,'properties'],
-          ['Pending property approvals',propertiesData?allProperties.filter((p:Property)=>matchesAdminPropertySection(p,'pending')).length:undefined,'approvals'],
+          ['Properties (loaded)',propertiesData?adminPropertyDirectory(allProperties).all.length:undefined,'properties'],
+          ['Pending approvals (loaded)',propertiesData?allProperties.filter((p:Property)=>matchesAdminPropertySection(p,'pending')).length:undefined,'approvals'],
           ['Rented properties','Open directory','rented'],
-          ['Available properties',propertiesData?allProperties.filter((p:Property)=>adminAvailability(p)==='available').length:undefined,'available'],
+          ['Available (loaded)',propertiesData?allProperties.filter((p:Property)=>adminAvailability(p)==='available').length:undefined,'available'],
           ['Open service requests / issues',overview.data?.openRequests,'service-requests'],
           ['Unread admin notifications',unreadCount,'notifications'],
           ['Pending connections (property records)',propertiesData?allProperties.filter((p:Property)=>p.isActive!==false&&p.status!=='inactive').reduce((n:number,p:Property)=>n+(p.createdAs==='tenant'&&!p.ownerUID&&p.ownershipVerification==='pending'?1:0)+(p.tenants||[]).filter(t=>t.isActive===true&&t.linkConfirmationRequired===true&&!t.userUID).length,0):undefined,'notifications'],
         ].map(([label,count,target])=><button type="button" key={String(label)} onClick={()=>setActiveTab(String(target))}><span>{label}</span><strong>{count===undefined?(propertiesError||overview.error?'Unavailable':'Loading'):count}</strong></button>)}
-        </div>{moreProperties&&<p role="status">Property counts cover loaded pages, not the full directory. <button type="button" disabled={loadingPropertyPage} onClick={()=>void loadProperties()}>Load more property records</button></p>}<p className="text-sm text-muted-foreground">Available totals exclude unknown occupancy. Pending connections are derived from property records; review the property's relationship details before acting.</p></section></TabsContent>
+        </div>{moreProperties&&<p role="status">Property counts cover loaded pages, not the full directory. <button type="button" disabled={loadingPropertyPage} onClick={()=>void loadProperties()}>Load more property records</button></p>}<p className="text-sm text-muted-foreground">Available totals exclude unknown occupancy. Pending connections are derived from property records; review the property's relationship details before acting.</p><AdminPropertiesTab overview loading={loadingProperties} properties={allProperties} handleViewPropertyDetails={handleViewPropertyDetails} loadingProperty={loadingProperty} selectedProperty={selectedProperty}/>
+        <div className={styles.dashboardColumns}><section className={styles.attention}><h2>Needs attention</h2><button onClick={()=>setActiveTab('approvals')}>Property approvals <span>Review loaded submissions</span></button><button onClick={()=>setActiveTab('notifications')}>Relationship confirmations <span>Open notification feed</span></button><button onClick={()=>setActiveTab('service-requests')}>Service requests <span>{overview.data?.openRequests===undefined?'Open directory':`${overview.data.openRequests} open`}</span></button><button onClick={()=>setActiveTab('notifications')}>Notifications <span>{unreadCount===undefined?'Open feed':`${unreadCount} unread`}</span></button></section><section className={styles.attention}><h2>Coming up</h2><p>Upcoming visits and reminder events are not included in the overview response.</p><button onClick={()=>setActiveTab('visits')}>Visit Planner <span>View scheduled visits</span></button><button onClick={()=>setActiveTab('rented')}>Agreements & rent <span>Open tenancy directory</span></button></section></div>
+        </section></TabsContent>
         <TabsContent value="offers">{offerView==='enquiries'&&moreUsers&&<p>Agent choices cover loaded users. <button type="button" disabled={loadingUserPage} onClick={()=>void loadUsers()}>Load more agents</button></p>}<Tabs value={offerView} onValueChange={setOfferView}><TabsList aria-label="Offers and enquiries"><TabsTrigger value="offers">Offers</TabsTrigger><TabsTrigger value="enquiries">Enquiries</TabsTrigger></TabsList><TabsContent value="offers">{activeTab==='offers'&&offerView==='offers'&&<NegotiationPanel admin/>}</TabsContent><TabsContent value="enquiries">{activeTab==='offers'&&offerView==='enquiries'&&<EnquiryInbox admin agents={agents}/>}</TabsContent></Tabs></TabsContent>
         <TabsContent value="visits">{activeTab==='visits'&&<AdminVisits notifications={notifications.filter(n=>n.type==='visit_update'&&!n.isRead)} onMarkRead={handleMarkComplete}/>}</TabsContent>
         <TabsContent value="rented">{activeTab==='rented'&&<AdminRentedProperties onViewProperty={id=>void handleViewPropertyDetails(id)}/>}</TabsContent>
