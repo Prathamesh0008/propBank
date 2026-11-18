@@ -7,7 +7,7 @@ function refreshPolicy(){const output={};new Function('exports','require',compil
 
 test('mutation dependency map targets all principal business workflows',()=>{
  const {mutationDomains,queryKeysByDomain}=refreshPolicy();
- const cases=[['/api/properties','POST',['properties','relationships']],['/api/tenants/T','PUT',['tenants','relationships','properties','agreements']],['/api/relationship-links','POST',['relationships','properties','tenants']],['/api/documents/D','DELETE',['documents','properties','notifications']],['/api/inspection-reports','POST',['inspections','properties','notifications']],['/api/agreements/renew','POST',['agreements','properties','tenants','ledger','notifications']],['/api/property-hub','PATCH',['properties','tenants','agreements','ledger']],['/api/visits/V','PUT',['visits','notifications']],['/api/service-requests/R','PUT',['services','notifications']],['/api/owner-verification','POST',['verification','properties','relationships','notifications']],['/api/admin/site-settings','PUT',['settings']],['/api/admin/email-deliveries/E/retry','POST',['emails']]];
+ const cases=[['/api/properties','POST',['properties','relationships']],['/api/tenants/T','PUT',['tenants','relationships','properties','agreements']],['/api/relationship-links','POST',['relationships','properties','tenants']],['/api/documents/D','DELETE',['documents','properties','notifications']],['/api/inspection-reports','POST',['inspections','properties','notifications']],['/api/agreements/renew','POST',['agreements','properties','tenants','ledger','notifications']],['/api/property-hub','PATCH',['properties','tenants','agreements','ledger']],['/api/visits/V','PUT',['visits','notifications']],['/api/service-requests/R','PUT',['services','notifications']],['/api/owner-verification','POST',['verification','properties','relationships','notifications']],['/api/admin/site-settings','PUT',['settings']],['/api/admin/email-deliveries/E/retry','POST',['emails','enquiries']]];
  for(const [path,method,expected]of cases)assert.deepEqual(Array.from(mutationDomains(path,method)),expected);
  assert.ok(queryKeysByDomain.properties.includes('userProperties'));assert.ok(queryKeysByDomain.properties.includes('archivedProperties'));assert.ok(queryKeysByDomain.relationships.includes('relationshipLinks'));
 });
@@ -26,7 +26,7 @@ test('a confirmed mutation publishes once after server success',async()=>{
 });
 
 test('property invalidation covers active, archived, detail, hub, counts and admin caches without polling',()=>{
- const source=fs.readFileSync('src/hooks/useProperties.ts','utf8'),policy=refreshPolicy();assert.deepEqual(policy.queryKeysByDomain.properties,['userProperties','allProperties','archivedProperties','property','productHub']);assert.doesNotMatch(source,/refetchInterval/);
+ const source=fs.readFileSync('src/hooks/useProperties.ts','utf8'),policy=refreshPolicy();assert.deepEqual(policy.queryKeysByDomain.properties,['publicProperties','userProperties','allProperties','archivedProperties','property','productHub']);assert.doesNotMatch(source,/refetchInterval/);
 });
 
 test('same-origin tab synchronization uses a lightweight broadcast with a storage fallback',()=>{const source=fs.readFileSync('src/lib/data-refresh.ts','utf8');assert.match(source,/BroadcastChannel/);assert.match(source,/storage/);assert.match(source,/source!==source/);});

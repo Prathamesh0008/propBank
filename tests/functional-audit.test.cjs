@@ -20,7 +20,7 @@ test('API inventory includes workflow helpers and only real negotiation method/p
  const {spawnSync}=require('node:child_process');
  const result=spawnSync(process.execPath,['scripts/audit-active-api.cjs'],{encoding:'utf8'});assert.equal(result.status,0,result.stderr);
  const inventory=JSON.parse(require('node:fs').readFileSync('migration-audit/api-inventory.json','utf8'));
- for(const [method,endpoint]of [['GET','/api/property-hub'],['PATCH','/api/property-hub'],['POST','/api/owner-verification'],['POST','/api/negotiations'],['PATCH','/api/negotiations/:id']])assert.ok(inventory.rows.some(row=>row.reachable&&row.method===method&&row.endpoint===endpoint&&row.nativeImplemented),method+' '+endpoint);
+ for(const [method,endpoint]of [['GET','/api/property-hub'],['PATCH','/api/property-hub'],['POST','/api/owner-verification'],['POST','/api/negotiations'],['PATCH','/api/negotiations/:id']])assert.ok(inventory.rows.some(row=>row.reachable&&row.method===method&&row.endpoint.split('?')[0]===endpoint&&row.nativeImplemented),method+' '+endpoint);
  assert.ok(!inventory.rows.some(row=>row.method==='PATCH'&&row.endpoint==='/api/negotiations'));
  assert.ok(!inventory.rows.some(row=>row.method==='POST'&&row.endpoint==='/api/negotiations/:id'));
  assert.ok(!inventory.rows.some(row=>row.reachable&&!row.nativeImplemented));

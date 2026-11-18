@@ -1,7 +1,7 @@
 "use client";
 import styles from './EnquiryInbox.module.css';
 import {useState} from 'react';
-import {useQuery} from '@tanstack/react-query';
+import {useQuery,useInfiniteQuery} from '@tanstack/react-query';
 import {useAuth} from '@/contexts/AuthContext';
 import {workflowRequest} from '@/lib/client-workflows';
 import {enquiryStatuses, type ManagedEnquiry, type EnquiryStatus} from '@/lib/enquiry';
@@ -35,14 +35,17 @@ function EnquiryRow({enquiry,admin,agents,onSave}:{enquiry:ManagedEnquiry;admin:
 }
 export default function EnquiryInbox({admin=false,agents=[]}:{admin?:boolean;agents?:Agent[]}) {
  const {user,loading}=useAuth(),[error,setError]=useState('');
- const query=useQuery({queryKey:['enquiries',user?.uid],queryFn:()=>workflowRequest<{enquiries:ManagedEnquiry[]}>('enquiries'),enabled:!!user&&!loading,staleTime:60_000});
+ const query=useInfiniteQuery({queryKey:['enquiries',user?.uid,'paged-v1'],initialPageParam:'',queryFn:({pageParam})=>workflowRequest<{enquiries:ManagedEnquiry[];hasMore:boolean;nextCursor:string|null}>(`enquiries?cursor=${encodeURIComponent(pageParam)}`),getNextPageParam:page=>page.hasMore?page.nextCursor||undefined:undefined,enabled:!!user&&!loading,staleTime:60_000});
+ const enquiries=[...new Map((query.data?.pages.flatMap(page=>page.enquiries)||[]).map(row=>[row.id,row])).values()];
  async function save(enquiry:ManagedEnquiry,body:Record<string,unknown>){setError('');try{await workflowRequest(`enquiries/${enquiry.id}`,body,'PATCH');}catch(e){setError(e instanceof Error?e.message:'Could not update enquiry');}finally{await query.refetch();}}
  return <section className={styles.inbox} aria-label={admin?'Property enquiry inbox':'Assigned property enquiries'}>
   <h2 className={styles.heading}>{admin?'Property enquiry inbox':'Your assigned property enquiries'}</h2>
   <p className="text-sm">Notes and history are private to administrators and the currently assigned broker. Progress records do not schedule visits or finalize negotiations.</p>
   <Button variant="outline" onClick={()=>query.refetch()} disabled={query.isFetching}>Refresh enquiries</Button>
   {error&&<p role="alert" className="text-destructive">{error}</p>}
-  {query.isLoading?<p role="status">Loading enquiries...</p>:query.error?<p role="alert">Could not load enquiries. Refresh to retry.</p>:!query.data?.enquiries.length?<p>No enquiries in your permitted scope.</p>:query.data.enquiries.map(enquiry=><EnquiryRow key={`${enquiry.id}:${enquiry.version}`} enquiry={enquiry} admin={admin} agents={agents.filter(a=>a.role==='agent'&&a.isActive!==false)} onSave={body=>save(enquiry,body)}/>)}
+  {query.isLoading?<p role="status">Loading enquiries...</p>:query.error?<p role="alert">Could not load enquiries. Refresh to retry.</p>:!enquiries.length?<p>{query.hasNextPage?'No available enquiries on this page. Load more to continue.':'No enquiries in your permitted scope.'}</p>:enquiries.map(enquiry=><EnquiryRow key={`${enquiry.id}:${enquiry.version}`} enquiry={enquiry} admin={admin} agents={agents.filter(a=>a.role==='agent'&&a.isActive!==false)} onSave={body=>save(enquiry,body)}/>)}
+  {query.hasNextPage&&<Button variant="outline" disabled={query.isFetching} onClick={()=>void query.fetchNextPage()}>{query.isFetchingNextPage?'Loading...':'Load more enquiries'}</Button>}
+  <p className="text-xs text-muted-foreground">Showing loaded enquiries in record order. Load more to view further records.</p>
  </section>;
 }
 export function BrokerEnquiries(){

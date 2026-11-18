@@ -16,7 +16,7 @@ test('complete owner property fields survive create, Firestore storage, authoriz
 
 test('admin property dossier labels every distinct property, price, relationship and agreement value',()=>{
  const source=fs.readFileSync('src/features/admin/AdminPropertyDetailsDialog.tsx','utf8');
- for(const label of ['Property Name','Property Category','Property Type / Structure','Residential Layout','Property ID','Moderation Status','Owner Verification','Carpet Area','Built-up / Constructed Area','Plot Area','Listing Purpose','Expected Selling Price','Expected Monthly Rent','Finalized Monthly Rent','Security Deposit','Agreement Period','Notice Period','Lock-in Period','Future Agreement Draft','Draft — not active','Relationship Status','Attached Documents'])assert.match(source,new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')),label);
+ for(const label of ['Property Name','Property Category','Property Type / Structure','Residential Layout','Property ID','Moderation Status','Owner Verification','Carpet Area','Built-up / Constructed Area','Plot Area','Listing Purpose','Expected Selling Price','Expected Monthly Rent','Finalized Monthly Rent','Security Deposit','Agreement Period','Notice Period','Lock-in Period','Future Agreement Draft','Draft — not active','Relationship Status','Documents'])assert.match(source,new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')),label);
  assert.match(source,/property\.title\?\.trim\(\)\|\|property\.buildingName\?\.trim\(\)\|\|`Property \$\{property\.id\}`/);
  assert.doesNotMatch(source,/<DataRow label="Configuration"[\s\S]*<DataRow label="Configuration"/);
  assert.match(source,/value=\{area\(property\.carpetArea,property\.carpetAreaUnit\|\|property\.areaUnit\)\}/);

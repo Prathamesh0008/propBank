@@ -16,6 +16,11 @@ function load(name, dependencies = {}, env = {}, globals = {}) {
     AbortSignal, ...globals,
     require: name => {
       if (name === 'server-only') return {};
+      if (name === 'node:crypto') return require('node:crypto');
+      if (['@/lib/indian-phone','@/lib/email-address'].includes(name)) return require('./fixtures/native-server.cjs').isolated().load(name);
+      if (name === '@/lib/rent-resolution' || name === './transactional-email') return {};
+      if (name === './property-purpose') return require('./fixtures/native-server.cjs').isolated().load('@/lib/property-purpose');
+      if (name === './resend') return load('services/resend',{},env,globals);
       if (!(name in dependencies)) throw new Error(`Unexpected dependency: ${name}`);
       return dependencies[name];
     },
@@ -48,7 +53,7 @@ test('negotiations collection mapping is additive and has no startup database ca
   let calls=0;
   const firestore=load('firestore',{'./firebase-admin':{getFirebaseAdminFirestore:()=>{calls++;}}});
   assert.deepEqual(JSON.parse(JSON.stringify(firestore.COLLECTIONS)),{
-    users:'users',properties:'properties',negotiations:'negotiations',tenants:'tenants',visits:'visits',services:'services',serviceRequests:'service_requests',documents:'documents',reviews:'reviews',inspectionReports:'inspection_reports',adminNotifications:'admin_notifications',siteSettings:'siteSettings',
+    users:'users',properties:'properties',negotiations:'negotiations',tenants:'tenants',visits:'visits',services:'services',serviceRequests:'service_requests',documents:'documents',reviews:'reviews',inspectionReports:'inspection_reports',adminNotifications:'admin_notifications',emailDeliveries:'email_deliveries',siteSettings:'siteSettings',
   });
   assert.equal(calls,0);
 });
@@ -71,16 +76,16 @@ test('email helpers escape HTML and add optional provider idempotency without ch
     assert.equal(url,'https://api.resend.com/emails');assert.equal(init.method,'POST');
     assert.equal(init.headers.Authorization,'Bearer isolated-key');
     assert.equal(init.headers['Content-Type'],'application/json');
-    assert.deepEqual(JSON.parse(init.body),{from:'Propbank <sender@test.invalid>',to:[mail.to],subject:mail.subject,html:'<p>sender@test.invalid</p>'});
+    assert.deepEqual(JSON.parse(init.body),{from:'PropBank <sender@test.invalid>',to:[mail.to],subject:mail.subject,html:'<p>sender@test.invalid</p>'});
     assert.ok(init.signal instanceof AbortSignal);
   }
   assert.equal(Object.hasOwn(requests[0].init.headers,'Idempotency-Key'),false);
   assert.equal(requests[1].init.headers['Idempotency-Key'],'visit-P-generation');
   ok=false;
   await assert.rejects(effects.sendEmail(mail),/Property email delivery failed/);
-  await effects.sendEmail({...mail,to:''},'unused');
+  await assert.rejects(effects.sendEmail({...mail,to:''},'unused'),/recipient is required/);
   delete env.RESEND_API_KEY;
-  await effects.sendEmail(mail,'unused');
+  await assert.rejects(effects.sendEmail(mail,'unused'),/RESEND_API_KEY/);
   assert.equal(requests.length,3);
 });
 
@@ -135,7 +140,7 @@ test('Auth credentials support JSON paths and ADC without borrowing DATA credent
 test('verified Auth UID selects users/{uid} in the distinct DATA project and uses its persisted role',async()=>{
  const apps=[],calls=[];
  const sdk={getApps:()=>apps,cert:a=>a,applicationDefault:()=>({}),initializeApp:(options,name)=>{const app={name,options};apps.push(app);return app;}};
- const admin=load('firebase-admin',{'node:fs':{readFileSync},'node:path':{resolve},'firebase-admin/app':sdk,'firebase-admin/auth':{getAuth:app=>({verifyIdToken:async(token,revoked)=>{calls.push({operation:'verify',project:app.options.projectId,token,revoked});return {uid:'shared-uid',email:'verified@test.invalid'};}})},'firebase-admin/firestore':{getFirestore:app=>({collection:name=>({doc:uid=>({get:async()=>{calls.push({operation:'read',project:app.options.projectId,name,uid});return {data:()=>({role:'individual',isActive:true})};}})})})},'firebase-admin/storage':{}},{FIREBASE_AUTH_CREDENTIALS:JSON.stringify({project_id:'propbank-7601b'}),FIREBASE_CREDENTIALS:JSON.stringify({project_id:'propbank-944fc'})});
+ const admin=load('firebase-admin',{'node:fs':{readFileSync},'node:path':{resolve},'firebase-admin/app':sdk,'firebase-admin/auth':{getAuth:app=>({getUser:async uid=>({uid,email:'verified@test.invalid',emailVerified:true,disabled:false}),verifyIdToken:async(token,revoked)=>{calls.push({operation:'verify',project:app.options.projectId,token,revoked});return {uid:'shared-uid',email:'verified@test.invalid',email_verified:true};}})},'firebase-admin/firestore':{getFirestore:app=>({collection:name=>({doc:uid=>({get:async()=>{calls.push({operation:'read',project:app.options.projectId,name,uid});return {data:()=>({name:'Verified Member',email:'verified@test.invalid',phoneNumber:'+919123456789',role:'individual',isActive:true})};}})})})},'firebase-admin/storage':{}},{FIREBASE_AUTH_CREDENTIALS:JSON.stringify({project_id:'propbank-7601b'}),FIREBASE_CREDENTIALS:JSON.stringify({project_id:'propbank-944fc'})});
  const firestore=load('firestore',{'./firebase-admin':admin});const auth=load('auth',{'./firebase-admin':admin,'./firestore':firestore});
  const user=await auth.requireUser(new Request('http://local',{headers:{Authorization:'Bearer browser-token'}}));assert.equal(user.uid,'shared-uid');assert.equal(user.role,'individual');assert.deepEqual(calls,[{operation:'verify',project:'propbank-7601b',token:'browser-token',revoked:true},{operation:'read',project:'propbank-944fc',name:'users',uid:'shared-uid'}]);
 });
@@ -143,10 +148,10 @@ test('verified Auth UID selects users/{uid} in the distinct DATA project and use
 test('native identity verifies Firebase bearer token with revocation and roles come from Firestore', async () => {
   const verified = [];
   const lookups = [];
-  let profile = { role: 'individual', email: 'stored@example.com', phoneNumber: '123', isActive: true };
+  let profile = { name:'Member',role: 'individual', email: 'stored@example.com', phoneNumber: '+919123456789', isActive: true };
   const auth = load('auth', {
-    './firebase-admin': { getFirebaseAdminAuth: () => ({ verifyIdToken: async (token, revoked) => {
-      verified.push([token, revoked]); return { uid: 'trusted-uid', role: 'admin', email: 'token@example.com' };
+    './firebase-admin': { getFirebaseAdminAuth: () => ({ getUser:async uid=>({uid,email:'stored@example.com',emailVerified:true,disabled:false}),verifyIdToken: async (token, revoked) => {
+      verified.push([token, revoked]); return { uid: 'trusted-uid', role: 'admin', email: 'stored@example.com',email_verified:true };
     } }) },
     './firestore': { COLLECTIONS: { users: 'users' }, getDatabase: () => ({ collection: name => ({ doc: uid => {
       lookups.push([name, uid]); return { get: async () => ({ data: () => profile }) };

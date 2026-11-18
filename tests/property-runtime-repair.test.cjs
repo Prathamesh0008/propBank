@@ -1,7 +1,7 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {isolated,users,request,route}=require('./fixtures/native-server.cjs');
-const base={propertyTitle:'Repair fixture',propertyType:'residential',location:'Fixture address',ownerUID:'owner',listingType:'rent',monthlyRent:'25000',rentalStatus:'available'};
+const base={propertyTitle:'Repair fixture',propertyType:'residential',configuration:'2 BHK',location:'Fixture address',ownerUID:'owner',listingType:'rent',monthlyRent:'25000',expectedRent:'25000',securityDeposit:'0',rentalStatus:'available'};
 const tenant={...base,createdAs:'tenant',reportedOwner:{personName:'Owner',phone:'9876543210',email:'owner@test.invalid'},paymentDueDate:'5',agreementPeriod:'12',agreementStartDate:'2026-01-01',agreementEndDate:'2026-12-31'};
 const fresh=()=>isolated({users:structuredClone(users),properties:{},tenants:{}});
 const submit=(app,body=base,uid='owner')=>route(app,'properties').POST(request('/properties',uid,'POST',body));

@@ -1,9 +1,12 @@
 const assert=require('node:assert/strict'),{test}=require('node:test');
-const {isolated,users,properties,defaults,request,route,context}=require('./fixtures/native-server.cjs');
+const {isolated:baseIsolated,users,properties,defaults,request,route,context}=require('./fixtures/native-server.cjs');
+
+const {registrySeed}=require('./fixtures/mobile-registry.cjs');
+const isolated=seed=>baseIsolated({...registrySeed(seed?.users||{}),...seed});
 
 test('property creation preserves industrial plot area and member rent schedule',async()=>{
  const app=isolated({users,properties});
- const response=await route(app,'properties').POST(request('/properties','owner','POST',{propertyTitle:'Industrial home',propertyType:'industrial',location:'Existing address',ownerUID:'owner',plotArea:'2400',rentSchedule:[{year:'1',amount:'70000'}]}));
+ const response=await route(app,'properties').POST(request('/properties','owner','POST',{propertyTitle:'Industrial home',propertyType:'industrial',location:'Existing address',ownerUID:'owner',plotArea:'2400',listingType:'rent',expectedRent:'70000',securityDeposit:'0',agreementPeriod:'12',agreementStartDate:'2026-01-01',agreementEndDate:'2026-12-31',rentSchedule:[{year:'1st Year',months:'12',amount:'70000',fromDate:'2026-01-01',toDate:'2026-12-31'}]}));
  assert.equal(response.status,200);const created=await response.json();const id=created.property.id;
  assert.equal(app.state.properties[id].plotArea,'2400');
  const read=await (await route(app,'properties/[id]').GET(request(`/properties/${id}`,'owner'),context(id))).json();
@@ -11,7 +14,7 @@ test('property creation preserves industrial plot area and member rent schedule'
 });
 
 test('public listings and detail clear private contacts, tenant records and selected media',async()=>{
- const app=isolated({users,properties:{P:{...properties.P,rentalStatus:'available',tenants:[{userUID:'tenant',isActive:true,email:'tenant@test.invalid',monthlyIncome:'secret'}],internalImages:['private'],images:['main','second'],ownerPhone:'secret',buyers:[{firstName:'Private'}]}}});
+ const app=isolated({users,properties:{P:{...properties.P,rentalStatus:'available',moderationStatus:'approved',tenants:[{userUID:'tenant',isActive:false,email:'tenant@test.invalid',monthlyIncome:'secret'}],internalImages:['private'],images:['main','second'],ownerPhone:'secret',buyers:[{firstName:'Private'}]}}});
  for(const response of [await route(app,'properties').GET(request('/properties')),await route(app,'properties/[id]').GET(request('/properties/P'),context('P'))]) {
   const body=await response.json(),p=body.property||body.properties[0];
   assert.equal(p.ownerEmail,'');assert.equal(p.ownerPhone,'');assert.equal(p.tenants,null);assert.equal(p.buyers,null);assert.equal(p.internalImages,null);assert.deepEqual(p.images,['main']);
