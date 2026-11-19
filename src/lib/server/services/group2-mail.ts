@@ -1,3 +1,4 @@
+import {type EmailContext} from '@/lib/email-design';
 
 import {formatDisplayDate, formatDisplayDateTime} from '@/lib/date-format';
 import 'server-only';
@@ -18,17 +19,14 @@ export function tenantMail(property:RecordData,tenant:RecordData) {
   queueEmail({to:s(tenant.email),subject:"🏠 Welcome! You've been added as a Tenant - Propbank",html:formatTemplate(propertyTemplates.TenantAdded,['Welcome to Your New Home!',`${s(tenant.firstName)} ${s(tenant.lastName)}`,'You have been added as a tenant to the following property.',...details])});
   queueEmail({to:s(property.ownerEmail),subject:'🏠 Tenant Added to Your Property - Propbank',html:formatTemplate(propertyTemplates.TenantAdded,['Tenant Added to Your Property',s(property.ownerName),'A new tenant has been added to your property.',...details])});
 }
-export function inquiryMail(req:RecordData) {
+function generalEnquiry(req:RecordData) {
   const listing=req.inquiryType==='buy'?'Buying':req.inquiryType==='sell'?'Selling':'Renting';
-  const visit=req.requestVisit?`Requested on ${formatDisplayDate(req.visitDate)} at ${s(req.visitTime)}`:'Not requested';
-  const subject=`📩 New Quick Inquiry: ${s(req.userName)}`;
-  return persistUserEvent({eventType:'enquiry.general_created',eventId:`${s(req.id)}:created`,recipients:[{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:s(req.id),templateId:'general-enquiry',subject,title:'New general enquiry',bodyHtml:formatTemplate(templates.GeneralInquiry[0],[s(req.userName),s(req.userEmail),s(req.userPhone),listing,s(req.propertyType),visit,s(req.message),s(req.userEmail)]),bodyText:`New ${listing.toLowerCase()} enquiry from ${s(req.userName)}. Review it in the administrator portal.`,action:{label:'Open enquiry inbox',path:'/admin?tab=notifications'}});
+  const context:EmailContext={greeting:'PropBank team',status:'New enquiry',rows:[{label:'Customer',value:req.userName},{label:'Email',value:req.userEmail},{label:'Phone',value:req.userPhone},{label:'Purpose',value:listing},{label:'Category',value:req.propertyType,format:'status'},{label:'Message',value:req.message},{label:'Requested visit date',value:req.requestVisit?req.visitDate:undefined,format:'date'},{label:'Requested visit time',value:req.requestVisit?req.visitTime:undefined}],nextStep:'Review the enquiry and follow up using the authorized customer details.'};
+  return {eventType:'enquiry.general_created',eventId:`${s(req.id)}:created`,recipients:[{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:s(req.id),templateId:'general-enquiry',subject:`New Quick Inquiry: ${s(req.userName)}`,title:'New general enquiry',bodyHtml:`<p>A customer has asked about ${listing.toLowerCase()} a property. Review their preferences and message below.</p>`,bodyText:`A customer has asked about ${listing.toLowerCase()} a property. Review their preferences and message below.`,emailContext:context,action:{label:'Open enquiry inbox',path:'/admin?tab=enquiries'}};
 }
+export function inquiryMail(req:RecordData) {return persistUserEvent(generalEnquiry(req));}
 export function inquiryMailEvent(req:RecordData):TransactionalEmailEvent {
-  const listing=req.inquiryType==='buy'?'Buying':req.inquiryType==='sell'?'Selling':'Renting';
-  const visit=req.requestVisit?`Requested on ${formatDisplayDate(req.visitDate)} at ${s(req.visitTime)}`:'Not requested';
-  const subject=`📩 New Quick Inquiry: ${s(req.userName)}`;
-  const event={eventType:'enquiry.general_created',eventId:`${s(req.id)}:created`,recipients:[{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:s(req.id),templateId:'general-enquiry',subject,title:'New general enquiry',bodyHtml:formatTemplate(templates.GeneralInquiry[0],[s(req.userName),s(req.userEmail),s(req.userPhone),listing,s(req.propertyType),visit,s(req.message),s(req.userEmail)]),bodyText:`New ${listing.toLowerCase()} enquiry from ${s(req.userName)}. Review it in the administrator portal.`,action:{label:'Open enquiry inbox',path:'/admin?tab=notifications'}};return {eventType:event.eventType,eventId:event.eventId,recipientRole:'admin',recipientEmail:process.env.ADMIN_EMAIL,recordId:event.recordId,templateId:event.templateId,templateVersion:1,subject:event.subject,...brandedEmail(event.title,event.bodyHtml,event.bodyText,event.action)};
+  const event=generalEnquiry(req);return {eventType:event.eventType,eventId:event.eventId,recipientRole:'admin',recipientEmail:process.env.ADMIN_EMAIL,recordId:event.recordId,templateId:event.templateId,templateVersion:1,subject:event.subject,...brandedEmail(event.title,event.bodyHtml,event.bodyText,event.action,event.emailContext)};
 }
 export function ownerTerminationMail(property:RecordData,owner:RecordData,tenant:RecordData,notice:boolean,terminationDate:string) {
   terminationDate=formatDisplayDate(terminationDate);

@@ -92,6 +92,7 @@ const AttachDocuments = () => {
 
   const visibleDocuments=documents.filter(doc=>supportingMode?SUPPORTING_TYPES.includes(doc.documentType):!reportType||doc.documentType===reportType);
   const availableDocumentTypes=supportingMode?SUPPORTING_TYPES:DOCUMENT_TYPES;
+  const submission=useRef(false),documentOperations=useRef(new Set<string>());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   useDataRefresh(['documents'],()=>{if(!propertyId||!user)return;void apiFetch(`${API_BASE_URL}/documents/property/${propertyId}`).then(async response=>{if(!response.ok)return;const data=await response.json();if(data.success)setDocuments(data.documents||[]);}).catch(()=>{});});
 
@@ -194,6 +195,7 @@ const AttachDocuments = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if(submission.current)return;
 
     if (!user) {
       toast({
@@ -214,7 +216,7 @@ const AttachDocuments = () => {
     if(["tds_report","payment_receipt"].includes(documentType)&&metadata.amount&&(Number(metadata.amount)<0||!Number.isFinite(Number(metadata.amount))))nextErrors.amount='Enter a valid non-negative amount.';
     setFieldErrors(nextErrors);if(Object.keys(nextErrors).length)return;
 
-    setSubmitting(true);
+    submission.current=true;setSubmitting(true);
     try {
       // Check file size before sending (base64 is ~33% larger than original)
       const base64Size = fileUrl.length;
@@ -238,6 +240,7 @@ const AttachDocuments = () => {
         fileUrl: fileUrl,
         description: description.trim(),
         ...applicableMetadata,
+        idempotencyKey:documentRequestKey,
       };
 
       const response = supportingMode&&selectedFile ? null : await apiFetch(`${API_BASE_URL}/documents`, {
@@ -260,33 +263,6 @@ const AttachDocuments = () => {
       else {const responseText = await response!.text();try {data = JSON.parse(responseText);} catch {throw new Error('The document service returned an invalid response. Please try again.');}}
 
       if (data.success) {
-        // Send a notification to the admin
-        try {
-          const notificationPayload = {
-            type: 'document_upload',
-            title: `New Document Uploaded: ${documentName.trim()}`,
-            message: `User ${user.displayName || user.email || 'Unknown User'} has uploaded a document (${documentType}) for property: ${property?.title || propertyId}.`,
-            propertyId: propertyId || '',
-            userId: user.uid || '',
-            userName: user.displayName || user.email || 'Unknown User',
-            userEmail: user.email || '',
-            serviceImage: data.document?.fileUrl || '', // Use the uploaded R2 URL from the response
-            timestamp: new Date().toISOString(),
-            isRead: false,
-            priority: 'medium'
-          };
-          
-          await apiFetch(`${API_BASE_URL}/admin/notifications`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(notificationPayload),
-          });
-        } catch (error) {
-          console.error('Failed to send notification for document upload', error);
-        }
-
         toast({
           title: "Document Uploaded",
           description: "Document has been uploaded successfully.",
@@ -304,18 +280,7 @@ const AttachDocuments = () => {
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
-        // Refresh documents list immediately
-        try {
-          const documentsResponse = await apiFetch(`${API_BASE_URL}/documents/property/${propertyId}`);
-          if (documentsResponse.ok) {
-            const documentsData = await documentsResponse.json();
-            if (documentsData.success) {
-              setDocuments(documentsData.documents || []);
-            }
-          }
-        } catch (refreshError) {
-          // Still show success since document was uploaded
-        }
+        if(data.document)setDocuments(current=>current.some(doc=>doc.id===data.document.id)?current:[data.document,...current]);
       } else {
         throw new Error(data.message || 'Failed to upload document');
       }
@@ -327,25 +292,29 @@ const AttachDocuments = () => {
         variant: "destructive"
       });
     } finally {
-      setSubmitting(false);
+      submission.current=false;setSubmitting(false);
     }
   };
 
   const updateReview=async(doc:Document)=>{
+    if(documentOperations.current.has(doc.id))return;
     const draft=reviewDraft[doc.id]||{status:doc.status||'submitted',comment:doc.adminComment||''};
     if(draft.comment.length>2000){setLoadError('Review comment must be 2000 characters or fewer.');return;}
+    documentOperations.current.add(doc.id);
     try{
       const response=await apiFetch(`${API_BASE_URL}/documents/${doc.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(draft)});
       if(!response.ok)throw new Error(response.status===403?'Administrator access is required.':'The document review could not be saved.');
       setDocuments(current=>current.map(item=>item.id===doc.id?{...item,status:draft.status,adminComment:draft.comment}:item));setLoadError('');
-    }catch(error){setLoadError(error instanceof Error?error.message:'The document review could not be saved.');}
+    }catch(error){setLoadError(error instanceof Error?error.message:'The document review could not be saved.');}finally{documentOperations.current.delete(doc.id);}
   };
 
   const handleDelete = async (documentId: string) => {
+    if(documentOperations.current.has(documentId))return;
     if (!confirm("Are you sure you want to delete this document?")) {
       return;
     }
 
+    documentOperations.current.add(documentId);
     try {
       const response = await apiFetch(`${API_BASE_URL}/documents/${documentId}`, {
         method: 'DELETE',
@@ -353,19 +322,12 @@ const AttachDocuments = () => {
 
       const data = await response.json();
 
-      if (data.success) {
+      if (response.ok&&data.success) {
         toast({
           title: "Document Deleted",
           description: data.warning || "Document and stored file have been deleted successfully.",
         });
-        // Refresh documents list
-        const documentsResponse = await apiFetch(`${API_BASE_URL}/documents/property/${propertyId}`);
-        if (documentsResponse.ok) {
-          const documentsData = await documentsResponse.json();
-          if (documentsData.success) {
-            setDocuments(documentsData.documents || []);
-          }
-        }
+        setDocuments(current=>current.filter(doc=>doc.id!==documentId));
       } else {
         throw new Error(data.message || 'Failed to delete document');
       }
@@ -375,7 +337,7 @@ const AttachDocuments = () => {
         description: error instanceof Error?error.message:'Failed to delete document. Please try again later.',
         variant: "destructive"
       });
-    }
+    }finally{documentOperations.current.delete(documentId);}
   };
 
   if (loading) {

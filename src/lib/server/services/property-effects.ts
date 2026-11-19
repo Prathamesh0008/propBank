@@ -1,3 +1,6 @@
+import {renderLegacyEmail} from '@/lib/email-legacy';
+import {propertyEmailContext} from '@/lib/email-design';
+import {propertyPricing} from '@/lib/property-presentation';
 
 import {formatDisplayDate, formatDisplayDateTime} from '@/lib/date-format';
 import {sameRentSchedule} from '@/lib/rent-resolution';
@@ -18,6 +21,7 @@ export function escapeHtml(value:string):string {
 export type TrustedTemplateHtml={readonly __trustedTemplateHtml:string};
 export const trustedTemplateHtml=(html:string):TrustedTemplateHtml=>({__trustedTemplateHtml:html});
 export function formatTemplate(template:string,values:Array<string|TrustedTemplateHtml>) {
+  if(template.startsWith('propbank-email:'))return renderLegacyEmail(template.slice('propbank-email:'.length),values)?.html||'';
   let index=0;
   return template.replace(/%%|%s|%d/g,token=>{if(token==='%%')return '%';const value=values[index++]??'';return typeof value==='string'?escapeHtml(value):value.__trustedTemplateHtml;});
 }
@@ -72,8 +76,8 @@ function tenantAddedEvents(property:RecordData,previous:RecordData[],tenants:Rec
     const email=s(tenant.email);
     if ((email.trim() && oldEmails.has(email.trim().toLowerCase())) || (tenant.isActive!==true && tenant.isActive!=='true')) continue;
     if (![tenant.email,tenant.firstName,tenant.lastName,tenant.phone].some(v=>s(v).trim())) continue;
-    const tenantUID=s(tenant.userUID);if(!tenantUID)continue;
-    events.push({eventType:'tenancy.tenant_assigned',eventId:`${s(property.id)}:${s(tenant.id)||tenantUID}:property-effect-assigned`,recipients:[...(property.ownerUID?[{uid:s(property.ownerUID),role:'owner'}]:[]),{uid:tenantUID,role:'tenant'}],propertyId:s(property.id),recordId:s(tenant.id)||s(property.id),templateId:'tenant-assigned',subject:'Tenant assignment confirmed',title:'Tenant relationship updated',bodyHtml:`<p>A tenant was assigned to <strong>${escapeHtml(s(property.title))}</strong>.</p>`,bodyText:`A tenant was assigned to ${s(property.title)}.`,action:{label:'View rental details',path:`/manage-property/${s(property.id)}`}});
+    const tenantUID=s(tenant.userUID);if(!tenantUID||tenant.linkConfirmationRequired===true)continue;
+    events.push({emailContext:propertyEmailContext(property,[],{status:'Assigned'}),eventType:'tenancy.tenant_assigned',eventId:`${s(property.id)}:${s(tenant.id)||tenantUID}:property-effect-assigned`,recipients:[...(property.ownerUID?[{uid:s(property.ownerUID),role:'owner',name:s(property.ownerName)}]:[]),{uid:tenantUID,role:'tenant',name:fullName(tenant).trim()}],propertyId:s(property.id),recordId:s(tenant.id)||s(property.id),templateId:'tenant-assigned',subject:'Tenant assignment confirmed',title:'Tenant relationship updated',bodyHtml:`<p>A tenant was assigned to <strong>${escapeHtml(s(property.title))}</strong>.</p>`,bodyText:`A tenant was assigned to ${s(property.title)}.`,action:{label:'View rental details',path:`/manage-property/${s(property.id)}`}});
   }
  return events;
 }
@@ -100,25 +104,17 @@ export async function propertyUpdatedEffects(before:RecordData,property:RecordDa
 }
 
 export function propertyNotificationEvents(property:RecordData,submitter:RecordData,status='pending_review'):TransactionalEmailEvent[] {
-  const id=s(property.id),revision=Number(property.moderationRevision||1),title=s(property.title);
-  const label=status.replaceAll('_',' '),reason=s(property.moderationReason),submitted=status==='pending_review';
-  const subject=submitted?'Property submitted - Pending Review':`Property ${label}`;
-  const body=`Property: ${title}\nReference ID: ${id}\nStatus: ${label}${reason?`\nAdmin reason: ${reason}`:''}`;
-  const make=(role:string,uid:string,email:string,text:string,path:string):TransactionalEmailEvent=>{
-    const notificationSubject=submitted&&role==='admin'?'PropBank \u2013 New Property Submitted for Review':subject;
-    return ({
-    eventType:submitted?'property.submitted':`property.${status}`,eventId:`property:${id}:${revision}:${status}`,
-    recipientUID:uid,recipientRole:role,recipientEmail:email,propertyId:id,recordId:id,templateId:'property-review',templateVersion:1,subject:notificationSubject,
-    ...brandedEmail(notificationSubject,`<p>${escapeHtml(text).replaceAll('\n','<br>')}</p>`,text,{label:submitted&&role==='admin'?'Review property':'View property',path}),
-  });
+  const id=s(property.id),revision=Number(property.moderationRevision||1),submitted=status==='pending_review';
+  const subject=submitted?'Property submitted - Pending Review':`Property ${status.replaceAll('_',' ')}`;
+  const make=(role:string,uid:string,email:string,path:string):TransactionalEmailEvent=>{
+    const heading=submitted&&role==='admin'?'PropBank \u2013 New Property Submitted for Review':subject;
+    const explanation=role==='admin'?'A property submission is ready for review. Check its details and take the appropriate moderation action.':submitted?'Your property information has been submitted for review. Publication follows approval.':status==='approved'?'The property review is complete. Open PropBank to review its current listing status.':status==='changes_requested'?'Please review the feedback and update your property information.':'The property was not approved. Review the feedback before making changes.';
+    const price=propertyPricing(property);
+    return {eventType:submitted?'property.submitted':`property.${status}`,eventId:`property:${id}:${revision}:${status}`,recipientUID:uid,recipientRole:role,recipientEmail:email,propertyId:id,recordId:id,templateId:'property-review',templateVersion:1,subject:heading,
+      ...brandedEmail(heading,`<p>${escapeHtml(explanation)}</p>`,explanation,{label:role==='admin'?'Review property':'View property',path},propertyEmailContext(property,[{label:'Purpose',value:property.listingType,format:'status'},{label:price.label,value:price.amount,format:'money'},{label:'Review feedback',value:property.moderationReason},{label:'Submitted by',value:role==='admin'?submitter.name:undefined},{label:'Customer email',value:role==='admin'?submitter.email:undefined},{label:'Customer phone',value:role==='admin'?submitter.phoneNumber:undefined},{label:'Submitted',value:property.moderationSubmittedAt||property.createdAt,format:'datetime'},{label:'Reviewed',value:property.moderationReviewedAt,format:'datetime'}],{greeting:role==='admin'?'PropBank team':s(submitter.name),status}))};
   };
-  const recipientUID=s(submitter.uid),email=s(submitter.email);
-  const events=[make('owner',recipientUID,email,body,`/property/${encodeURIComponent(id)}`)];
-  if(submitted) {
-    const submittedAt=wireValue(property.createdAt);
-    const adminBody=`Property: ${title}\nReference ID: ${id}\nLocation: ${s(property.location)||s(property.address)}\nOwner name: ${s(property.ownerName)||s(isRecord(property.reportedOwner)?property.reportedOwner.personName||property.reportedOwner.companyName:'')||'Not supplied'}\nOwner email: ${s(property.ownerEmail)||s(isRecord(property.reportedOwner)?property.reportedOwner.email:'')||'Not supplied'}\nSubmission date: ${formatDisplayDateTime(submittedAt, {}, 'Not recorded')}\nStatus: Pending Review\nSubmitter: ${s(submitter.name)}\nEmail: ${email}\nPhone: ${s(submitter.phoneNumber)}\nUser ID: ${recipientUID}`;
-    events.push(make('admin','',(process.env.ADMIN_EMAIL||'').trim().toLowerCase(),adminBody,`/admin?tab=properties&propertyId=${encodeURIComponent(id)}`));
-  }
+  const events=[make('owner',s(submitter.uid),s(submitter.email),`/property/${encodeURIComponent(id)}`)];
+  if(submitted)events.push(make('admin','',(process.env.ADMIN_EMAIL||'').trim().toLowerCase(),`/admin?tab=properties&propertyId=${encodeURIComponent(id)}`));
   return events;
 }
 
@@ -126,7 +122,7 @@ export async function stagePropertyParticipantEvents(tx:FirebaseFirestore.Transa
  const previous=entries(before?.tenants),tenants=entries(property.tenants),events=property.createdAs==='tenant'?[]:tenantAddedEvents(property,previous,tenants);
   const termsChanged=['monthlyRent','securityDeposit','paymentDueDate','agreementStartDate','agreementEndDate','rentSchedule'].some(field=>field in updates&&(field==='rentSchedule'?!sameRentSchedule(updates[field],before?.[field]):JSON.stringify(updates[field])!==JSON.stringify(before?.[field])))||Array.isArray(updates.tenants)&&tenants.some(tenant=>{const old=previous.find(entry=>entry.id===tenant.id);return old&&['monthlyRent','securityDeposit','paymentDueDate','leaseStartDate','leaseEndDate','rentSchedule'].some(field=>(field==='rentSchedule'?!sameRentSchedule(tenant[field],old[field]):JSON.stringify(tenant[field])!==JSON.stringify(old[field])));});
  const effectiveNotice='rentSchedule'in updates&&!sameRentSchedule(updates.rentSchedule,before?.rentSchedule)?` Schedule changes take effect from ${formatDisplayDate(property.rentEffectiveFrom, {}, 'the authorized effective date')}; review the dated rent periods in your property details.`:'';
- if(before&&termsChanged)events.push({eventType:'tenancy.rental_terms_updated',eventId:`${s(property.id)}:${String(wireValue(property.updatedAt))}:terms`,recipients:[...(property.ownerUID?[{uid:s(property.ownerUID),role:'owner'}]:[]),...tenants.filter(tenant=>tenant.isActive===true&&tenant.userUID).map(tenant=>({uid:s(tenant.userUID),role:'tenant'}))],propertyId:s(property.id),recordId:s(property.id),templateId:'rental-terms-updated',subject:'Rental terms updated',title:'Rental terms updated',bodyHtml:`<p>The rental terms for <strong>${escapeHtml(s(property.title))}</strong> were updated.${escapeHtml(effectiveNotice)}</p>`,bodyText:`The rental terms for ${s(property.title)} were updated.${effectiveNotice}`,action:{label:'View rental details',path:`/manage-property/${s(property.id)}`}});
- for(const old of previous.filter(t=>t.isActive===true&&!tenants.some(n=>n.id===t.id&&n.isActive===true)))events.push({eventType:'tenancy.tenant_removed',eventId:`${s(property.id)}:${s(old.id)}:${String(wireValue(property.updatedAt))}:removed`,recipients:[...(property.ownerUID?[{uid:s(property.ownerUID),role:'owner'}]:[]),...(old.userUID?[{uid:s(old.userUID),role:'former_tenant'}]:[])],propertyId:s(property.id),recordId:s(old.id),templateId:'tenant-removed',subject:'Tenant relationship ended',bodyHtml:'<p>The tenancy relationship was ended. Review your property history.</p>',bodyText:'The tenancy relationship was ended. Review your property history.',action:{label:'View property',path:`/manage-property/${s(property.id)}`}});
+ if(before&&termsChanged)events.push({emailContext:propertyEmailContext(property,[{label:'Effective from',value:property.rentEffectiveFrom,format:'date'},{label:'Current contractual monthly rent',value:propertyPricing(property).label==='Current contractual monthly rent'?propertyPricing(property).amount:undefined,format:'money'},{label:'Security deposit',value:property.securityDeposit,format:'money'},{label:'Rent due day',value:property.paymentDueDate}]),eventType:'tenancy.rental_terms_updated',eventId:`${s(property.id)}:${String(wireValue(property.updatedAt))}:terms`,recipients:[...(property.ownerUID?[{uid:s(property.ownerUID),role:'owner',name:s(property.ownerName)}]:[]),...tenants.filter(tenant=>tenant.isActive===true&&tenant.linkConfirmationRequired!==true&&tenant.userUID).map(tenant=>({uid:s(tenant.userUID),role:'tenant'}))],propertyId:s(property.id),recordId:s(property.id),templateId:'rental-terms-updated',subject:'Rental terms updated',title:'Rental terms updated',bodyHtml:`<p>The rental terms for <strong>${escapeHtml(s(property.title))}</strong> were updated.${escapeHtml(effectiveNotice)}</p>`,bodyText:`The rental terms for ${s(property.title)} were updated.${effectiveNotice}`,action:{label:'View rental details',path:`/manage-property/${s(property.id)}`}});
+ for(const old of previous.filter(t=>t.isActive===true&&!tenants.some(n=>n.id===t.id&&n.isActive===true)))events.push({eventType:'tenancy.tenant_removed',eventId:`${s(property.id)}:${s(old.id)}:${String(wireValue(property.updatedAt))}:removed`,recipients:[...(property.ownerUID?[{uid:s(property.ownerUID),role:'owner',name:s(property.ownerName)}]:[]),...(old.userUID?[{uid:s(old.userUID),role:'former_tenant'}]:[])],propertyId:s(property.id),recordId:s(old.id),templateId:'tenant-removed',subject:'Tenant relationship ended',bodyHtml:'<p>The tenancy relationship was ended. Review your property history.</p>',bodyText:'The tenancy relationship was ended. Review your property history.',action:{label:'View property',path:`/manage-property/${s(property.id)}`}});
  const staged=[];for(const event of events)staged.push(await stageUserEvent(tx,event));return {ids:staged.map(i=>i.id),write:()=>staged.forEach(i=>i.write())};
 }

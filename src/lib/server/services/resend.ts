@@ -1,4 +1,5 @@
 import 'server-only';
+import {emailTextFromHtml} from '@/lib/email-design';
 import {normalizeEmailAddress} from '@/lib/email-address';
 export interface Email {to:string;subject:string;html:string;text?:string}
 export const DEFAULT_EMAIL_SENDER='connect@propbank.care';
@@ -17,7 +18,9 @@ export async function sendEmail(mail:Email,idempotencyKey?:string) {
   if(!mail.to)throw new Error('Email recipient is required');
   if(!process.env.RESEND_API_KEY)throw new EmailConfigurationError('RESEND_API_KEY is not configured');
   const from=getSenderAddress();
-  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json',...(idempotencyKey!==undefined?{'Idempotency-Key':idempotencyKey}:{})},body:JSON.stringify({from:`PropBank <${from}>`,to:[mail.to],subject:mail.subject,html:mail.html.replaceAll('connectpropbank@gmail.com',from),...(mail.text?{text:mail.text}:{})}),signal:AbortSignal.timeout(30000)});
+  // Legacy footer compatibility must never rewrite real customer data in new templates.
+  const html=mail.html.includes('data-pb-email="2"')?mail.html:mail.html.replaceAll('connectpropbank@gmail.com',from);
+  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json',...(idempotencyKey!==undefined?{'Idempotency-Key':idempotencyKey}:{})},body:JSON.stringify({from:`PropBank <${from}>`,to:[mail.to],subject:mail.subject,html,text:mail.text||emailTextFromHtml(html)}),signal:AbortSignal.timeout(30000)});
   if(!response.ok){
     let providerCode='provider_error';
     try{const data=await response.json() as {name?:unknown;message?:unknown};

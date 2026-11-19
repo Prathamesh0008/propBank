@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/
 import { Textarea } from "@/ui/textarea";
 import { Label } from "@/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { auth } from "../../firebase";
 import { User, onAuthStateChanged } from "firebase/auth";
 import { API_BASE_URL } from "../../utils/config";
@@ -20,6 +20,8 @@ const Review = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  const submission=useRef(false),requestKey=useRef(crypto.randomUUID());
+  const [reviewTenantId,setReviewTenantId]=useState('');
   const [user, setUser] = useState<User | null>(null);
   const [property, setProperty] = useState<any>(null);
   const [reviewerType, setReviewerType] = useState<string>("");
@@ -102,6 +104,7 @@ const Review = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if(submission.current)return;
 
     if (!user) {
       toast({
@@ -127,13 +130,16 @@ const Review = () => {
       toast({title:'Review Required',description:'Please provide at least one review response.',variant:'destructive'});
       return;
     }
-    setSubmitting(true);
+    if(reviewerType==='owner'&&property?.tenants?.filter((t:any)=>t.isActive).length>1&&!reviewTenantId){toast({title:'Choose a tenancy',description:'Select the tenant being reviewed.',variant:'destructive'});return;}
+    submission.current=true;setSubmitting(true);
     try {
       const response = await apiFetch(`${API_BASE_URL}/reviews`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-User-ID': user.uid,
+          'Idempotency-Key':requestKey.current,
+          ...(reviewTenantId?{'X-Tenancy-ID':reviewTenantId}:{}),
         },
         body: JSON.stringify({
           propertyId: propertyId || '',
@@ -144,7 +150,8 @@ const Review = () => {
 
       const data = await response.json();
 
-      if (data.success) {
+      if (response.ok&&data.success) {
+        requestKey.current=crypto.randomUUID();
         toast({
           title: "Review Submitted",
           description: "Your review has been submitted successfully and the admin has been notified.",
@@ -162,7 +169,7 @@ const Review = () => {
         variant: "destructive"
       });
     } finally {
-      setSubmitting(false);
+      submission.current=false;setSubmitting(false);
     }
   };
 
@@ -203,6 +210,7 @@ const Review = () => {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-8">
+              {reviewerType==='owner'&&property?.tenants?.filter((t:any)=>t.isActive).length>1&&<div><Label htmlFor="review-tenancy">Tenant being reviewed</Label><select id="review-tenancy" required value={reviewTenantId} onChange={e=>setReviewTenantId(e.target.value)}><option value="">Choose tenant</option>{property.tenants.filter((t:any)=>t.isActive).map((t:any)=><option key={t.id} value={t.id}>{[t.firstName,t.lastName].filter(Boolean).join(' ')||'Tenant'}</option>)}</select></div>}
               {reviewerType&&<p className="text-sm text-muted-foreground">
                 {reviewerType==='owner'?'You are reviewing the active tenant as the property owner.':'You are reviewing the property owner as an active tenant.'}
               </p>}

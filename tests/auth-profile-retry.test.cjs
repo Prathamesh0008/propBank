@@ -59,3 +59,11 @@ test('explicit completion invalidates a stale in-flight profile check without ch
  const fresh=await client.loadAuthProfile('member');assert.equal(fresh.data.profileComplete,true);assert.equal(calls,2);
  release(Response.json({profileComplete:false}));assert.equal((await stale).data.profileComplete,false);
 });
+
+test('profile response from a previous UID cannot be consumed after an account switch',async()=>{
+ let release;const held=new Promise(resolve=>{release=resolve;});
+ const auth={currentUser:{uid:'member',getIdToken:async()=> 'token'},authStateReady:async()=>{}};
+ const client=loadProfileClient(async()=>held,auth),request=client.loadAuthProfile('member');
+ await new Promise(setImmediate);auth.currentUser={uid:'other',getIdToken:async()=> 'other'};
+ release(Response.json({profileComplete:true}));await assert.rejects(()=>request,/Account changed/);
+});

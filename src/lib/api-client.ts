@@ -47,17 +47,21 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   return response;
 }
 
-export type AuthProfileResult={response:Response;data:{profileExists?:boolean;profileComplete?:boolean;status?:string;message?:string;code?:string}};
+export type AuthProfileResult={response:Response;data:{role?:string;profileExists?:boolean;profileComplete?:boolean;status?:string;message?:string;code?:string}};
 const authProfileRequests=new Map<string,Promise<AuthProfileResult>>();
 // Explicit profile completion/retry must not reuse a check started before the write.
 export function invalidateAuthProfile(uid:string){authProfileRequests.delete(uid);}
 export function loadAuthProfile(uid:string):Promise<AuthProfileResult>{
+  const checkIdentity=()=>{if(auth.currentUser?.uid!==uid){const error=new Error('Account changed before profile validation completed');error.name='AbortError';throw error;}};
+  checkIdentity();
   const existing=authProfileRequests.get(uid);if(existing)return existing;
   const request=(async()=>{
     let result:AuthProfileResult|undefined;
     for(let attempt=0;attempt<2;attempt++){
+      checkIdentity();
       const response=await apiFetch('/api/auth/user',{cache:'no-store'});
       const data=await response.json().catch(()=>({})) as AuthProfileResult['data'];
+      checkIdentity();
       result={response,data};
       if(![500,503].includes(response.status)||data.code==='FIRESTORE_RESOURCE_EXHAUSTED'||attempt===1)return result;
       await new Promise(resolve=>setTimeout(resolve,350));

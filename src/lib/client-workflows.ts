@@ -3,8 +3,8 @@ import {rentDate} from './rent-resolution';
 import type {AgreementInventory} from './agreement-inventory';
 import { apiFetch } from './api-client';
 
-export async function workflowRequest<T>(path:string,body?:unknown,method=body===undefined?'GET':'POST'):Promise<T> {
-  const response=await apiFetch(`/api/${path}`,{method,...(body===undefined?{}:{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})});
+export async function workflowRequest<T>(path:string,body?:unknown,method=body===undefined?'GET':'POST',headers:Record<string,string>={}):Promise<T> {
+  const response=await apiFetch(`/api/${path}`,{method,...(body===undefined?{}:{headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)})});
   const data=await response.json();
   if(!response.ok||data.success===false)throw new Error(data.message||`Request failed (${response.status})`);
   return data as T;

@@ -80,7 +80,7 @@ test('reviews preserve nested rating defaults, owner/tenant metadata and structu
  const app=isolated({users,properties}),r=route(app,'reviews');
  const result=await r.POST(request('/reviews','tenant','POST',{propertyId:'P',reviewerType:'tenant',tenantPart:{overallExperience:'Great',softNature:'Yes'}}));assert.equal(result.status,201);
  const {review}=await result.json();assert.equal(review.reviewerId,'tenant');assert.equal(review.tenantId,'T');assert.equal(review.tenantPart.overallExperience,'Great');assert.equal(review.ownerPart.overallExperience,'');assert.equal(review.tenantPart.ownerTransparent,'');assert.ok(app.state.reviews[review.id].createdAt instanceof Date);
- await app.flush();const notification=Object.values(app.state.admin_notifications)[0];assert.equal(notification.reviewerType,'tenant');assert.match(notification.message,/- Overall Experience: Great/);assert.equal(notification.tenantPart.softNature,'Yes');
+ await app.flush();const notification=Object.values(app.state.admin_notifications)[0];assert.equal(notification.reviewerType,'tenant');assert.match(notification.message,/Review submitted.*Existing Home/);assert.equal(notification.tenantPart.overallExperience,'Great');assert.match(notification.message,/Tenant \(Tenant\)/);assert.equal(notification.tenantPart.softNature,'Yes');
 });
 test('review relationship is derived from trusted property membership',async()=>{
  const app=isolated({users,properties}),r=route(app,'reviews');

@@ -1,4 +1,7 @@
 "use client";
+import {propertyPriceText, propertyAreaText, propertyOccupancy} from '@/lib/property-presentation';
+
+import {formatAddress} from "@/lib/address-format";
 import {formatDisplayDate, formatDisplayTime} from '@/lib/date-format';
 
 import {calendarToday,calendarValue,parseCalendarDate} from "@/lib/calendar-date";
@@ -64,6 +67,7 @@ interface RaisedRequest {
   serviceImage?: string;
   timestamp: string;
   isRead: boolean;
+  status?:string;
   resolvedAt?: string; // Timestamp when marked as resolved
   priority?: string;
   adminRemarks?: string;
@@ -366,10 +370,10 @@ const PropertyDetails = () => {
           'other_service_request',
           'agreement_renewal',
           'agreement_termination',
-          'document_upload'
+          'document_upload','review','tenant_confirmed','tenant_assigned','rental_terms_changed'
         ];
         const filteredRequests = Array.isArray(data)
-          ? data.filter((req: RaisedRequest) => requestTypes.includes(req.type))
+          ? data.filter((req: RaisedRequest) => requestTypes.includes(req.type)||req.type.startsWith('agreement_renew'))
           : [];
         setRaisedRequests(filteredRequests);
       }
@@ -378,14 +382,7 @@ const PropertyDetails = () => {
     }
   };
 
-  const formatPrice = (property: Property) => {
-    if (property.listingType === 'rent') {
-      return property.monthlyRent ? `₹${Number(property.monthlyRent).toLocaleString()}/month` : 'Price not set';
-    } else if (['sell','pre_leased'].includes(property.listingType)) {
-      return property.sellingPrice ? `₹${Number(property.sellingPrice).toLocaleString()}` : 'Price not set';
-    }
-    return 'Price not set';
-  };
+  const formatPrice = (property: Property) => propertyPriceText(property);
 
   const getListingTypeBadge = (listingType: string) => {
     if (listingType === 'rent') {
@@ -522,7 +519,7 @@ const PropertyDetails = () => {
               </Badge>
               <Badge variant="outline" className={`border-white/30 bg-white/10 backdrop-blur-sm px-3 py-1 ${property.rentalStatus === 'rented' ? 'text-amber-300 border-amber-300/50' : 'text-green-300 border-green-300/50'
                 }`}>
-                {property.rentalStatus === 'rented' ? 'Rented' : 'Available'}
+                {propertyOccupancy(property)}
               </Badge>
             </div>
 
@@ -570,7 +567,7 @@ const PropertyDetails = () => {
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-2">
                   <MapPin className="h-5 w-5 text-muted-foreground" />
-                  <span>{property.address || property.location}, {property.city}, {property.state} {property.zipCode}</span>
+                  <span>{formatAddress(property.address || property.location, property.city, [property.state, property.zipCode].filter(value => String(value ?? "").trim()).join(" "))}</span>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -681,17 +678,17 @@ const PropertyDetails = () => {
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="text-center">
-                    <div className="text-xl font-semibold">{property.carpetArea || 'N/A'}</div>
+                    <div className="text-xl font-semibold">{propertyAreaText(property,'carpetArea')}</div>
                     <div className="text-sm text-muted-foreground">Carpet Area</div>
                   </div>
                   {property.plotArea && (
                     <div className="text-center">
-                      <div className="text-xl font-semibold">{property.plotArea}</div>
+                      <div className="text-xl font-semibold">{propertyAreaText(property,'plotArea')}</div>
                       <div className="text-sm text-muted-foreground">Plot Area</div>
                     </div>
                   )}
                   <div className="text-center">
-                    <div className="text-xl font-semibold">{property.constructedArea || 'N/A'}</div>
+                    <div className="text-xl font-semibold">{propertyAreaText(property,'constructedArea')}</div>
                     <div className="text-sm text-muted-foreground">Constructed Area</div>
                   </div>
                 </div>
@@ -1017,7 +1014,11 @@ const PropertyDetails = () => {
                           case 'document_upload': return 'Document Upload';
                           case 'agreement_renewal': return 'Agreement Renewal';
                           case 'agreement_termination': return 'Agreement Termination';
-                          default: return 'Request';
+                          case 'review': return 'Review';
+                          case 'tenant_confirmed': return 'Tenancy confirmed';
+                          case 'tenant_assigned': return 'Tenant assigned';
+                          case 'rental_terms_changed': return 'Rental terms updated';
+                          default: return type.startsWith('agreement_renew')?'Agreement Renewal':'Request';
                         }
                       };
 
@@ -1035,6 +1036,7 @@ const PropertyDetails = () => {
                       };
 
                       const getStatusBadge = (request: RaisedRequest) => {
+                        if(request.status)return <Badge variant="outline" className="text-xs">{request.status.replaceAll("_"," ")}</Badge>;
                         if (request.isRead) {
                           return (
                             <div className="flex flex-col items-end gap-1">

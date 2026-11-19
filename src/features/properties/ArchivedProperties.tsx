@@ -1,5 +1,7 @@
 "use client";
 
+import {formatAddress} from "@/lib/address-format";
+
 import { apiFetch } from '@/lib/api-client';
 
 import { Building2, Archive, ArrowLeft, Eye, Edit, MoreVertical } from "lucide-react";
@@ -205,7 +207,7 @@ const ArchivedProperties = () => {
                             {property.unitNumber ? ` (${property.unitNumber})` : ""}
                           </h2>
                           <p className={styles.address}>
-                            {property.address}, {property.city}, {property.state}
+                            {formatAddress(property.address, property.city, property.state)}
                           </p>
                         </div>
                         <DropdownMenu>

@@ -6,7 +6,7 @@ const ok=()=>new Response(null,{status:204}),tick=()=>new Promise(setImmediate);
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done;});return {promise,resolve};};
 function harness(options={}){
  const auth={currentUser:options.user||null},observers=new Set(),observerErrors=new Set(),calls=[],notices=[],dismissed=[],invalidated=[],slots=[],effects=[],timers=new Set(),events=new Map();
- let cursor=0,dirty=false,tree,lastNotice=-1,clearCount=0,profileComplete=options.profileComplete!==false;
+ let signOutCalls=0;let cursor=0,dirty=false,tree,lastNotice=-1,clearCount=0,profileComplete=options.profileComplete!==false;
  const manager=core.createPrivateFileSession({ready:()=>options.ready||Promise.resolve(),currentUser:()=>auth.currentUser,wait:async()=>{},request:async(method,token)=>{calls.push({method,token});return options.request?options.request(method,token):ok();}});
  function state(initial){const key=cursor++;if(!(key in slots))slots[key]=typeof initial==='function'?initial():initial;return [slots[key],value=>{const next=typeof value==='function'?value(slots[key]):value;if(!Object.is(next,slots[key])){slots[key]=next;dirty=true;}}];}
  const same=(a,b)=>a&&b&&a.length===b.length&&a.every((value,i)=>Object.is(value,b[i]));
@@ -16,7 +16,7 @@ function harness(options={}){
  const window={setInterval:fn=>{timers.add(fn);return fn;},clearInterval:id=>timers.delete(id),addEventListener:(name,fn)=>{if(!events.has(name))events.set(name,new Set());events.get(name).add(fn);},removeEventListener:(name,fn)=>events.get(name)?.delete(fn)};
  const scoped=name=>{
   if(name==='react')return fakeReact;if(name==='@tanstack/react-query')return {useQueryClient:()=>queryClient};
-  if(name==='@/firebase')return {auth};if(name==='firebase/auth')return {onIdTokenChanged:(_,fn,onError)=>{observers.add(fn);if(onError)observerErrors.add(onError);assert.equal(fn(auth.currentUser),undefined);return ()=>{observers.delete(fn);observerErrors.delete(onError);};}};
+  if(name==='@/firebase')return {auth,signOutUser:async()=>{signOutCalls++;if(options.signOutResponse)await options.signOutResponse();auth.currentUser=null;for(const fn of [...observers])fn(null);}};if(name==='firebase/auth')return {onIdTokenChanged:(_,fn,onError)=>{observers.add(fn);if(onError)observerErrors.add(onError);assert.equal(fn(auth.currentUser),undefined);return ()=>{observers.delete(fn);observerErrors.delete(onError);};}};
   if(name==='@/lib/private-file-session')return core;if(name==='@/lib/private-file-client')return {privateFileSession:manager,claimFileSessionNotice:revision=>{if(lastNotice===revision)return false;lastNotice=revision;return true;}};
   if(name==='@/lib/data-refresh')return {queryKeysByDomain:{properties:[],documents:[]},subscribeDataRefresh:()=>()=>{}};
   if(name==='@/hooks/use-toast')return {useToast:()=>({toast,dismiss})};if(name==='@/ui/toast')return {ToastAction:()=>null};if(name==='@/lib/api-client'){const apiFetch=async url=>url==='/api/auth/user'&&options.profileResponse?options.profileResponse():new Response(url==='/api/auth/user'?JSON.stringify({success:true,profileComplete}):'{"success":true}');return {apiFetch,invalidateAuthProfile:()=>{},loadAuthProfile:async()=>{const response=await apiFetch('/api/auth/user');return {response,data:await response.clone().json()};}};}return require(name);
@@ -24,7 +24,7 @@ function harness(options={}){
  const output={};new Function('exports','require','window',compile('src/contexts/AuthContext.tsx'))(output,scoped,window);
  const render=()=>{cursor=0;dirty=false;tree=output.AuthProvider({children:null});for(const effect of effects)if(effect?.pending){const fn=effect.pending;effect.pending=null;effect.cleanup=fn();}return tree.props.value;};
  const settle=async()=>{for(let i=0;i<8;i++){await tick();if(dirty)render();}return tree.props.value;};
- return {auth,calls,notices,dismissed,invalidated,timers,observers,render,settle,manager,value:()=>tree.props.value,clearCount:()=>clearCount,
+ return {auth,calls,notices,dismissed,invalidated,timers,observers,render,settle,manager,value:()=>tree.props.value,clearCount:()=>clearCount,signOutCalls:()=>signOutCalls,
   failInitialization(){for(const fn of observerErrors)fn(new Error('isolated auth failure'));},
   emit(user){auth.currentUser=user;for(const fn of [...observers])assert.equal(fn(user),undefined);},
   completeProfile(){profileComplete=true;for(const fn of events.get('propbank:profile-completed')||[])fn();},
@@ -33,8 +33,8 @@ function harness(options={}){
  };
 }
 const user=uid=>({uid,emailVerified:true,getIdToken:async()=>uid});
-test('auth observer stays synchronous, waits for readiness and publishes authenticated UI after initialization',async()=>{
- const ready=deferred(),h=harness({user:user('A'),ready:ready.promise});h.render();await h.settle();assert.equal(h.calls.length,0);assert.equal(h.value().loading,true);assert.equal(h.value().user,null);ready.resolve();await h.settle();assert.equal(h.value().loading,false);assert.equal(h.value().user.uid,'A');assert.equal(h.value().fileAccess.phase,'ready');assert.equal(h.notices.length,0);h.unmount();
+test('auth observer stays synchronous and publishes validated account independently of optional file readiness',async()=>{
+ const ready=deferred(),h=harness({user:user('A'),ready:ready.promise});h.render();await h.settle();assert.equal(h.calls.length,0);assert.equal(h.value().loading,false);assert.equal(h.value().user.uid,'A');assert.notEqual(h.value().fileAccess.phase,'ready');ready.resolve();await h.settle();assert.equal(h.value().loading,false);assert.equal(h.value().user.uid,'A');assert.equal(h.value().fileAccess.phase,'ready');assert.equal(h.notices.length,0);h.unmount();
 });
 test('Strict Mode setup/cleanup/setup deduplicates session work and maintains one listener/timer',async()=>{
  const hold=deferred(),h=harness({user:user('A'),request:async method=>method==='POST'?hold.promise:ok()});h.render();await h.settle();assert.equal(h.calls.filter(call=>call.method==='POST').length,1);h.strictRemount();await h.settle();assert.equal(h.observers.size,1);assert.equal(h.timers.size,1);hold.resolve(ok());await h.settle();assert.equal(h.calls.filter(call=>call.method==='POST').length,1);assert.equal(h.value().fileAccess.phase,'ready');assert.equal(h.notices.length,0);h.unmount();

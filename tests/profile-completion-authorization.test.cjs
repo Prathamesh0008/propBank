@@ -30,6 +30,14 @@ test('complete active profile authorizes the shared protected boundary',async()=
   assert.equal(response.status,204);assert.equal(app.sessions.size,1);
 });
 
+test('onboarding role is read from the authenticated profile and cannot be selected by query parameters',async()=>{
+ const app=appWith(complete('member',{role:'admin'}),{member:{email:'member@test.invalid',email_verified:true,emailVerified:true}});
+ const response=await route(app,'auth/user').GET(request('/auth/user?uid=other&role=individual','member'));
+ assert.equal(response.status,200);assert.equal((await response.json()).role,'admin');
+ const anonymous=await route(app,'auth/user').GET(request('/auth/user?uid=member'));
+ assert.equal(anonymous.status,401);
+});
+
 test('self user details reuse the authoritative authorization profile read',async()=>{
   const app=appWith(complete(),{member:{email:'member@test.invalid',email_verified:true,emailVerified:true}});
   const response=await route(app,'users/[id]').GET(request('/users/member','member'),{params:Promise.resolve({id:'member'})});

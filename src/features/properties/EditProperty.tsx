@@ -1,4 +1,5 @@
 "use client";
+import {propertyEditPayload} from '@/lib/property-edit-payload';
 import {formatDisplayDateTime} from '@/lib/date-format';
 
 import PropertyPurposeFields,{purposeFormSchema} from "./PropertyPurposeFields";
@@ -78,6 +79,8 @@ const formSchema = z.object({
   unitCondition: z.string().optional(),
   maintenanceToBePaidBy: z.string().optional(),
   rentalStatus: z.string().optional(),
+  projectCondition:z.string().optional(),
+  possessionDate:z.string().optional(),
   saleStatus: z.string().optional(),
   buyerFirstName: z.string().optional(),
   buyerLastName: z.string().optional(),
@@ -225,6 +228,8 @@ const EditProperty = () => {
     },
   });
 
+  const dirtyFields = form.formState.dirtyFields; // Subscribe before render so explicit edits are tracked.
+
   const { data: propertyData, isLoading: loading } = usePropertyDetails(propertyId);
 
   useEffect(() => {
@@ -242,7 +247,7 @@ const EditProperty = () => {
       const formData = {
         propertyTitle: propertyData.title || "",
         propertyType: propertyData.propertyType || "",
-        ...Object.fromEntries(Object.keys(clientPropertySchema).map(key=>[key,propertyData[key]|| (key==="propertyCategory"?propertyData.propertyType:"")])),
+        ...Object.fromEntries(Object.keys(clientPropertySchema).map(key=>[key,String(propertyData[key] ?? (key==="propertyCategory"?propertyData.propertyType:""))])),
         configuration: propertyData.configuration || "",
         listingType: propertyData.listingType || "",
         preLeased: propertyData.preLeased || null,
@@ -256,10 +261,10 @@ const EditProperty = () => {
 
 
         // Pricing Details - Prefer active tenant data for lease details
-        monthlyRent: activeTenant?.monthlyRent || propertyData.monthlyRent || "",
+        monthlyRent: String(activeTenant?.monthlyRent ?? propertyData.monthlyRent ?? ""),
         escalationPercentage:propertyData.escalationPercentage||"",
         escalationAmount:propertyData.escalationAmount||"",
-        sellingPrice: propertyData.sellingPrice || "",
+        sellingPrice: String(propertyData.sellingPrice ?? ""),
         paymentDueDate: activeTenant?.paymentDueDate || propertyData.paymentDueDate || "",
         monthlyRent1stYear: propertyData.monthlyRent1stYear || "",
         monthlyRent2ndYear: propertyData.monthlyRent2ndYear || "",
@@ -269,7 +274,7 @@ const EditProperty = () => {
         rentToDate1: propertyData.rentToDate1 || "",
         rentFromDate2: propertyData.rentFromDate2 || "",
         rentToDate2: propertyData.rentToDate2 || "",
-        securityDeposit: activeTenant?.securityDeposit || propertyData.securityDeposit || "",
+        securityDeposit: String(activeTenant?.securityDeposit ?? propertyData.securityDeposit ?? ""),
         agreementPeriod: propertyData.agreementPeriod || "",
         agreementStartDate: activeTenant?.leaseStartDate || propertyData.agreementStartDate || "",
         agreementEndDate: activeTenant?.leaseEndDate || propertyData.agreementEndDate || "",
@@ -278,6 +283,8 @@ const EditProperty = () => {
         unitCondition: propertyData.unitCondition || "",
         maintenanceToBePaidBy: propertyData.maintenanceToBePaidBy || "",
         rentalStatus: propertyData.rentalStatus || "",
+        projectCondition:propertyData.projectCondition ?? "",
+        possessionDate:propertyData.possessionDate ?? "",
         saleStatus: propertyData.isSold ? "sold" : "available",
         buyerFirstName: propertyData.buyers && propertyData.buyers.length > 0 ? propertyData.buyers[propertyData.buyers.length - 1].firstName || "" : "",
         buyerLastName: propertyData.buyers && propertyData.buyers.length > 0 ? propertyData.buyers[propertyData.buyers.length - 1].lastName || "" : "",
@@ -415,16 +422,16 @@ const EditProperty = () => {
   const onSubmit = async (data: FormData) => {
     try {
       // Validate pricing based on listing type
-      if (data.listingType === "rent" && (!data.monthlyRent || data.monthlyRent.trim() === "")) {
+      if (data.listingType === "rent" && (dirtyFields.listingType || dirtyFields.monthlyRent || dirtyFields.expectedRent) && !(data.rentalStatus === "rented" ? data.monthlyRent : data.expectedRent)?.trim()) {
         toast({
           title: "Missing Monthly Rent",
-          description: "Please enter the monthly rent amount for rental properties.",
+          description: "Please enter the applicable asking or contractual monthly rent.",
           variant: "destructive",
         });
         return;
       }
 
-      if (data.listingType === "sell" && (!data.sellingPrice || data.sellingPrice.trim() === "")) {
+      if (data.listingType === "sell" && (dirtyFields.listingType || dirtyFields.sellingPrice) && (!data.sellingPrice || data.sellingPrice.trim() === "")) {
         toast({
           title: "Missing Selling Price",
           description: "Please enter the selling price for sale properties.",
@@ -532,7 +539,7 @@ const EditProperty = () => {
         ...Object.fromEntries(Object.entries(safeRestData).filter(([key])=>!["saleStatus","buyerFirstName","buyerLastName","buyerPhone"].includes(key))),
         title: propertyTitle,
         images: uploadedImages,
-        ...(checklistApplicable||furnishingSelectionChanged?{furnishedChecklist:checkedFurnishedItems}:{}),
+        ...(furnishingSelectionChanged?{furnishedChecklist:checkedFurnishedItems}:{}),
         ownerUID: property?.ownerUID || currentUser.uid,
         tenants: updatedTenants,
         isSold: data.listingType === "sell" && data.saleStatus === "sold",
@@ -544,7 +551,7 @@ const EditProperty = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(normalizePurpose(updateData,property as any))
+        body: JSON.stringify(normalizePurpose(propertyEditPayload(updateData,dirtyFields,property as any),property as any))
       });
 
       const result = await response.json();
@@ -833,14 +840,16 @@ const EditProperty = () => {
                     </h3>
                   </div>
 
+                  {['sell','sell_rent'].includes(form.watch('listingType'))&&<FormField control={form.control} name="projectCondition" render={({field})=><FormItem><FormLabel>Project Condition</FormLabel><FormControl><select disabled={!isPropertyEditable()} className="h-10 w-full rounded border px-3" {...field} value={field.value||''}><option value="">Select project condition</option>{field.value&&!['New Project','Ready Project','Preleased'].includes(field.value)&&<option value={field.value}>{field.value}</option>}{['New Project','Ready Project','Preleased'].map(value=><option key={value}>{value}</option>)}</select></FormControl><FormMessage/></FormItem>}/>}
+                  {(['sell','sell_rent'].includes(form.watch('listingType'))||form.watch('listingType')==='rent'&&form.watch('rentalStatus')==='available')&&<FormField control={form.control} name="possessionDate" render={({field})=><FormItem><FormLabel>Possession Date</FormLabel><FormControl><DatePicker disabled={!isPropertyEditable()} value={field.value} onChange={field.onChange}/></FormControl><FormMessage/></FormItem>}/>}
                   {form.watch("listingType") === "rent" && (
                     <>
                       <FormField
                         control={form.control}
-                        name="monthlyRent"
+                        name={form.watch("rentalStatus") === "rented" ? "monthlyRent" : "expectedRent"}
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Monthly Rent (₹) *</FormLabel>
+                            <FormLabel>{form.watch("rentalStatus") === "rented" ? "Contractual Monthly Rent (\u20b9) *" : "Expected Monthly Asking Rent (\u20b9) *"}</FormLabel>
                             <FormControl>
                               <Input
                                 placeholder="e.g., 25000"
@@ -1224,7 +1233,8 @@ const EditProperty = () => {
         onClose={() => setShowFurnishedModal(false)}
         onSave={(checklist) => {
           setFurnishedChecklist(checklist);
-          form.setValue("furnishedChecklist", checklist);
+          form.setValue("furnishedChecklist", checklist,{shouldDirty:true});
+          setFurnishingSelectionChanged(true);
         }}
         initialChecklist={furnishedChecklist}
       />

@@ -1,3 +1,4 @@
+import {stagePropertyActivity} from './property-activity';
 import {sameRentSchedule,rentContract} from '@/lib/rent-resolution';
 import {documentPage,pageOptions,memberPropertyPage} from '../query-pages';
 import {stagePropertyParticipantEvents} from './property-effects';
@@ -20,7 +21,7 @@ import { COLLECTIONS, SITE_SETTINGS_DOCUMENT, getDatabase } from '../firestore';
 import { requireOwnerOrAdmin, requireSelfOrAdmin, isPropertyTenant } from '../permissions';
 import { ApiError, jsonResponse } from '../http';
 import { projections } from './go-contracts';
-import { model, storeModel, propertyResponse, publicPropertyResponse, ownerReviewFields, isRecord, stringValue as s, type RecordData } from './contracts';
+import { model, storeModel, propertyReadValues, propertyResponse, publicPropertyResponse, ownerReviewFields, isRecord, stringValue as s, type RecordData } from './contracts';
 import { schemas } from './go-contracts';
 import { getUser } from './users';
 import { getFirebaseAdminAuth } from '../firebase-admin';
@@ -42,7 +43,7 @@ function requirePropertyEditor(user:Awaited<ReturnType<typeof requireUser>>,prop
   requireOwnerOrAdmin(user,{ownerUID:s(property.ownerUID)});
 }
 function fromDocument(doc:DocumentSnapshot,defaults=true):RecordData {
-  const property={...doc.data(),...model('Property',doc.data() || {})};
+  const property={...doc.data(),...model('Property',propertyReadValues(doc.data() || {}))};
   property.id=doc.id;
   if (defaults) {
     if (!property.status) property.status=property.isActive?'active':'inactive';
@@ -82,7 +83,7 @@ export async function listProperties(request:Request) {
     requireSelfOrAdmin(user,ownerUID);
     const target={...user,uid:ownerUID,role:user.uid===ownerUID?user.role:'individual' as const,token:user.uid===ownerUID?user.token:{...user.token,email:'',email_verified:false}};
     const page=await memberPropertyPage(target,params.get('cursor')||'');
-    const rows=page.properties.map(p=>propertyResponse({...model('Property',p),...(p.ownerUID===ownerUID?Object.fromEntries(ownerReviewFields.filter(key=>key in p).map(key=>[key,p[key]])):{}),id:p.id,status:p.status||(p.isActive?'active':'inactive')},'normal',p.ownerUID===ownerUID?'owner':user.role==='agent'&&p.submittedByUID===ownerUID?'agent':'tenant'));
+    const rows=page.properties.map(p=>propertyResponse({...propertyReadValues(p),...model('Property',propertyReadValues(p)),...(p.ownerUID===ownerUID?Object.fromEntries(ownerReviewFields.filter(key=>key in p).map(key=>[key,p[key]])):{}),id:p.id,status:p.status||(p.isActive?'active':'inactive')},'normal',p.ownerUID===ownerUID?'owner':user.role==='agent'&&p.submittedByUID===ownerUID?'agent':'tenant'));
     return listResponse(rows,{ownerUID,nextCursor:page.nextCursor,coverageComplete:page.coverageComplete,legacyCompatibilityScan:true});
   }
   if(params.get('admin')==='true') {
@@ -130,7 +131,7 @@ export async function listTenantProperties(request:Request) {
   if (effectiveEmail && user.role!=='admin' && (user.token.email_verified!==true || user.token.email?.toLowerCase()!==effectiveEmail.toLowerCase())) throw new AccessError(403,'Access denied');
   const target={...user,uid:uid||(user.role==='admin'?'':user.uid),token:{...user.token,email:effectiveEmail,email_verified:!!effectiveEmail}};
   const page=await memberPropertyPage(target,params.get('cursor')||'',false);
-  return listResponse(page.properties.map(p=>propertyResponse({...model('Property',p),id:p.id,status:p.status||(p.isActive?'active':'inactive')},'normal','tenant')),{nextCursor:page.nextCursor,coverageComplete:page.coverageComplete,legacyCompatibilityScan:true});
+  return listResponse(page.properties.map(p=>propertyResponse({...propertyReadValues(p),...model('Property',propertyReadValues(p)),id:p.id,status:p.status||(p.isActive?'active':'inactive')},'normal','tenant')),{nextCursor:page.nextCursor,coverageComplete:page.coverageComplete,legacyCompatibilityScan:true});
 }
 export async function readProperty(request:Request,id:string) {
   const property=await getProperty(id);
@@ -371,6 +372,8 @@ export async function updateProperty(request:Request,id:string) {
   updates.updatedAt=now;
   if(req.status==='inactive'||req.isActive===false)Object.assign(updates,{status:'inactive',isActive:false});
   else if(req.status==='active'||req.isActive===true)Object.assign(updates,{status:'active',isActive:true});
+  // Keep the legacy address display alias synchronized with the form location.
+  if ('location' in updates && !('address' in updates)) updates.address=updates.location;
   await writeProperty(id,updates,user,false,undefined,Number(expectedRentVersion));
   const updated=await getProperty(id);
   if(!updated) throw new Error('Property disappeared after update');
@@ -455,6 +458,10 @@ async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnTyp
     const tenantRefs=Array.isArray(updates.tenants)?await Promise.all((updates.tenants as RecordData[]).map(t=>tx.get(db.collection(COLLECTIONS.tenants).doc(s(t.id))))):[];
     const lifecycle=await stageAdminLifecycle(tx,propertyLifecycleEvents(id,create?null:before.data()!,{...(before.data()||{}),...updates},user.uid,`property:${id}:${create?'created':randomUUID()}`).map(event=>event.type==='property_added'&&submission?.events.some(mail=>mail.recipientRole==='admin')?{...event,emailDelivery:submission.events.find(mail=>mail.recipientRole==='admin')}:event));invitationEvents.push(...lifecycle.events);
     const participants=await stagePropertyParticipantEvents(tx,create?null:before.data()!,{...(before.data()||{}),...updates,id},updates);participantIds.push(...participants.ids);
+    const meaningful=!create&&Object.entries(updates).some(([key,value])=>!['id','updatedAt','agreementHistory','rentTermsVersion','tenancyRevision'].includes(key)&&JSON.stringify(before.data()?.[key])!==JSON.stringify(value));
+    const activityEvents=propertyLifecycleEvents(id,before.data()!,{...before.data(),...updates},user.uid,'check');
+    const activity=meaningful&&!activityEvents.some(event=>['rental_terms_changed','tenant_assigned','tenant_removed','tenant_replaced'].includes(event.type))?await stagePropertyActivity(tx,user,{...before.data(),...updates,id},{recordId:id,id:`${id}:${String(updates.updatedAt instanceof Date?updates.updatedAt.toISOString():updates.updatedAt)}`,tenantScope:'none',notifyAdmin:activityEvents.length===0,eventType:'property.updated',type:'property_update',title:'Property details updated',details:'Property registration details changed',status:s(updates.moderationStatus||before.data()?.moderationStatus)||'updated'}):null;
+    if(activity)participantIds.push(...activity.ids);
     if(Array.isArray(updates.tenants)) {
       for(const tenantRef of tenantRefs)if(tenantRef.exists&&tenantRef.data()?.propertyId!==id)throw new AccessError(403,'Tenant belongs to another property');
       for(const record of records?.docs||[])if(!(updates.tenants as RecordData[]).some(t=>t.id===record.id))tx.update(record.ref,{isActive:false,updatedAt:new Date()});
@@ -463,7 +470,7 @@ async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnTyp
     }
     for(const doc of evidence?.docs||[])if(doc.data().accessScope!==PRE_LEASED_EVIDENCE)tx.set(doc.ref,{accessScope:PRE_LEASED_EVIDENCE},{merge:true});
     writeLinks();
-    lifecycle.write();participants.write();
+    lifecycle.write();participants.write();activity?.write();
     bindMedia();
     if(create)tx.create(ref,updates);else tx.update(ref,updates);
     if(submission){tx.create(submission.ref,{propertyId:id,submitterUID:user.uid,createdAt:new Date()});writeEmailOutbox(tx,submission.events);}

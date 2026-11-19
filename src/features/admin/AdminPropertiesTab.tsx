@@ -1,11 +1,11 @@
 "use client";
+import {propertyPriceText, propertyOccupancy} from '@/lib/property-presentation';
 import {formatDisplayDate} from '@/lib/date-format';
 
 import { useMemo, useState } from "react";
 import { adminPropertyDirectory, propertyReviewStatus, visibleAdminProperties } from "@/lib/admin-property-directory";
-import {matchesAdminPropertySection,adminAvailability,confirmedAdminTenants,type AdminPropertySection} from "@/lib/admin-property-views";
+import {matchesAdminPropertySection,type AdminPropertySection} from "@/lib/admin-property-views";
 import {purposeLabel} from '@/lib/property-purpose';
-import {resolveRent,localRentDate} from '@/lib/rent-resolution';
 import { Button } from "@/ui/button";
 import { Building2, Loader2, ArrowUpRight } from "lucide-react";
 import { Skeleton } from "@/ui/skeleton";
@@ -32,13 +32,6 @@ export const AdminPropertiesTab = ({section='all',overview=false,loading,propert
   const states=Array.from(new Set(["pending_review","approved","rejected","changes_requested",...directory.all.map(status)]));
   const labels:Record<string,string>={pending_review:'Pending Review',approved:'Approved',rejected:'Rejected',changes_requested:'Changes Requested',unreviewed:'Unreviewed'};
   const label=(value:string)=>labels[value]||value.replaceAll('_',' ');
-  const money=(value:unknown)=>Number.isFinite(Number(value))&&Number(value)>0?new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:0}).format(Number(value)):'Not recorded';
-  const financial=(p:Property)=>{
-    if(p.listingType==='manage')return 'Not applicable';
-    if(['sell','pre_leased'].includes(p.listingType))return `${money(p.sellingPrice||p.price)} / Selling price`;
-    const tenants=confirmedAdminTenants(p);
-    return tenants.length?tenants.map(tenant=>`${money(resolveRent(p,localRentDate(p),tenant).amount)} / month`).join(' / '):`${money(p.expectedRent||p.price)} / Asking rent`;
-  };
   const visible=visibleAdminProperties(directory,tab,filter).filter(p=>[p.title,p.buildingName,p.address,p.ownerName,p.id].some(value=>String(value||'').toLowerCase().includes(search.trim().toLowerCase())));
   return (
   <section className={styles.directory} aria-label={title}>
@@ -51,7 +44,7 @@ export const AdminPropertiesTab = ({section='all',overview=false,loading,propert
       return <tr key={property.id}><td><strong>{property.buildingName||property.title||'Unnamed property'}</strong><small>{[property.unitNumber,property.propertyType].filter(Boolean).join(' / ')||'Unit not recorded'}</small></td>
       <td>{reported?(property.reportedOwner?.personName||property.reportedOwner?.companyName||'Not recorded'):(property.ownerName||'Not recorded')}{reported&&<small>Reported owner / Verification pending</small>}</td>
       <td>{property.propertyType||'Not recorded'}<small>{purposeLabel(property.listingType)}</small></td><td><span className={styles.status} data-status={status(property)}>{label(status(property))}</span></td>
-      <td>{confirmedAdminTenants(property).length?'Confirmed tenancy':adminAvailability(property)==='available'?'Available':'Unknown'}</td><td>{financial(property)}</td><td>{property.agreementEndDate?<><small>Until {formatDisplayDate(property.agreementEndDate)}</small>{property.agreementStatus?.replaceAll('_',' ')||'Status not recorded'}</>:'Not recorded'}</td>
+      <td>{propertyOccupancy(property)}</td><td>{propertyPriceText(property)}</td><td>{property.agreementEndDate?<><small>Until {formatDisplayDate(property.agreementEndDate)}</small>{property.agreementStatus?.replaceAll('_',' ')||'Status not recorded'}</>:'Not recorded'}</td>
       <td><Button className={styles.action} variant="ghost" size="sm" onClick={()=>handleViewPropertyDetails(property.id)} disabled={loadingProperty} aria-label={`View details for ${property.title||property.id}`}>{loadingProperty&&selectedProperty?.id===property.id?<Loader2 className="h-4 w-4 animate-spin"/>:<ArrowUpRight size={16}/>}<span>Details</span></Button></td></tr>;
     })}</tbody></table></div>}
 

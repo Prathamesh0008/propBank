@@ -20,7 +20,7 @@ import { Label } from "@/ui/label";
 import { Textarea } from "@/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
 import { Checkbox } from "@/ui/checkbox";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "../../firebase";
 import { onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
@@ -108,6 +108,7 @@ const AddTenant = () => {
   const [editingTenantId,setEditingTenantId]=useState('');
   const [tenancyRevision,setTenancyRevision]=useState(0);
   const [inventoryLoaded,setInventoryLoaded]=useState(false);
+  const submission=useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
@@ -426,7 +427,7 @@ const AddTenant = () => {
   };
 
   const handleSubmit = async () => {
-    if (isSubmitting) return;
+    if (isSubmitting||submission.current) return;
     if(!inventoryLoaded){toast({title:'Property inventory not loaded',description:'Reload this page before saving tenant details.',variant:'destructive'});return;}
 
     const invalidTenants = tenants.filter(tenant => !validateTenant(tenant));
@@ -468,7 +469,7 @@ const AddTenant = () => {
     if(invalidNextAgreement){toast({title:'Check next agreement details',description:invalidNextAgreement,variant:'destructive'});return;}
 
     const invalidInventory=tenants.map(tenant=>inventoryError(tenant.inventory)).find(Boolean);if(invalidInventory){toast({title:'Check inventory',description:invalidInventory,variant:'destructive'});return;}
-    setIsSubmitting(true);
+    submission.current=true;setIsSubmitting(true);
     try {
       const propertyResponse = await apiFetch(`${API_BASE_URL}/properties/${propertyId}`);
       const propertyData = await propertyResponse.json();
@@ -534,7 +535,7 @@ const AddTenant = () => {
 
       const data = await response.json();
 
-      if (data.success) {
+      if (response.ok&&data.success) {
         await Promise.all(['relationshipLinks','userProperties','productHub','property','allProperties'].map(key=>queryClient.invalidateQueries({queryKey:[key]})));
         setIsSubmitting(false);
         setIsSuccess(true);
@@ -547,7 +548,7 @@ const AddTenant = () => {
           navigate(adminMode?"/admin":"/manage-property");
         }, 1500);
       } else {
-        setIsSubmitting(false);
+        submission.current=false;setIsSubmitting(false);
         toast({
           title: "Error",
           description: data.message || "Failed to add tenants",
@@ -556,7 +557,7 @@ const AddTenant = () => {
       }
 
     } catch (error) {
-      setIsSubmitting(false);
+      submission.current=false;setIsSubmitting(false);
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to save tenant details. Please try again.",
@@ -566,11 +567,11 @@ const AddTenant = () => {
   };
 
   const removeExistingTenant=async(tenantId:string)=>{
-    if(!adminMode||isSubmitting)return;
-    setIsSubmitting(true);
+    if(!adminMode||isSubmitting||submission.current)return;
+    submission.current=true;setIsSubmitting(true);
     try{const response=await apiFetch(`${API_BASE_URL}/admin/properties/${propertyId}/tenancy`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'remove',expectedRevision:tenancyRevision,tenantId})});const data=await response.json();if(!response.ok)throw new Error(data.message||'Tenant could not be removed');setExistingTenants([]);setTenancyRevision(Number(data.tenancyRevision));toast({title:'Tenant removed',description:'The previous tenancy remains in relationship history.'});}
     catch(error){toast({title:'Unable to remove tenant',description:error instanceof Error?error.message:'Please refresh and try again.',variant:'destructive'});}
-    finally{setIsSubmitting(false);}
+    finally{submission.current=false;setIsSubmitting(false);}
   };
 
   return (

@@ -1,4 +1,8 @@
 "use client";
+import {propertyPriceText} from '@/lib/property-presentation';
+import {hasEligibleAgreement} from "@/lib/agreement-eligibility";
+
+import {formatAddress} from "@/lib/address-format";
 import {leaseTenureLabel} from '@/lib/lease-tenure';
 import {formatDisplayDate, formatDisplayTime} from '@/lib/date-format';
 
@@ -289,59 +293,7 @@ const ManageProperty = () => {
     });
   }, [filteredTenantProperties]);
 
-  const formatPrice = (property: any) => {
-    if(property.listingType==='manage')return 'Private management';
-    // Helper function to get a valid price value
-    const getValidPrice = (value: any): number => {
-
-
-      if (!value) return 0;
-      if (value === "") return 0;
-
-      let numValue: number;
-      if (typeof value === 'string') {
-        // Remove any currency symbols, commas, or spaces
-        const cleanValue = value.replace(/[₹,$\s]/g, '');
-        numValue = parseFloat(cleanValue);
-      } else {
-        numValue = Number(value);
-      }
-
-      const result = isNaN(numValue) ? 0 : numValue;
-
-      return result;
-    };
-
-    if (property.listingType === 'rent') {
-      // Try multiple possible field names for monthly rent
-      const monthlyRent = getValidPrice(property.monthlyRent) ||
-        getValidPrice(property.monthly_rent) ||
-        getValidPrice(property.price);
-
-      if (monthlyRent > 0) {
-        return `₹${monthlyRent.toLocaleString()}/month`;
-      }
-    } else if (['sell','pre_leased'].includes(property.listingType)) {
-      // Try multiple possible field names for selling price
-      const sellingPrice = getValidPrice(property.sellingPrice) ||
-        getValidPrice(property.selling_price) ||
-        getValidPrice(property.price);
-
-
-
-      if (sellingPrice > 0) {
-        return `₹${sellingPrice.toLocaleString()}`;
-      }
-    }
-
-    // Final fallback to price field
-    const genericPrice = getValidPrice(property.price);
-    if (genericPrice > 0) {
-      return `₹${genericPrice.toLocaleString()}`;
-    }
-
-    return 'Price not set';
-  };
+  const formatPrice = (property: Property) => propertyPriceText(property);
 
   const getListingTypeBadge = (listingType: string) => {
     if(listingType==='manage')return <Badge variant="outline">To Manage ? Private</Badge>;
@@ -850,7 +802,7 @@ const ManageProperty = () => {
                                               {property.unitNumber ? ` (${property.unitNumber})` : ""}
                                               {property.buildingName && property.buildingName.trim()!==property.title?.trim() && <span className="block text-sm font-normal">{property.buildingName}</span>}
                                               <span className="block text-xs font-normal">Property ID: {property.id}{property.createdAs==="tenant" ? ` - Owner verification ${property.ownershipVerification||"pending"}` : ""}{property.agreementStatus ? ` · ${property.agreementStatus.replaceAll("_"," ")}` : ""}{property.agreementRequest?.status==="pending" ? ` · Pending ${property.agreementRequest.kind}` : ""}</span>
-                                              {property.address ? `, ${property.address}` : ""}
+                                              {formatAddress(property.address)}
                                             </h3>
                                             <Badge
                                               variant="outline"
@@ -931,7 +883,7 @@ const ManageProperty = () => {
                                           <DropdownMenuItem onClick={() => navigate(`/attach-documents/${property.id}?type=tds_report`)}>
                                             <FileText className="h-4 w-4 mr-2" />TDS Updation Report
                                           </DropdownMenuItem>
-                                          <DropdownMenuItem onClick={() => navigate(`/review/${property.id}`)}>
+                                          <DropdownMenuItem disabled={!property.tenants?.some((tenant:any)=>tenant.isActive===true)} onClick={() => navigate(`/review/${property.id}`)}>
                                             <Star className="h-4 w-4 mr-2" />
                                             Review
                                           </DropdownMenuItem>
@@ -948,12 +900,12 @@ const ManageProperty = () => {
                                             <Paperclip className="h-4 w-4 mr-2" />
                                             Attach Documents
                                           </DropdownMenuItem>
-                                          <DropdownMenuItem onClick={() => navigate(`/renew-agreement/${property.id}`)}>
+                                          <DropdownMenuItem disabled={!hasEligibleAgreement(property)} onClick={() => navigate(`/renew-agreement/${property.id}`)}>
                                             <RefreshCw className="h-4 w-4 mr-2" />
                                             Go for Renewal
                                           </DropdownMenuItem>
                                           <DropdownMenuItem
-                                            onClick={() => navigate(`/terminate-agreement/${property.id}`)}
+                                            disabled={!hasEligibleAgreement(property)} onClick={() => navigate(`/terminate-agreement/${property.id}`)}
                                             className="text-red-600"
                                           >
                                             <XCircle className="h-4 w-4 mr-2" />
@@ -1145,7 +1097,7 @@ const ManageProperty = () => {
                                               {property.unitNumber ? ` (${property.unitNumber})` : ""}
                                               {property.buildingName && property.buildingName.trim()!==property.title?.trim() && <span className="block text-sm font-normal">{property.buildingName}</span>}
                                               <span className="block text-xs font-normal">Property ID: {property.id}{property.agreementStatus ? ` ? ${property.agreementStatus.replaceAll("_"," ")}` : ""}{property.agreementRequest?.status==="pending" ? ` ? Pending ${property.agreementRequest.kind}` : ""}</span>
-                                              {property.address ? `, ${property.address}` : ""}
+                                              {formatAddress(property.address)}
                                             </h3>
                                             <Badge
                                               variant="outline"
@@ -1195,7 +1147,7 @@ const ManageProperty = () => {
                                           <DropdownMenuItem onClick={() => navigate(`/attach-documents/${property.id}?type=tds_report`)}>
                                             <FileText className="h-4 w-4 mr-2" />TDS Updation Report
                                           </DropdownMenuItem>
-                                          <DropdownMenuItem onClick={() => navigate(`/review/${property.id}`)}>
+                                          <DropdownMenuItem disabled={!property.tenants?.some((tenant:any)=>tenant.isActive===true)} onClick={() => navigate(`/review/${property.id}`)}>
                                             <Star className="h-4 w-4 mr-2" />
                                             Review
                                           </DropdownMenuItem>
@@ -1204,12 +1156,12 @@ const ManageProperty = () => {
                                             Other Related Services
                                           </DropdownMenuItem>
                                           <DropdownMenuSeparator />
-                                          <DropdownMenuItem onClick={() => navigate(`/renew-agreement/${property.id}`)}>
+                                          <DropdownMenuItem disabled={!hasEligibleAgreement(property)} onClick={() => navigate(`/renew-agreement/${property.id}`)}>
                                             <RefreshCw className="h-4 w-4 mr-2" />
                                             Request Renewal
                                           </DropdownMenuItem>
                                           <DropdownMenuItem
-                                            onClick={() => navigate(`/terminate-agreement/${property.id}`)}
+                                            disabled={!hasEligibleAgreement(property)} onClick={() => navigate(`/terminate-agreement/${property.id}`)}
                                             className="text-red-600"
                                           >
                                             <XCircle className="h-4 w-4 mr-2" />

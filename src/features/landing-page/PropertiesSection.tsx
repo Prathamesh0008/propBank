@@ -1,5 +1,7 @@
 "use client";
 
+import {formatAddress} from "@/lib/address-format";
+
 import PropertyPurposeSummary from "@/features/properties/PropertyPurposeSummary";
 import {purposeLabel} from "@/lib/property-purpose";
 
@@ -76,7 +78,7 @@ export const PropertiesSection: React.FC<PropertiesSectionProps> = ({
                   <div className={styles.listingBody}>
                     <div className={styles.listingMeta}><span>{property.propertyType || "Property"}</span>{property.configuration && <span>{property.configuration}</span>}</div>
                     <h3>{property.title || "Available property"}</h3>
-                    {(property.address || property.city) && <p className={styles.location}><MapPin size={15} aria-hidden="true"/>{property.address || property.city}</p>}
+                    {(property.address || property.city) && <p className={styles.location}><MapPin size={15} aria-hidden="true"/>{formatAddress(property.address) || formatAddress(property.city)}</p>}
                     <div className={styles.listingBottom}>
                       <PropertyPurposeSummary property={property}/><div className={styles.price}>{price > 0 ? `₹${price.toLocaleString("en-IN")}` : "Price on request"}{price > 0 && property.listingType === "rent" && <span> / month</span>}</div>
                       <div className={styles.actions}><PropertyDetailsDialog property={property} /><Button size="sm" disabled={sendingEnquiry === property.id} onClick={()=>handleEnquireProperty(property)}>{sendingEnquiry === property.id ? "Sending…" : "Enquire"}</Button></div>
