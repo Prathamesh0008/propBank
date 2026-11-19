@@ -1,5 +1,6 @@
 import {validPropertyMoney} from './property-money';
 import {indianMobile} from './indian-phone';
+import {leaseTenureError} from './lease-tenure';
 // Additive purposes: retain legacy sell_rent records unchanged.
 export const PROPERTY_PURPOSES = ['rent', 'sell', 'pre_leased', 'manage'] as const;
 export const purposeLabel = (value: string) => ({rent:'For Rent',sell:'For Sale',sell_rent:'For Sale / Rent',pre_leased:'Pre-Leased',manage:'To Manage'}[value] || value);
@@ -20,7 +21,7 @@ export function normalizePurpose(input: Record<string, any>, previous?: Record<s
   if(type==='pre_leased') {
     const p=input.preLeased??previous?.preLeased??{};
     if(!p || typeof p!=='object' || Array.isArray(p))throw Error('Invalid pre-leased details');
-    const allowed=['tenantOccupied','monthlyRentalIncome','leaseStartDate','leaseEndDate','securityDeposit','paymentFrequency','lockInPeriod','escalation','leaseType','priceNegotiable','verificationStatus','existingTenant'];
+    const allowed=['tenantOccupied','monthlyRentalIncome','leaseTenureMonths','leaseStartDate','leaseEndDate','securityDeposit','paymentFrequency','lockInPeriod','escalation','leaseType','priceNegotiable','verificationStatus','existingTenant'];
     if(Object.keys(p).some(k=>!allowed.includes(k)))throw Error('Unsupported pre-leased field');
     const tenant=p.existingTenant??previous?.preLeased?.existingTenant;
     let existingTenant;
@@ -37,6 +38,8 @@ export function normalizePurpose(input: Record<string, any>, previous?: Record<s
     if((!previous||previous.listingType!=='pre_leased'||p.monthlyRentalIncome!==previous.preLeased?.monthlyRentalIncome)&&!validPropertyMoney(p.monthlyRentalIncome))throw Error('preLeased.monthlyRentalIncome: enter a finite positive decimal amount');
     if(p.tenantOccupied!==true)throw Error('Confirm an existing occupying tenant');
     if(!date(p.leaseStartDate)||!date(p.leaseEndDate)||p.leaseStartDate>today||p.leaseEndDate<today||p.leaseEndDate<p.leaseStartDate)throw Error('An active lease with valid start and end dates is required');
+    const tenureError=leaseTenureError(p,previous?.listingType==='pre_leased'?previous.preLeased:undefined);
+    if(tenureError)throw Error(tenureError);
     if(!['registered','other'].includes(p.leaseType))throw Error('Select the lease type');
     if(p.securityDeposit!==undefined&&p.securityDeposit!==''&&(!previous||p.securityDeposit!==previous.preLeased?.securityDeposit)&&!validPropertyMoney(p.securityDeposit,false))throw Error('preLeased.securityDeposit: enter a finite non-negative decimal amount');
     if(p.paymentFrequency&&!['monthly','quarterly','annually'].includes(p.paymentFrequency))throw Error('Invalid rent payment frequency');
@@ -44,7 +47,7 @@ export function normalizePurpose(input: Record<string, any>, previous?: Record<s
     if(p.priceNegotiable!==undefined&&typeof p.priceNegotiable!=='boolean')throw Error('Invalid negotiable price confirmation');
     const {verificationStatus:ignored,...details}=p;
     const unchanged=previous?.preLeased && JSON.stringify({...previous.preLeased,verificationStatus:undefined})===JSON.stringify({...p,verificationStatus:undefined});
-    result.preLeased={...details,...(existingTenant?{existingTenant}:{}),paymentFrequency:p.paymentFrequency||'monthly',verificationStatus:unchanged&&previous.preLeased.verificationStatus==='verified'?'verified':'pending'};
+    result.preLeased={...details,...(details.leaseTenureMonths!==undefined?{leaseTenureMonths:Number(details.leaseTenureMonths)}:{}),...(existingTenant?{existingTenant}:{}),paymentFrequency:p.paymentFrequency||'monthly',verificationStatus:unchanged&&previous.preLeased.verificationStatus==='verified'?'verified':'pending'};
     result.isPreLeased=true;result.isSold=false;result.isRented=false;result.rentalStatus='';result.monthlyRent='';result.expectedRent='';
   } else if(type==='manage') {
     for(const key of ['sellingPrice','monthlyRent','expectedRent','rentalStatus','projectCondition','possessionDate','specificComments'])result[key]='';

@@ -1,4 +1,6 @@
 "use client";
+import {formatDisplayDate} from '@/lib/date-format';
+
 
 import { apiFetch } from '@/lib/api-client';
 
@@ -68,7 +70,7 @@ const InspectionReportList: React.FC<InspectionReportListProps> = ({ propertyId 
                                 </p>
                             </div>
                             <span className="text-xs text-muted-foreground">
-                                {new Date(report.createdAt).toLocaleDateString()}
+                                {formatDisplayDate(report.createdAt)}
                             </span>
                         </div>
                         <p className="text-sm mt-2 whitespace-pre-line">{report.report}</p>

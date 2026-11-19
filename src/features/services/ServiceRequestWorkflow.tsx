@@ -1,4 +1,6 @@
 "use client";
+import {formatDisplayDateTime} from '@/lib/date-format';
+
 import styles from "./ServiceWorkspace.module.css";
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -39,7 +41,7 @@ export function ServiceRequestHistory({propertyId,admin=false}:{propertyId?:stri
       {request.image&&<a href={request.image} target="_blank" rel="noopener noreferrer">Open request attachment</a>}
       {(request.resolutionReport||request.adminNotes)&&<p>Admin response: {request.resolutionReport} {request.adminNotes}</p>}
       {request.adminImage&&<a href={request.adminImage} target="_blank" rel="noopener noreferrer">Open resolution attachment</a>}
-      <details><summary>History</summary><ol>{request.history?.map((entry,index)=><li key={index}>{entry.status} · {new Date(entry.at).toLocaleString('en-IN')} {entry.comment}</li>)}</ol></details>
+      <details><summary>History</summary><ol>{request.history?.map((entry,index)=><li key={index}>{entry.status} · {formatDisplayDateTime(entry.at)} {entry.comment}</li>)}</ol></details>
       {admin&&<form onSubmit={e=>void update(e,request.id)} className="grid gap-3 sm:grid-cols-2">
         <div><Label htmlFor={`status-${request.id}`}>Status</Label><select id={`status-${request.id}`} name="status" defaultValue={request.status} className="h-10 w-full border rounded px-2">{['pending','in_progress','resolved','completed','cancelled'].map(status=><option key={status}>{status}</option>)}</select></div>
         <div className="sm:col-span-2 text-sm text-muted-foreground"><strong>Resolved</strong> means the work has been addressed and is awaiting final closure. <strong>Completed</strong> closes the request.</div>

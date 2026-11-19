@@ -1,4 +1,6 @@
 "use client";
+import {formatDisplayDateTime} from '@/lib/date-format';
+
 import styles from './EnquiryInbox.module.css';
 import {useState} from 'react';
 import {useQuery,useInfiniteQuery} from '@tanstack/react-query';
@@ -29,8 +31,8 @@ function EnquiryRow({enquiry,admin,agents,onSave}:{enquiry:ManagedEnquiry;admin:
   <div className="flex flex-wrap gap-2"><label>Enquiry status<select aria-label="Enquiry status" className="border rounded h-10 w-full" value={status} onChange={e=>setStatus(e.target.value as EnquiryStatus)} disabled={busy}>
     {Object.entries(enquiryStatuses).map(([value,label])=><option key={value} value={value}>{label}</option>)}
   </select></label><Button disabled={busy||(status===enquiry.status&&!notes.trim())} onClick={()=>save('status')}>Save progress</Button></div>
-  <p className="text-xs text-muted-foreground">Submitted {new Date(enquiry.timestamp).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})} IST · Enquiry {enquiry.id} · Property {enquiry.propertyId}</p>
-  <details className={styles.history}><summary>Assignment and status history</summary>{enquiry.history.length?<ul className="space-y-2 mt-2">{enquiry.history.map((event,index)=><li key={index} className="text-sm break-words">{event.action.replaceAll('_',' ')} / {event.actorUID} / {new Date(event.at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})} / {event.previousBrokerUID||'Unassigned'} to {event.brokerUID||'Unassigned'} / {enquiryStatuses[event.previousStatus]} to {enquiryStatuses[event.status]}{event.notes&&<p className="whitespace-pre-wrap">{event.notes}</p>}</li>)}</ul>:<p className="text-sm">No assignment or progress recorded.</p>}</details>
+  <p className="text-xs text-muted-foreground">Submitted {formatDisplayDateTime(enquiry.timestamp, {timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})} IST · Enquiry {enquiry.id} · Property {enquiry.propertyId}</p>
+  <details className={styles.history}><summary>Assignment and status history</summary>{enquiry.history.length?<ul className="space-y-2 mt-2">{enquiry.history.map((event,index)=><li key={index} className="text-sm break-words">{event.action.replaceAll('_',' ')} / {event.actorUID} / {formatDisplayDateTime(event.at, {timeZone:'Asia/Kolkata'})} / {event.previousBrokerUID||'Unassigned'} to {event.brokerUID||'Unassigned'} / {enquiryStatuses[event.previousStatus]} to {enquiryStatuses[event.status]}{event.notes&&<p className="whitespace-pre-wrap">{event.notes}</p>}</li>)}</ul>:<p className="text-sm">No assignment or progress recorded.</p>}</details>
  </CardContent></Card>;
 }
 export default function EnquiryInbox({admin=false,agents=[]}:{admin?:boolean;agents?:Agent[]}) {

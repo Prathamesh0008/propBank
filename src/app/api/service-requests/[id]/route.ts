@@ -1,9 +1,10 @@
 import { handle, OPTIONS, unsupported } from '@/lib/server/http';
 import { updateServiceRequest } from '@/lib/server/services/migration-remainder';
+import { readAdminServiceRequest } from '@/lib/server/services/admin-service-requests';
 export { OPTIONS };
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const GET = unsupported;
+export const GET = handle(async (request: Request, context: { params: Promise<{ id: string }> }) => readAdminServiceRequest(request, (await context.params).id), 'Failed to load service request', true);
 export const POST = unsupported;
 export const PUT = handle(async (request: Request, context: { params: Promise<{ id: string }> }) => updateServiceRequest(request, (await context.params).id), 'Failed to update service request', true);
 export const PATCH = unsupported;

@@ -8,8 +8,8 @@ import styles from "./PortfolioSections.module.css";
 
 // Presentation data only. This preview never reads accounts or writes records.
 const previewProperties = [
-  { name: "The Courtyard", unit: "Flat A-204 · Residential", tenant: "Occupied", rent: "₹32,000", dates: "01 Nov 2026 – 31 Oct 2027", image: "residential" },
-  { name: "Meridian House", unit: "Suite 402 · Commercial", tenant: "Occupied", rent: "₹68,000", dates: "01 Dec 2025 – 30 Nov 2026", image: "commercial" },
+  { name: "The Courtyard", unit: "Flat A-204 · Residential", tenant: "Occupied", rent: "₹32,000", dates: "01/11/2026 – 31/10/2027", image: "residential" },
+  { name: "Meridian House", unit: "Suite 402 · Commercial", tenant: "Occupied", rent: "₹68,000", dates: "01/12/2025 – 30/11/2026", image: "commercial" },
   { name: "Cedar Residences", unit: "Flat B-801 · Residential", tenant: "Vacant", rent: "₹28,000", dates: "No active agreement", image: "portfolio" },
 ];
 const capabilities = [
@@ -71,8 +71,8 @@ function PortfolioPreview() {
           </div>
           <div className={styles.upcoming}>
             <div><CalendarDays size={14} aria-hidden="true"/><strong>Coming up</strong><span>November 2026</span></div>
-            <p><span>05 Nov</span> Rent review <strong>The Courtyard · A-204</strong></p>
-            <p><span>30 Nov</span> Agreement renewal <strong>Meridian House · 402</strong></p>
+            <p><span>05/11/2026</span> Rent review <strong>The Courtyard · A-204</strong></p>
+            <p><span>30/11/2026</span> Agreement renewal <strong>Meridian House · 402</strong></p>
           </div>
         </div>
       </div>

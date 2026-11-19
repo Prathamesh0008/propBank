@@ -1,4 +1,6 @@
 "use client";
+import {formatDisplayDate} from '@/lib/date-format';
+
 import AgreementInventoryPanel from './AgreementInventoryPanel';
 import {InventoryEditor} from "./InventoryEditor";
 import {propertyInventory,inventoryError,type InventoryItem,type AgreementInventory} from "@/lib/agreement-inventory";
@@ -705,11 +707,11 @@ const AddTenant = () => {
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                         <div>
                           <label className="text-xs font-medium text-muted-foreground">Lease Start</label>
-                          <p>{tenant.leaseStartDate ? new Date(tenant.leaseStartDate).toLocaleDateString() : 'N/A'}</p>
+                          <p>{tenant.leaseStartDate ? formatDisplayDate(tenant.leaseStartDate) : 'N/A'}</p>
                         </div>
                         <div>
                           <label className="text-xs font-medium text-muted-foreground">Lease End</label>
-                          <p>{tenant.leaseEndDate ? new Date(tenant.leaseEndDate).toLocaleDateString() : 'N/A'}</p>
+                          <p>{tenant.leaseEndDate ? formatDisplayDate(tenant.leaseEndDate) : 'N/A'}</p>
                         </div>
                         <div>
                           <label className="text-xs font-medium text-muted-foreground">Monthly Rent</label>
@@ -751,8 +753,8 @@ const AddTenant = () => {
                                       <td className="px-3 py-2">{item.year}</td>
                                       <td className="px-3 py-2">{item.months || '11'}</td>
                                       <td className="px-3 py-2">₹{Number(item.amount).toLocaleString()}</td>
-                                      <td className="px-3 py-2">{item.fromDate ? new Date(item.fromDate).toLocaleDateString() : '-'}</td>
-                                      <td className="px-3 py-2">{item.toDate ? new Date(item.toDate).toLocaleDateString() : '-'}</td>
+                                      <td className="px-3 py-2">{item.fromDate ? formatDisplayDate(item.fromDate) : '-'}</td>
+                                      <td className="px-3 py-2">{item.toDate ? formatDisplayDate(item.toDate) : '-'}</td>
                                     </tr>
                                   ))}
                                 </tbody>

@@ -48,7 +48,7 @@ test('5A rent: unrelated owner cannot edit or stage notices',async()=>{
 });
 test('5A notices: schedule-only edit stages owner/tenant and admin events with effective date; retry/no-op deduplicates',async()=>{
  const {a,rows}=setup(),newRows=changed(rows);assert.equal((await patch(a,{rentSchedule:newRows,expectedRentTermsVersion:0})).status,200);
- const intent=termsIntents(a)[0];assert.equal(termsIntents(a).length,1);assert.deepEqual(new Set(intent.event.recipients.map(v=>v.uid)),new Set(['owner','tenant']));assert.match(intent.event.bodyText,/take effect from \d{4}-\d{2}-\d{2}/);
+ const intent=termsIntents(a)[0];assert.equal(termsIntents(a).length,1);assert.deepEqual(new Set(intent.event.recipients.map(v=>v.uid)),new Set(['owner','tenant']));assert.match(intent.event.bodyText,/take effect from \d{2}\/\d{2}\/\d{4}/);
  assert.equal(Object.values(a.state.admin_notifications).filter(n=>n.type==='rental_terms_changed').length,1);
  assert.equal((await patch(a,{rentSchedule:newRows,expectedRentTermsVersion:1})).status,200);assert.equal(termsIntents(a).length,1);
  assert.equal((await patch(a,{rentSchedule:newRows.map(r=>({amount:r.amount,toDate:r.toDate,months:r.months,year:r.year,fromDate:r.fromDate})),expectedRentTermsVersion:1})).status,200);assert.equal(termsIntents(a).length,1);

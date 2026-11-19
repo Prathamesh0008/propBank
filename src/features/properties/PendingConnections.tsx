@@ -1,4 +1,6 @@
 "use client";
+import {formatDisplayDate} from '@/lib/date-format';
+
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -120,7 +122,7 @@ export default function PendingConnections() {
               <p className={styles.connectionReference}>Support reference: {item.reference}</p>
               <p>{ownership ? 'Confirm this reference with the person who reported the property. An administrator must independently review documentary ownership evidence before access is granted.' : item.viewer === 'owner' ? 'Check this reference with the tenant using contact details you already trust. Your authorization and their explicit acceptance are both required.' : 'Accept only an invitation you expect. Confirm this reference with the owner through a contact you already trust. Owner authorization is also required.'}</p>
               {item.status === 'pending_admin_verification' && <p>Ownership evidence is reviewed through the existing administrator verification workflow. <Link to="/support">Arrange a secure review</Link></p>}
-              {item.expiresAt && <p>Expires {new Intl.DateTimeFormat('en-IN', {dateStyle: 'medium', timeZone: 'Asia/Kolkata'}).format(new Date(item.expiresAt))}</p>}
+              {item.expiresAt && <p>Expires {formatDisplayDate(item.expiresAt)}</p>}
             </div>
           </div>
         </article>;

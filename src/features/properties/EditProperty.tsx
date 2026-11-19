@@ -1,4 +1,6 @@
 "use client";
+import {formatDisplayDateTime} from '@/lib/date-format';
+
 import PropertyPurposeFields,{purposeFormSchema} from "./PropertyPurposeFields";
 import {uploadSupportingDocument,validateSupportingDocuments} from "@/lib/supporting-documents";
 import {normalizePurpose} from "@/lib/property-purpose";
@@ -657,7 +659,7 @@ const EditProperty = () => {
             </CardDescription>
             {property.updatedAt && (
               <div className="text-sm text-muted-foreground mt-2">
-                <strong>Last Modified:</strong> {new Date(property.updatedAt).toLocaleString()}
+                <strong>Last Modified:</strong> {formatDisplayDateTime(property.updatedAt)}
               </div>
             )}
           </CardHeader>
@@ -735,7 +737,7 @@ const EditProperty = () => {
                       </FormItem>
                     )}
                   />
-                  <PropertyPurposeFields form={form} onEvidence={(kind,file)=>{if(file){const error=validateSupportingDocuments([file]);if(error){setLeaseFiles(previous=>({...previous,[kind]:undefined}));toast({title:"Invalid evidence",description:error,variant:"destructive"});return;}}setLeaseFiles(previous=>({...previous,[kind]:file||undefined}));}}/>
+                  <PropertyPurposeFields form={form} existingLease={property?.listingType==='pre_leased'?property.preLeased:undefined} onEvidence={(kind,file)=>{if(file){const error=validateSupportingDocuments([file]);if(error){setLeaseFiles(previous=>({...previous,[kind]:undefined}));toast({title:"Invalid evidence",description:error,variant:"destructive"});return;}}setLeaseFiles(previous=>({...previous,[kind]:file||undefined}));}}/>
                   {/* Sale Status - Only show for sale properties */}
                   {form.watch("listingType") === "sell" && (
                     <FormField

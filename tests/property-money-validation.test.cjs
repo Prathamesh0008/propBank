@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {isolated,users,properties,request,route,context}=require('./fixtures/native-server.cjs');
 const base={propertyTitle:'Money fixture',propertyType:'residential',structure:'Flat',configuration:'2 BHK',location:'Fixture location',ownerUID:'owner'};
-const lease={existingTenant:{type:'individual',name:'Fixture tenant',mobile:'9123456782',occupancyStartDate:'2020-01-01'},tenantOccupied:true,monthlyRentalIncome:'20000',leaseStartDate:'2020-01-01',leaseEndDate:'2099-12-31',leaseType:'registered'};
+const lease={existingTenant:{type:'individual',name:'Fixture tenant',mobile:'9123456782',occupancyStartDate:'2020-01-01'},tenantOccupied:true,monthlyRentalIncome:'20000',leaseTenureMonths:960,leaseStartDate:'2020-01-01',leaseEndDate:'2099-12-31',leaseType:'registered'};
 const invalid=['-1','0','NaN','Infinity','0x10','1e3','',null,true];
 const post=(a,body,uid='owner')=>route(a,'properties').POST(request('/properties',uid,'POST',{...base,...body}));
 const put=(a,body,uid='owner')=>route(a,'properties/[id]').PUT(request('/properties/P',uid,'PUT',body),context('P'));

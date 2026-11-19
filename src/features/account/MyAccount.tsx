@@ -1,4 +1,6 @@
 'use client';
+import {formatDisplayDateTime} from '@/lib/date-format';
+
 import {useEffect,useMemo,useState} from 'react';
 import {EmailAuthProvider,reauthenticateWithCredential,sendPasswordResetEmail,updatePassword,verifyBeforeUpdateEmail} from 'firebase/auth';
 import {Bell,Clock3,KeyRound,LogOut,ShieldCheck,UserRound} from 'lucide-react';
@@ -14,7 +16,7 @@ type Tab='profile'|'security'|'activity';
 type Activity={id:string;eventType:string;createdAt:string};
 type Account={name:string;email:string;phoneNumber:string;photoURL:string;role:string;roleLabel:string;isActive:boolean;agencyName:string;agencyPhone:string;agencyWebsite:string;bio:string;emailVerified:boolean;accountStatus:string;providerIds:string[];createdAt:string;lastSuccessfulSignInAt:string;activity:Activity[];notificationPreferences:{productUpdates:boolean;activitySummaries:boolean;security:boolean}};
 const empty:Account={name:'',email:'',phoneNumber:'',photoURL:'',role:'individual',roleLabel:'Individual',isActive:true,agencyName:'',agencyPhone:'',agencyWebsite:'',bio:'',emailVerified:false,accountStatus:'active',providerIds:[],createdAt:'',lastSuccessfulSignInAt:'',activity:[],notificationPreferences:{productUpdates:true,activitySummaries:true,security:true}};
-const formatDate=(value:string)=>value&&!value.startsWith('0001-')?new Intl.DateTimeFormat('en-IN',{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)):'Not available';
+const formatDate=(value:string)=>formatDisplayDateTime(value, {}, 'Not available');
 const activityName=(value:string)=>({session_established:'Signed in',registration:'Account registered',profile_changed:'Profile updated',phone_changed:'Phone number changed',email_change_requested:'Email change requested',email_changed:'Email address changed',password_changed:'Password changed',password_reset_requested:'Password reset requested',account_linked:'Sign-in provider linked',notification_preferences_changed:'Notification preferences updated',account_status_changed:'Account status changed',role_changed:'Account role changed'}[value]||value.replaceAll('_',' '));
 
 export default function MyAccount(){

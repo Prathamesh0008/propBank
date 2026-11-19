@@ -1,4 +1,7 @@
 "use client";
+import {leaseTenureLabel} from '@/lib/lease-tenure';
+import {formatDisplayDate, formatDisplayTime} from '@/lib/date-format';
+
 import {purposeLabel} from "@/lib/property-purpose";
 
 import workspaceStyles from './ManageProperty.module.css';
@@ -857,6 +860,7 @@ const ManageProperty = () => {
                                             </Badge>
                                           </div>
                                           <button type="button" className={workspaceStyles.viewLink} onClick={() => handleView(property.id)}>View details <span aria-hidden="true">→</span></button>
+                                          {property.listingType==='pre_leased'&&<p className="text-sm text-muted-foreground">Lease tenure: {leaseTenureLabel(property.preLeased)}</p>}
                                           <ListingModeration key={`${property.id}:${property.moderationRevision||0}`} property={property}/>
                                           {/* Show active tenants on a separate line if property is rented out */}
                                           {property.tenants && property.tenants.some((t: any) => t.isActive && (t.firstName || t.lastName || t.phone || t.email)) && (
@@ -984,7 +988,7 @@ const ManageProperty = () => {
                                         )}
                                         {property.updatedAt && (
                                           <span className="hidden sm:flex items-center gap-1 whitespace-nowrap">
-                                            📅 Last modified: {new Date(property.updatedAt).toLocaleDateString()} at {new Date(property.updatedAt).toLocaleTimeString()}
+                                            📅 Last modified: {formatDisplayDate(property.updatedAt)} at {formatDisplayTime(property.updatedAt)}
                                           </span>
                                         )}
                                         {property.listingType === 'rent' && (
@@ -1043,7 +1047,7 @@ const ManageProperty = () => {
                                       </div>
                                       {property.updatedAt && (
                                         <div className="sm:hidden text-xs text-muted-foreground">
-                                          📅 Last modified: {new Date(property.updatedAt).toLocaleDateString()}
+                                          📅 Last modified: {formatDisplayDate(property.updatedAt)}
                                         </div>
                                       )}
                                     </div>

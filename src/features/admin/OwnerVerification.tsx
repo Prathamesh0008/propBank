@@ -1,4 +1,6 @@
 "use client";
+import {formatDisplayDateTime} from '@/lib/date-format';
+
 import {connectionState} from '@/lib/relationship-link-state';
 import styles from "./OwnerVerification.module.css";
 import {useState,useEffect} from 'react';
@@ -32,6 +34,6 @@ export default function OwnerVerification({propertyId,status='pending',version=0
  <form className="space-y-3" onSubmit={event=>submit(event,'reject')}><label className="block">Rejection reason<Input name="reason" required maxLength={2000}/></label><Button variant="outline" disabled={busy}>Reject owner verification</Button></form>
  </>}
  {review.status==='rejected'&&<form className="space-y-3" onSubmit={event=>submit(event,'reconsider')}><label className="block">Reconsideration note (optional)<Input name="reason" maxLength={2000}/></label><Button variant="outline" disabled={busy}>Reopen owner verification for review</Button></form>}
- {!!review.history.length&&<details><summary>Owner verification history</summary><ul>{review.history.map((item,index)=><li key={index} className="text-sm break-words">{item.action} / {item.actorUID} / {new Date(item.at).toLocaleString()} / {item.reason}</li>)}</ul></details>}
+ {!!review.history.length&&<details><summary>Owner verification history</summary><ul>{review.history.map((item,index)=><li key={index} className="text-sm break-words">{item.action} / {item.actorUID} / {formatDisplayDateTime(item.at)} / {item.reason}</li>)}</ul></details>}
  </section>;
 }

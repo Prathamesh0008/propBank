@@ -1,4 +1,6 @@
 "use client";
+import {formatDisplayDate, formatDisplayTime} from '@/lib/date-format';
+
 
 import { useLocation } from '@/lib/navigation';
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -191,7 +193,7 @@ const VisitPlanner = () => {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+    return formatDisplayDate(dateString, {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -200,7 +202,7 @@ const VisitPlanner = () => {
   };
 
   const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString('en-US', {
+    return formatDisplayTime(dateString, {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true

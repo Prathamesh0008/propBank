@@ -1,4 +1,6 @@
 "use client";
+import {formatDisplayDate, formatDisplayMonth, formatDisplayDateTime} from '@/lib/date-format';
+
 import PendingConnections from "./PendingConnections";
 import hubStyles from "./PropertyHub.module.css";
 import { OwnerVerificationStatus } from "@/features/admin/OwnerVerification";
@@ -426,12 +428,12 @@ export default function PropertyHub() {
         </p>
         {h.ledger.length ? (
           h.ledger.map((r: ProductRecord) => (
-            <article className="border rounded p-3 break-words" key={r.month}>
+            <article className="border rounded p-3 break-words" key={formatDisplayMonth(r.month)}>
               <strong>
                 {r.month} · {r.displayStatus}
               </strong>
               <p>
-                Expected rent: ₹{r.expectedRent} · Due: {r.dueDate}
+                Expected rent: ₹{r.expectedRent} · Due: {formatDisplayDate(r.dueDate)}
               </p>
               <p>{r.notes}</p>
               {r.receiptId &&
@@ -555,8 +557,8 @@ export default function PropertyHub() {
           Agreement / Move-in / Move-out
         </h2>
         <p>
-          {p.agreementStartDate || "Start not recorded"} →{" "}
-          {p.agreementEndDate || "End not recorded"} ·{" "}
+          {formatDisplayDate(p.agreementStartDate, {}, "Start not recorded")} →{" "}
+          {formatDisplayDate(p.agreementEndDate, {}, "End not recorded")} ·{" "}
           {p.agreementStatus || "No workflow status recorded"}
         </p>
         <div className="flex flex-wrap gap-4">
@@ -677,7 +679,7 @@ export default function PropertyHub() {
             <article className="border rounded p-3" key={v.id}>
               <p className="break-words">
                 {v.title} · {v.status} ·{" "}
-                {new Date(v.visitDate).toLocaleString("en-IN")} · User:{" "}
+                {formatDisplayDateTime(v.visitDate)} · User:{" "}
                 {v.userId}
               </p>
               {v.status === "scheduled" &&
@@ -732,7 +734,7 @@ export default function PropertyHub() {
         <ol className="space-y-3">
           {h.history.map((e: ProductRecord, index: number) => (
             <li key={index} className="border-l-2 pl-3 break-words">
-              <time>{new Date(e.at).toLocaleString("en-IN")}</time>
+              <time>{formatDisplayDateTime(e.at)}</time>
               <p>{e.label}</p>
               <small>
                 {e.source} {e.actorUID}
@@ -750,7 +752,7 @@ export default function PropertyHub() {
           </p>
           {h.internalNotes.map((n: ProductRecord) => (
             <p className="break-words" key={n.id}>
-              {n.text} · {new Date(n.at).toLocaleString("en-IN")} · {n.actorUID}
+              {n.text} · {formatDisplayDateTime(n.at)} · {n.actorUID}
             </p>
           ))}
           <form onSubmit={(e) => save(e, "internal_note")}>

@@ -1,4 +1,6 @@
 "use client";
+import {formatDisplayDateTime, formatDisplayDate} from '@/lib/date-format';
+
 import styles from "./DocumentWorkspace.module.css";
 
 import { apiFetch } from '@/lib/api-client';
@@ -445,7 +447,7 @@ const AttachDocuments = () => {
                           </p>
                           <p className="text-sm">Status: {doc.status || "submitted"} · {doc.financialYear} {doc.period} {doc.amount && ` · Reported amount: ₹${doc.amount}`}</p>
                           {doc.adminComment && <p>Admin response: {doc.adminComment}</p>}
-                          <details><summary>Status history</summary>{doc.statusHistory?.map((event,index)=><p key={index}>{event.status} · {new Date(event.at).toLocaleString()} {event.comment}</p>)}</details>
+                          <details><summary>Status history</summary>{doc.statusHistory?.map((event,index)=><p key={index}>{event.status} · {formatDisplayDateTime(event.at)} {event.comment}</p>)}</details>
                           {property?.userRole === "admin" && <div className="mt-3 grid gap-2 sm:grid-cols-[12rem_1fr_auto]">
                             <Label className="sr-only" htmlFor={`review-status-${doc.id}`}>Review status</Label><select id={`review-status-${doc.id}`} className="h-10 rounded border px-2" value={reviewDraft[doc.id]?.status||doc.status||'submitted'} onChange={event=>setReviewDraft(current=>({...current,[doc.id]:{status:event.target.value,comment:current[doc.id]?.comment??doc.adminComment??''}}))}><option value="submitted">Submitted</option><option value="verified">Verified</option><option value="rejected">Rejected</option></select>
                             <Label className="sr-only" htmlFor={`review-comment-${doc.id}`}>Review comment</Label><Input id={`review-comment-${doc.id}`} maxLength={2000} placeholder="Review comment" value={reviewDraft[doc.id]?.comment??doc.adminComment??''} onChange={event=>setReviewDraft(current=>({...current,[doc.id]:{status:current[doc.id]?.status??doc.status??'submitted',comment:event.target.value}}))}/>
@@ -455,7 +457,7 @@ const AttachDocuments = () => {
                             <p className="text-sm mt-2">{doc.description}</p>
                           )}
                           <p className="text-xs text-muted-foreground mt-2">
-                            Uploaded: {new Date(doc.createdAt).toLocaleDateString()}
+                            Uploaded: {formatDisplayDate(doc.createdAt)}
                           </p>
                         </div>
                         <div className="flex gap-2">

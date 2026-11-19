@@ -1,4 +1,6 @@
 "use client";
+import {formatDisplayDateTime} from '@/lib/date-format';
+
 
 import {useState} from 'react';
 import {useQueryClient} from '@tanstack/react-query';
@@ -45,6 +47,6 @@ export default function ListingModeration({property,admin=false}:{property:Listi
       <Button variant="outline" disabled={busy} onClick={()=>decide('resubmit')}>Resubmit listing</Button>
     </>}
     {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
-    {admin&&!!current.moderationHistory?.length&&<details><summary>Listing decision history</summary><ul>{current.moderationHistory.map((entry,index)=><li key={index}>{entry.action.replaceAll('_',' ')} / {entry.actorUID} / {entry.at}{entry.reason?` / ${entry.reason}`:''}</li>)}</ul></details>}
+    {admin&&!!current.moderationHistory?.length&&<details><summary>Listing decision history</summary><ul>{current.moderationHistory.map((entry,index)=><li key={index}>{entry.action.replaceAll('_',' ')} / {entry.actorUID} / {formatDisplayDateTime(entry.at)}{entry.reason?` / ${entry.reason}`:''}</li>)}</ul></details>}
   </div>;
 }

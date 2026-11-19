@@ -1,4 +1,6 @@
 "use client";
+import {formatDisplayDate} from '@/lib/date-format';
+
 import PropertyPurposeSummary from "./PropertyPurposeSummary";
 
 import {
@@ -99,7 +101,7 @@ const PropertyDetailsDialog = ({ property }: PropertyDetailsDialogProps) => {
                                     )}
                                     {property.possessionDate && !(property.listingType === 'rent' && property.rentalStatus === 'rented') && (
                                         <span className="text-sm font-bold text-slate-800">
-                                            {new Date(property.possessionDate).toLocaleDateString()}
+                                            {formatDisplayDate(property.possessionDate)}
                                         </span>
                                     )}
                                 </div>

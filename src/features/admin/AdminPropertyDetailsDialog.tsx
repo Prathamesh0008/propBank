@@ -1,4 +1,7 @@
 "use client";
+import {leaseTenureLabel} from '@/lib/lease-tenure';
+import {formatDisplayDate} from '@/lib/date-format';
+
 
 import PropertyPurposeSummary from "@/features/properties/PropertyPurposeSummary";
 import {purposeLabel} from "@/lib/property-purpose";
@@ -103,22 +106,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
 
     if (!property) return null;
 
-    const formatDate = (dateString?: string) => {
-        if (!dateString) return "Not recorded";
-        const dateOnly=/^(\d{4})-(\d{2})-(\d{2})$/.exec(dateString);
-        if(dateOnly)return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
-        try {
-            const parsed=new Date(dateString);
-            if(Number.isNaN(parsed.getTime()))return 'Not recorded';
-            return parsed.toLocaleDateString('en-GB', {timeZone:'Asia/Kolkata',
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric'
-            });
-        } catch (e) {
-            return dateString;
-        }
-    };
+    const formatDate = (dateString?: string) => formatDisplayDate(dateString, {}, 'Not recorded');
 
     const SectionTitle=({title,icon:Icon}:{title:string;icon:any})=><div className={styles.sectionTitle}><Icon size={17} aria-hidden="true"/><h3>{title}</h3></div>;
     const humanLabel=(value:string)=>value.replaceAll('_',' ').replace(/\b\w/g,letter=>letter.toUpperCase());
@@ -385,7 +373,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                                     </div>
                                 )}
                             </div>
-                        )}{property.listingType==='pre_leased'&&<><SectionTitle title="Investment lease" icon={Calendar}/><DataRow label="Lease start" value={formatDate(property.preLeased?.leaseStartDate)}/><DataRow label="Lease end" value={formatDate(property.preLeased?.leaseEndDate)}/><p>Investment tenancy evidence is separate from internal tenancy agreements.</p></>}</section>
+                        )}{property.listingType==='pre_leased'&&<><SectionTitle title="Investment lease" icon={Calendar}/><DataRow label="Lease tenure" value={leaseTenureLabel(property.preLeased)}/><DataRow label="Lease start" value={formatDate(property.preLeased?.leaseStartDate)}/><DataRow label="Lease end" value={formatDate(property.preLeased?.leaseEndDate)}/><p>Investment tenancy evidence is separate from internal tenancy agreements.</p></>}</section>
     <section hidden={activeSection!=='inventory'}>{/* Furnished Checklist */}
                         {property.furnishedChecklist && property.furnishedChecklist.length > 0 && (
                             <div className="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">

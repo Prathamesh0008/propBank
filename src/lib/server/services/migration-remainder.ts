@@ -15,6 +15,7 @@ import {prepareFile,saveMediaRecord,prepareMediaBindings,restoreFileReferences} 
 import {fileFields} from '../file-projection';
 import {discoverFor} from './relationship-links';
 import {syncAuthenticationProfile} from './auth-activity';
+import {adminServiceRequestPage} from './admin-service-requests';
 import {
   INSPECTION_ALL_FILE_FIELDS,
   inspectionPayload,
@@ -57,6 +58,7 @@ export async function listServices() {
 }
 export async function listServiceRequests(request:Request) {
   const user=await identity(request),params=new URL(request.url).searchParams;
+  if(!params.get('propertyId')&&params.get('admin')==='true')return adminServiceRequestPage(params,user);
   let query:FirebaseFirestore.Query=getDatabase().collection(COLLECTIONS.serviceRequests);
   if(params.get('propertyId')) {const property=await propertyMember(user,params.get('propertyId')!);if(!property)return fail('Property not found',404);query=query.where('propertyId','==',params.get('propertyId'));}
   else if(params.get('admin')==='true')requireAdmin(user);

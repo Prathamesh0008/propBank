@@ -1,4 +1,6 @@
 "use client";
+import {formatDisplayDateTime} from '@/lib/date-format';
+
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
@@ -74,7 +76,7 @@ export default function NegotiationPanel({propertyId,canOffer=false,admin=false}
           {admin&&n.status==='accepted'&&<Button disabled={busy} onClick={()=>void mutate(n,'complete')}>Mark transaction complete</Button>}
         </div>
         {admin&&pending&&<div className="flex flex-wrap gap-2"><Input className="max-w-xs" aria-label="Agent UID" placeholder="Agent UID" value={brokers[n.id]||''} onChange={event=>setBrokers({...brokers,[n.id]:event.target.value})}/><Button variant="outline" disabled={busy||!brokers[n.id]} onClick={()=>void mutate(n,'assign_broker')}>Assign broker</Button></div>}
-        <details><summary className="cursor-pointer text-sm">Offer history</summary><ol className="mt-2 space-y-1 text-sm">{n.history.map((event,index)=><li key={index}>{new Date(event.at).toLocaleString('en-IN')} · {event.action.replaceAll('_',' ')}{event.amount!==null?` · ${money(event.amount)}`:''}</li>)}</ol></details>
+        <details><summary className="cursor-pointer text-sm">Offer history</summary><ol className="mt-2 space-y-1 text-sm">{n.history.map((event,index)=><li key={index}>{formatDisplayDateTime(event.at)} · {event.action.replaceAll('_',' ')}{event.amount!==null?` · ${money(event.amount)}`:''}</li>)}</ol></details>
       </div>;
     })}
   </CardContent></Card>;
