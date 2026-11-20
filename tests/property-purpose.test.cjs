@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {isolated,users,properties,request,route,context}=require('./fixtures/native-server.cjs');
 const base={propertyTitle:'Purpose fixture',propertyType:'residential',structure:'Apartment',configuration:'2 BHK',location:'Test location',ownerUID:'owner'};
-const lease={existingTenant:{type:'individual',name:'Fixture Tenant',mobile:'9123456782',email:'tenant@example.invalid',occupancyStartDate:'2020-01-01'},tenantOccupied:true,monthlyRentalIncome:'20000',leaseStartDate:'2020-01-01',leaseEndDate:'2099-01-01',leaseType:'registered',verificationStatus:'verified'};
+const lease={existingTenant:{type:'individual',name:'Fixture Tenant',mobile:'9123456782',email:'tenant@example.invalid',occupancyStartDate:'2020-01-01'},tenantOccupied:true,monthlyRentalIncome:'20000',leaseTenureMonths:948,leaseStartDate:'2020-01-01',leaseEndDate:'2098-12-31',leaseType:'registered',verificationStatus:'verified'};
 async function create(app,extra){const r=await route(app,'properties').POST(request('/properties','owner','POST',{...base,...extra}));return {r,body:await r.json()};}
 test('pre-leased creates separate pending evidence, computes yield and never creates tenants',async()=>{
  const app=isolated({users}),{r,body}=await create(app,{listingType:'pre_leased',sellingPrice:'4000000',rentalStatus:'rented',mobileNumber:'bad stale contact',tenants:[{firstName:'Hidden'}],preLeased:lease});

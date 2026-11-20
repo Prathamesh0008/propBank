@@ -14,13 +14,13 @@ test('login returns the verified Firebase token even with a legacy JWT secret',a
 });
 test('services and service requests retain collections, omission, managed files and admin/self access',async()=>{
  const app=isolated({users,properties,services:{S:{...defaults,id:'S',name:'Legal',isActive:true},off:{...defaults,id:'off',isActive:false}}});
- const service=await (await route(app,'services').GET(request('/services',null))).json();assert.equal(service.data.length,12);assert.ok(service.data.some(value=>value.id==='S'));assert.ok(service.data.some(value=>value.id==='plumbing'));
+ const service=await (await route(app,'services').GET(request('/services',null))).json();assert.equal(service.data.length,15);assert.ok(service.data.some(value=>value.id==='S'));assert.ok(service.data.some(value=>value.id==='plumbing'));
  const r=route(app,'service-requests');
  assert.equal((await r.POST(request('/service-requests','other','POST',{userUID:'owner',serviceId:'S'}))).status,403);
  assert.equal((await r.POST(request('/service-requests','owner','POST',{userUID:'owner',serviceId:'missing'}))).status,404);
  const result=await r.POST(request('/service-requests','owner','POST',{userUID:'owner',serviceId:'S',propertyId:'P',message:'Keep this text',image:'data:image/png;base64,AQID'}));assert.equal(result.status,201);
  const {serviceRequest:value}=await result.json();assert.equal(value.status,'pending');assert.equal(value.userName,'Owner');assert.equal(value.serviceName,'Legal');assert.match(value.image,/^\/api\/media\/[a-f0-9-]{36}$/);assert.equal(app.state.service_requests[value.id].message,'Keep this text');
- const notification=Object.values(app.state.admin_notifications)[0];assert.equal(notification.serviceImage,value.image);assert.equal(notification.ownerId,'owner');assert.equal(notification.tenantName,'Tenant Name');
+ await app.flush();const notification=Object.values(app.state.admin_notifications)[0];assert.equal(notification.serviceImage,undefined);assert.equal(notification.ownerId,'owner');assert.equal(notification.relatedId,value.id);assert.equal(notification.tenantName,undefined);
  assert.equal((await r.GET(request('/service-requests?admin=true','other'))).status,403);
  assert.equal((await r.GET(request('/service-requests?userUID=owner','other'))).status,403);
  assert.equal((await r.GET(request('/service-requests?userUID=owner','owner'))).status,200);
@@ -37,7 +37,7 @@ test('inspection reports preserve managed attachments, typed schema, notificatio
  const {report}=await result.json();assert.equal(report.userId,'tenant');assert.equal(report.propertyTitle,'Existing Home');assert.equal(report.keysDetails,'Two keys');assert.equal(report.unknown,undefined);assert.match(report.apartmentConditionImages[0],/^\/api\/media\/[a-f0-9-]{36}$/);assert.ok(app.state.inspection_reports[report.id].createdAt instanceof Date);
  const byProperty=await (await route(app,'inspection-reports/property/[propertyId]').GET(request('/inspection-reports/property/P','admin'),context('P','propertyId'))).json();assert.equal(byProperty.reports[0].id,report.id);
  const byUser=route(app,'inspection-reports/user/[userId]');assert.equal((await byUser.GET(request('/inspection-reports/user/tenant','admin'),context('tenant','userId'))).status,200);assert.equal((await byUser.GET(request('/inspection-reports/user/tenant','other'),context('tenant','userId'))).status,403);
- const notification=Object.values(app.state.admin_notifications)[0];assert.equal(notification.type,'inspection_report');assert.match(notification.message,/On Possession/);assert.equal(notification.tenantName,'Tenant Name');
+ await app.flush();const notification=Object.values(app.state.admin_notifications)[0];assert.equal(notification.type,'inspection_report');assert.match(notification.message,/On Possession/);assert.equal(notification.tenantName,'Tenant Name');
 });
 test('inspection reports isolate report-specific attachments before storage staging',async()=>{
  const possession=isolated({users,properties}),possessionRoute=route(possession,'inspection-reports');
@@ -80,7 +80,7 @@ test('reviews preserve nested rating defaults, owner/tenant metadata and structu
  const app=isolated({users,properties}),r=route(app,'reviews');
  const result=await r.POST(request('/reviews','tenant','POST',{propertyId:'P',reviewerType:'tenant',tenantPart:{overallExperience:'Great',softNature:'Yes'}}));assert.equal(result.status,201);
  const {review}=await result.json();assert.equal(review.reviewerId,'tenant');assert.equal(review.tenantId,'T');assert.equal(review.tenantPart.overallExperience,'Great');assert.equal(review.ownerPart.overallExperience,'');assert.equal(review.tenantPart.ownerTransparent,'');assert.ok(app.state.reviews[review.id].createdAt instanceof Date);
- const notification=Object.values(app.state.admin_notifications)[0];assert.equal(notification.reviewerType,'tenant');assert.match(notification.message,/- Overall Experience: Great/);assert.equal(notification.tenantPart.softNature,'Yes');
+ await app.flush();const notification=Object.values(app.state.admin_notifications)[0];assert.equal(notification.reviewerType,'tenant');assert.match(notification.message,/Review submitted.*Existing Home/);assert.equal(notification.tenantPart.overallExperience,'Great');assert.match(notification.message,/Tenant \(Tenant\)/);assert.equal(notification.tenantPart.softNature,'Yes');
 });
 test('review relationship is derived from trusted property membership',async()=>{
  const app=isolated({users,properties}),r=route(app,'reviews');

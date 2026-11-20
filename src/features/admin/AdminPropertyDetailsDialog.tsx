@@ -1,4 +1,10 @@
 "use client";
+import {propertyPricing, propertyOccupancy} from '@/lib/property-presentation';
+
+import {formatAddress} from "@/lib/address-format";
+import {leaseTenureLabel} from '@/lib/lease-tenure';
+import {formatDisplayDate} from '@/lib/date-format';
+
 
 import PropertyPurposeSummary from "@/features/properties/PropertyPurposeSummary";
 import {purposeLabel} from "@/lib/property-purpose";
@@ -103,22 +109,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
 
     if (!property) return null;
 
-    const formatDate = (dateString?: string) => {
-        if (!dateString) return "Not recorded";
-        const dateOnly=/^(\d{4})-(\d{2})-(\d{2})$/.exec(dateString);
-        if(dateOnly)return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
-        try {
-            const parsed=new Date(dateString);
-            if(Number.isNaN(parsed.getTime()))return 'Not recorded';
-            return parsed.toLocaleDateString('en-GB', {timeZone:'Asia/Kolkata',
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric'
-            });
-        } catch (e) {
-            return dateString;
-        }
-    };
+    const formatDate = (dateString?: string) => formatDisplayDate(dateString, {}, 'Not recorded');
 
     const SectionTitle=({title,icon:Icon}:{title:string;icon:any})=><div className={styles.sectionTitle}><Icon size={17} aria-hidden="true"/><h3>{title}</h3></div>;
     const humanLabel=(value:string)=>value.replaceAll('_',' ').replace(/\b\w/g,letter=>letter.toUpperCase());
@@ -126,7 +117,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
 
     const hasImages = (property.images && property.images.length > 0) || (property.internalImages && property.internalImages.length > 0);
     const propertyName=property.title?.trim()||property.buildingName?.trim()||`Property ${property.id}`;
-    const propertyLocation=[property.location||property.address,property.city,property.zipCode].filter(value=>String(value||'').trim()).join(', ')||'Location not provided';
+    const propertyLocation=formatAddress(property.location||property.address,property.city,property.zipCode)||'Location not provided';
     const listingLabel=(property.listingType||'manage').replace('_',' and ');
     const area=(value?:string,unit?:string)=>value?[Number.isFinite(Number(value))?Number(value).toLocaleString('en-IN'):value,unit?({sqft:'sq ft',sq_ft:'sq ft',sqm:'sq m',sq_m:'sq m'}[unit]||unit.replaceAll('_',' ')):undefined].filter(Boolean).join(' '):undefined;
     const money=(value?:string|number|null)=>value!==undefined&&value!==null&&value!==''&&Number.isFinite(Number(value))?`₹${Number(value).toLocaleString('en-IN',{maximumFractionDigits:2})}`:undefined;
@@ -135,9 +126,9 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
 
     const sections=[['overview','Overview'],['ownership','Ownership'],...((property.tenants?.length||property.buyers?.length||property.listingType==='pre_leased')?[['tenancy','Tenancy']]:[]),...(property.listingType!=='manage'?[['financials','Financials']]:[]),...(rentalPurpose||property.listingType==='pre_leased'?[['agreement','Agreement']]:[]),...(property.furnishedChecklist?.length?[['inventory','Inventory']]:[]),['documents','Documents'],['services','Services & Inspections'],['moderation','Moderation'],['activity','Activity History']];
     return <Dialog open={isOpen} onOpenChange={onOpenChange}><DialogContent className={styles.detailsDialog}>
-    <DialogHeader className={styles.dialogHeading}><button type="button" className={styles.back} onClick={()=>onOpenChange(false)}>Back to properties</button><div className={styles.identity}>{property.images?.[0]&&<SessionMediaImage src={property.images[0]} alt="" className={styles.thumbnail}/>}<div><DialogTitle>{propertyName}</DialogTitle><DialogDescription>{propertyLocation}</DialogDescription><p className={styles.reference}>{property.id} / {[property.propertyCategory||property.propertyType,property.configuration,property.unitNumber].filter(Boolean).map(value=>humanLabel(String(value))).join(' / ')}</p></div></div><div className={styles.headerStatus}><span>{purposeLabel(property.listingType)}</span><span>{confirmedAdminTenants(property).length?'Confirmed tenancy':adminAvailability(property)==='available'?'Available':'Occupancy unknown'}</span><button type="button" onClick={()=>selectSection('moderation')}>{humanLabel(property.moderationStatus||'unreviewed')}</button></div></DialogHeader>
+    <DialogHeader className={styles.dialogHeading}><button type="button" className={styles.back} onClick={()=>onOpenChange(false)}>Back to properties</button><div className={styles.identity}>{property.images?.[0]&&<SessionMediaImage src={property.images[0]} alt="" className={styles.thumbnail}/>}<div><DialogTitle>{propertyName}</DialogTitle><DialogDescription>{propertyLocation}</DialogDescription><p className={styles.reference}>{property.id} / {[property.propertyCategory||property.propertyType,property.configuration,property.unitNumber].filter(Boolean).map(value=>humanLabel(String(value))).join(' / ')}</p></div></div><div className={styles.headerStatus}><span>{purposeLabel(property.listingType)}</span><span>{propertyOccupancy(property)}</span><button type="button" onClick={()=>selectSection('moderation')}>{humanLabel(property.moderationStatus||'unreviewed')}</button></div></DialogHeader>
     <div className={styles.summary} aria-label="Property highlights">
-    {rentalPurpose&&<><DataRow label="Current monthly rent" value={money(resolveRent(property,localRentDate(property)).amount)}/><DataRow label="Security deposit" value={money(property.securityDeposit)}/><DataRow label="Carpet area" value={area(property.carpetArea,property.carpetAreaUnit||property.areaUnit)}/></>}
+    {rentalPurpose&&<><DataRow label={propertyPricing(property).label} value={money(propertyPricing(property).amount)}/><DataRow label="Security deposit" value={money(property.securityDeposit)}/><DataRow label="Carpet area" value={area(property.carpetArea,property.carpetAreaUnit||property.areaUnit)}/></>}
     {salePurpose&&!rentalPurpose&&<><DataRow label="Selling price" value={money(property.sellingPrice)}/>{property.listingType==='pre_leased'?<><DataRow label="Reported monthly income" value={money(property.investment?.monthlyRentalIncome??property.preLeased?.monthlyRentalIncome)}/><DataRow label="Lease expiry" value={formatDate(property.investment?.leaseEndDate||property.preLeased?.leaseEndDate)}/></>:<DataRow label="Carpet area" value={area(property.carpetArea,property.carpetAreaUnit||property.areaUnit)}/>}</>}
     {property.listingType==='manage'&&<><DataRow label="Management" value="Private registration"/><DataRow label="Property status" value={property.status}/><DataRow label="Carpet area" value={area(property.carpetArea,property.carpetAreaUnit||property.areaUnit)}/></>}
     <DataRow label="Occupancy" value={confirmedAdminTenants(property).length?'Confirmed tenancy':'Unknown'}/></div>
@@ -257,7 +248,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                 <DataRow label="Email" value={tenant.email} icon={Mail} className="bg-white border-blue-50" />
                                                 <DataRow label="Phone" value={tenant.phone} icon={Phone} className="bg-white border-blue-50" />
-                                                <DataRow label="Rent" value={tenant.monthlyRent ? `₹${tenant.monthlyRent}` : "N/A"} className="bg-white border-blue-50" />
+                                                <DataRow label="Current contractual rent" value={money(resolveRent(property,localRentDate(property),tenant).amount)} className="bg-white border-blue-50" />
                                                 <DataRow label="Due Date" value={tenant.paymentDueDate} className="bg-white border-blue-50" />
                                                 <DataRow label="Start Date" value={formatDate(tenant.leaseStartDate)} className="bg-white border-blue-50" />
                                                 <DataRow label="End Date" value={formatDate(tenant.leaseEndDate)} className="bg-white border-blue-50" />
@@ -328,7 +319,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                                 <DataRow label="Listing Purpose" value={property.listingType?.replace('_',' and ')} className="bg-blue-50/50 border-blue-100 capitalize" />
                                 {salePurpose&&<DataRow label="Expected Selling Price" value={money(property.sellingPrice)} icon={IndianRupee} className="bg-green-50/50 border-green-100" />}
                                 {rentalPurpose&&<DataRow label="Expected Monthly Rent" value={money(property.expectedRent)} icon={IndianRupee} className="bg-green-50/50 border-green-100" />}
-                                {rentalPurpose&&<DataRow label="Finalized Monthly Rent" value={money(property.monthlyRent)} icon={IndianRupee} className="bg-green-50/50 border-green-100" />}
+                                {rentalPurpose&&<DataRow label="Applicable contractual monthly rent" value={money(propertyPricing(property).label==='Current contractual monthly rent'?propertyPricing(property).amount:null)} icon={IndianRupee} className="bg-green-50/50 border-green-100" />}
                                 <DataRow label="Maintenance Charges" value={money(property.maintenanceCharges)} icon={IndianRupee} className="bg-green-50/50 border-green-100" />
                             </div>
                         </div><p>Payment history, payment status and outstanding balances are not included in this property response. Use the authorized payment ledger.</p><Link to={`/manage-property/${property.id}`}>Open Property Hub</Link></section>
@@ -337,7 +328,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                             <div className="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">
                                 <SectionTitle title="Agreement & Security" icon={Shield} />
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                    <DataRow label="Security Deposit" value={property.securityDeposit ? `₹${property.securityDeposit}` : "N/A"} className="bg-orange-50/50 border-orange-100" />
+                                    <DataRow label="Security Deposit" value={money(property.securityDeposit)} className="bg-orange-50/50 border-orange-100" />
                                     <DataRow label="Agreement Period" value={property.agreementPeriod} className="bg-orange-50/50 border-orange-100" />
                                     <DataRow label="Start Date" value={formatDate(property.agreementStartDate)} icon={Calendar} className="bg-orange-50/50 border-orange-100" />
                                     <DataRow label="End Date" value={formatDate(property.agreementEndDate)} icon={Calendar} className="bg-orange-50/50 border-orange-100" />
@@ -385,7 +376,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                                     </div>
                                 )}
                             </div>
-                        )}{property.listingType==='pre_leased'&&<><SectionTitle title="Investment lease" icon={Calendar}/><DataRow label="Lease start" value={formatDate(property.preLeased?.leaseStartDate)}/><DataRow label="Lease end" value={formatDate(property.preLeased?.leaseEndDate)}/><p>Investment tenancy evidence is separate from internal tenancy agreements.</p></>}</section>
+                        )}{property.listingType==='pre_leased'&&<><SectionTitle title="Investment lease" icon={Calendar}/><DataRow label="Lease tenure" value={leaseTenureLabel(property.preLeased)}/><DataRow label="Lease start" value={formatDate(property.preLeased?.leaseStartDate)}/><DataRow label="Lease end" value={formatDate(property.preLeased?.leaseEndDate)}/><p>Investment tenancy evidence is separate from internal tenancy agreements.</p></>}</section>
     <section hidden={activeSection!=='inventory'}>{/* Furnished Checklist */}
                         {property.furnishedChecklist && property.furnishedChecklist.length > 0 && (
                             <div className="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">

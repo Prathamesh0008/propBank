@@ -1,3 +1,5 @@
+import {stagePropertyActivity} from './property-activity';
+import {dispatchNotificationIntents} from './transactional-email';
 import {PRE_LEASED_EVIDENCE,requireDocumentAccess,privateLeaseEvidence,canReadLeaseEvidence} from './document-access';
 import 'server-only';
 import { createHash, randomUUID } from 'node:crypto';
@@ -58,7 +60,12 @@ export async function createDocument(request:Request) {
     if(supporting.length>=5||total>20*1024*1024){const staged=mediaId(url);if(staged)try{await cleanupMedia(staged,user,true);}catch{}return failure(supporting.length>=5?'A property can have up to 5 supporting documents':'Supporting documents must total 20 MB or less',400);}
   }
   const metadata:RecordData={...(property.listingType==='pre_leased'?{accessScope:PRE_LEASED_EVIDENCE}:{}),contentType,size,...(idempotencyKey?{idempotencyKey}:{}),...Object.fromEntries(['financialYear','period','amount','status','receiptDate'].filter(key=>key in req).map(key=>[key,req[key]]))};
-  await saveMediaRecord(COLLECTIONS.documents,s(document.id),{...storeModel('Document',document),...metadata},user,true);
+  const intentIds:string[]=[];
+  await saveMediaRecord(COLLECTIONS.documents,s(document.id),{...storeModel('Document',document),...metadata},user,true,async tx=>{
+    const current=await tx.get(getDatabase().collection(COLLECTIONS.properties).doc(s(req.propertyId)));if(!current.exists)throw new ApiError(404,'Property not found');
+    const activity=await stagePropertyActivity(tx,user,{...current.data(),id:s(req.propertyId)},{id:s(document.id),eventType:'document.uploaded',type:'document_upload',title:reportType?'Property report uploaded':'Document uploaded',details:`Document category: ${s(req.documentType).replaceAll('_',' ')}`,status:s(req.status)||'submitted',document:{...document,...metadata}});intentIds.push(...activity.ids);return activity.write;
+  });
+  dispatchNotificationIntents(intentIds);
   return jsonResponse({success:true,message:'Document uploaded successfully',document:{...wireModel('Document',document),...metadata}},201);
 }
 export async function listDocuments(request:Request,propertyId:string) {
@@ -81,8 +88,16 @@ export async function updateDocument(request:Request,id:string) {
   const user=await identity(request);if(user.role!=='admin')throw new AccessError(403,'Administrator access required');
   let req:RecordData;try{req=await readObject(request,8192);}catch{throw new ApiError(400,'Invalid document update');}
   if(Object.keys(req).some(key=>!['status','comment'].includes(key))||!['submitted','verified','rejected'].includes(s(req.status))||req.comment!==undefined&&(typeof req.comment!=='string'||req.comment.length>2000))throw new ApiError(400,'Invalid document status/comment');
-  const ref=collection().doc(id);
-  await getDatabase().runTransaction(async tx=>{const snapshot=await tx.get(ref);if(!snapshot.exists)throw new ApiError(404,'Document not found');const before=snapshot.data()!,now=new Date();tx.update(ref,{status:req.status,adminComment:s(req.comment),updatedAt:now,statusHistory:[...(Array.isArray(before.statusHistory)?before.statusHistory:[]),{status:req.status,comment:s(req.comment),actorUID:user.uid,at:now}]});});
+  const ref=collection().doc(id),intentIds:string[]=[];
+  await getDatabase().runTransaction(async tx=>{const snapshot=await tx.get(ref);if(!snapshot.exists)throw new ApiError(404,'Document not found');const before=snapshot.data()!,now=new Date();
+    if(before.status===req.status&&s(before.adminComment)===s(req.comment))return;
+    const property=await tx.get(getDatabase().collection(COLLECTIONS.properties).doc(s(before.propertyId)));if(!property.exists)throw new ApiError(404,'Property not found');
+    requireDocumentAccess(user,before,property.data()!);
+    const history=[...(Array.isArray(before.statusHistory)?before.statusHistory:[]),{status:req.status,comment:s(req.comment),actorUID:user.uid,at:now}];
+    const activity=await stagePropertyActivity(tx,user,{...property.data(),id:s(before.propertyId)},{recordId:id,id:`${id}:review:${history.length}`,eventType:'document.reviewed',type:'document_upload',title:'Document review updated',details:`Document category: ${s(before.documentType).replaceAll('_',' ')}`,status:s(req.status),document:before});intentIds.push(...activity.ids);activity.write();
+    tx.update(ref,{status:req.status,adminComment:s(req.comment),updatedAt:now,statusHistory:history});
+  });
+  dispatchNotificationIntents(intentIds);
   return jsonResponse({success:true,message:'Document report updated successfully'});
 }
 export async function deleteDocument(request:Request,id:string) {
@@ -92,7 +107,8 @@ export async function deleteDocument(request:Request,id:string) {
   requireDocumentAccess(user,document,boundProperty);
   if(user.role!=='admin'&&user.uid!==document.userId&&user.uid!==property?.ownerUID)throw new AccessError(403,'Document access required');
   const managed=mediaId(document.fileUrl);
-  if(managed){await deleteDocumentMedia(managed,id,user);return jsonResponse({success:true,message:'Document and stored file deleted successfully'});}
+  if(managed){const ids:string[]=[];await deleteDocumentMedia(managed,id,user,async(tx,current,property)=>{const activity=await stagePropertyActivity(tx,user,{...property,id:s(current.propertyId)},{id,eventType:'document.removal_requested',type:'document_upload',title:'Document removal requested',details:'Secure file cleanup requested',status:'cleanup_pending',document:current});ids.push(...activity.ids);return activity.write;});dispatchNotificationIntents(ids);return jsonResponse({success:true,message:'Document and stored file deleted successfully'});}
+  const intentIds:string[]=[];
   // Historical files require an approved migration, never arbitrary URL-based deletion.
   await getDatabase().runTransaction(async tx=>{
     const ref=collection().doc(id),fresh=await tx.get(ref);if(!fresh.exists)return;
@@ -101,8 +117,10 @@ export async function deleteDocument(request:Request,id:string) {
     requirePropertyMember(user,filePropertyRelationships(property.data()!));
     requireDocumentAccess(user,current,property.data()!);
     if(user.role!=='admin'&&user.uid!==current.userId&&user.uid!==property.data()?.ownerUID)throw new AccessError(403,'Document deletion access required');
+    const activity=await stagePropertyActivity(tx,user,{...property.data(),id:s(current.propertyId)},{id,eventType:'document.removed',type:'document_upload',title:'Document record removed',details:'Historical file cleanup requires separate approval',status:'approval_required',document:current});intentIds.push(...activity.ids);activity.write();
     tx.create(getDatabase().collection('legacy_storage_cleanup').doc(id),{documentId:id,propertyId:current.propertyId,fileUrl:current.fileUrl||'',status:'approval_required',requestedBy:user.uid,createdAt:new Date()});
     tx.delete(ref);
   });
+  dispatchNotificationIntents(intentIds);
   return jsonResponse({success:true,message:'Document metadata removed',warning:'Historical object revocation is pending an approved storage migration'});
 }

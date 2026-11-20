@@ -1,3 +1,6 @@
+import {propertyEmailContext,emailMoney} from '@/lib/email-design';
+
+import {formatDisplayDate, formatDisplayMonth} from '@/lib/date-format';
 import 'server-only';
 import { createHash, timingSafeEqual, randomUUID } from 'node:crypto';
 import { getDatabase, COLLECTIONS } from '../firestore';
@@ -139,13 +142,13 @@ function decodeCursor(token:string):Cursor {
   return {after:stringValue(parsed.after),property:stringValue(parsed.property),event:Number(parsed.event)};
 }
 function transactionalEvent(property:RecordData,event:ReminderCandidate,scheduledFor:string):TransactionalEmailEvent {
-  const propertyId=stringValue(property.id),title=stringValue(property.title)||propertyId;
+  const propertyId=stringValue(property.id),title=stringValue(property.title)||'Your rental property';
   const eventType=event.kind==='rent_due'?'rent.reminder':'agreement.expiry_reminder';
   const eventId=event.kind==='rent_due'?`${propertyId}:${event.tenancyId}:${event.period}:${event.offset}`:`${propertyId}:${event.tenancyId}:${event.agreementVersion}:${event.offset}`;
   const subject=event.kind==='rent_due'?event.offset===0?'Rent is due today':`Rent due in ${event.offset} day${event.offset===1?'':'s'}`:`Rental agreement expires in ${event.offset} days`;
-  const bodyText=event.kind==='rent_due'?`${title}: rent ${event.amount} for ${event.period} is due on ${event.dueDate}.`:`${title}: the current rental agreement expires on ${event.dueDate}. Review renewal or move-out arrangements in PropBank.`;
-  const bodyHtml=event.kind==='rent_due'?`<p><strong>${escapeHtml(title)}</strong></p><p>Rent amount: ${escapeHtml(event.amount)}<br>Rental period: ${escapeHtml(event.period)}<br>Due date: ${escapeHtml(event.dueDate)}</p>`:`<p><strong>${escapeHtml(title)}</strong></p><p>The current rental agreement expires on ${escapeHtml(event.dueDate)}. Review renewal or move-out arrangements in PropBank.</p>`;
-  return {eventType,eventId,recipientUID:event.recipientUID,recipientRole:event.recipientRole,propertyId,recordId:propertyId,templateId:event.kind==='rent_due'?'rent-reminder':'agreement-expiry-reminder',templateVersion:1,subject,...brandedEmail(subject,bodyHtml,bodyText,{label:event.kind==='rent_due'?'View rental information':'View agreement',path:`/manage-property/${propertyId}`}),idempotencyKey:`${eventType}:${eventId}:${event.recipientUID}`,tenancyId:event.tenancyId,rentPeriod:event.kind==='rent_due'?event.period:undefined,agreementVersion:event.kind==='agreement_expiry'?event.agreementVersion:undefined,scheduledFor,reminderOffset:event.offset,reminderDueDate:event.dueDate,reminderAmount:event.kind==='rent_due'?event.amount:undefined};
+  const bodyText=event.kind==='rent_due'?`${title}: rent ${emailMoney(event.amount)} for ${formatDisplayMonth(event.period)} is due on ${formatDisplayDate(event.dueDate)}.`:`${title}: the current rental agreement expires on ${formatDisplayDate(event.dueDate)}. Review renewal or move-out arrangements in PropBank.`;
+  const bodyHtml=event.kind==='rent_due'?`<p><strong>${escapeHtml(title)}</strong></p><p>Rent amount: ${escapeHtml(emailMoney(event.amount))}<br>Rental period: ${escapeHtml(formatDisplayMonth(event.period))}<br>Due date: ${escapeHtml(formatDisplayDate(event.dueDate))}</p>`:`<p><strong>${escapeHtml(title)}</strong></p><p>The current rental agreement expires on ${escapeHtml(formatDisplayDate(event.dueDate))}. Review renewal or move-out arrangements in PropBank.</p>`;
+  return {eventType,eventId,recipientUID:event.recipientUID,recipientRole:event.recipientRole,propertyId,recordId:propertyId,templateId:event.kind==='rent_due'?'rent-reminder':'agreement-expiry-reminder',templateVersion:1,subject,...brandedEmail(subject,bodyHtml,bodyText,{label:event.kind==='rent_due'?'View rental information':'View agreement',path:`/manage-property/${propertyId}`},propertyEmailContext(property,[{label:'Due date',value:event.dueDate,format:'date'},{label:'Contractual rent due',value:event.kind==='rent_due'?event.amount:undefined,format:'money'},{label:'Billing period',value:event.kind==='rent_due'?formatDisplayMonth(event.period):undefined}],{preheader:bodyText})),idempotencyKey:`${eventType}:${eventId}:${event.recipientUID}`,tenancyId:event.tenancyId,rentPeriod:event.kind==='rent_due'?event.period:undefined,agreementVersion:event.kind==='agreement_expiry'?event.agreementVersion:undefined,scheduledFor,reminderOffset:event.offset,reminderDueDate:event.dueDate,reminderAmount:event.kind==='rent_due'?event.amount:undefined};
 }
 
 export async function runPropertyReminders(now=new Date(),cursorToken='') {

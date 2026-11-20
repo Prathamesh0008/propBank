@@ -1,5 +1,10 @@
 "use client";
-import {calendarToday} from "@/lib/calendar-date";
+import {propertyPriceText, propertyAreaText, propertyOccupancy} from '@/lib/property-presentation';
+
+import {formatAddress} from "@/lib/address-format";
+import {formatDisplayDate, formatDisplayTime} from '@/lib/date-format';
+
+import {calendarToday,calendarValue,parseCalendarDate} from "@/lib/calendar-date";
 
 import PropertyPurposeSummary from "@/features/properties/PropertyPurposeSummary";
 import {purposeLabel} from "@/lib/property-purpose";
@@ -62,6 +67,7 @@ interface RaisedRequest {
   serviceImage?: string;
   timestamp: string;
   isRead: boolean;
+  status?:string;
   resolvedAt?: string; // Timestamp when marked as resolved
   priority?: string;
   adminRemarks?: string;
@@ -364,10 +370,10 @@ const PropertyDetails = () => {
           'other_service_request',
           'agreement_renewal',
           'agreement_termination',
-          'document_upload'
+          'document_upload','review','tenant_confirmed','tenant_assigned','rental_terms_changed'
         ];
         const filteredRequests = Array.isArray(data)
-          ? data.filter((req: RaisedRequest) => requestTypes.includes(req.type))
+          ? data.filter((req: RaisedRequest) => requestTypes.includes(req.type)||req.type.startsWith('agreement_renew'))
           : [];
         setRaisedRequests(filteredRequests);
       }
@@ -376,14 +382,7 @@ const PropertyDetails = () => {
     }
   };
 
-  const formatPrice = (property: Property) => {
-    if (property.listingType === 'rent') {
-      return property.monthlyRent ? `₹${Number(property.monthlyRent).toLocaleString()}/month` : 'Price not set';
-    } else if (['sell','pre_leased'].includes(property.listingType)) {
-      return property.sellingPrice ? `₹${Number(property.sellingPrice).toLocaleString()}` : 'Price not set';
-    }
-    return 'Price not set';
-  };
+  const formatPrice = (property: Property) => propertyPriceText(property);
 
   const getListingTypeBadge = (listingType: string) => {
     if (listingType === 'rent') {
@@ -401,14 +400,15 @@ const PropertyDetails = () => {
   const submitTerminationRequest = async () => {
     setSubmittingTermination(true);
     try {
-      const formattedStartDate = new Date(noticeStartDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' });
+      const formattedStartDate = noticeStartDate; // API receives the canonical date, not display text.
       // Calculate anticipated termination date
       let terminationDate = "";
       if (selectedNoticePeriod && !selectedNoticePeriod.toLowerCase().includes("immediate")) {
         const parts = selectedNoticePeriod.split(" ");
         const num = parseInt(parts[0]);
         if (!isNaN(num)) {
-          const startDate = new Date(noticeStartDate);
+          const startDate = parseCalendarDate(noticeStartDate);
+          if (!startDate) throw new Error('Choose a valid notice start date');
           const calculatedDate = new Date(startDate);
           if (selectedNoticePeriod.toLowerCase().includes("month")) {
             calculatedDate.setMonth(startDate.getMonth() + num);
@@ -417,7 +417,7 @@ const PropertyDetails = () => {
           } else {
             calculatedDate.setMonth(startDate.getMonth() + num);
           }
-          terminationDate = calculatedDate.toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' });
+          terminationDate = calendarValue(calculatedDate);
         }
       }
 
@@ -519,7 +519,7 @@ const PropertyDetails = () => {
               </Badge>
               <Badge variant="outline" className={`border-white/30 bg-white/10 backdrop-blur-sm px-3 py-1 ${property.rentalStatus === 'rented' ? 'text-amber-300 border-amber-300/50' : 'text-green-300 border-green-300/50'
                 }`}>
-                {property.rentalStatus === 'rented' ? 'Rented' : 'Available'}
+                {propertyOccupancy(property)}
               </Badge>
             </div>
 
@@ -567,7 +567,7 @@ const PropertyDetails = () => {
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-2">
                   <MapPin className="h-5 w-5 text-muted-foreground" />
-                  <span>{property.address || property.location}, {property.city}, {property.state} {property.zipCode}</span>
+                  <span>{formatAddress(property.address || property.location, property.city, [property.state, property.zipCode].filter(value => String(value ?? "").trim()).join(" "))}</span>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -590,7 +590,7 @@ const PropertyDetails = () => {
                   property.updatedAt && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Calendar className="h-4 w-4" />
-                      <span>Last modified: {new Date(property.updatedAt).toLocaleDateString('en-GB')} at {new Date(property.updatedAt).toLocaleTimeString()}</span>
+                      <span>Last modified: {formatDisplayDate(property.updatedAt)} at {formatDisplayTime(property.updatedAt)}</span>
                     </div>
                   )
                 }
@@ -678,17 +678,17 @@ const PropertyDetails = () => {
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="text-center">
-                    <div className="text-xl font-semibold">{property.carpetArea || 'N/A'}</div>
+                    <div className="text-xl font-semibold">{propertyAreaText(property,'carpetArea')}</div>
                     <div className="text-sm text-muted-foreground">Carpet Area</div>
                   </div>
                   {property.plotArea && (
                     <div className="text-center">
-                      <div className="text-xl font-semibold">{property.plotArea}</div>
+                      <div className="text-xl font-semibold">{propertyAreaText(property,'plotArea')}</div>
                       <div className="text-sm text-muted-foreground">Plot Area</div>
                     </div>
                   )}
                   <div className="text-center">
-                    <div className="text-xl font-semibold">{property.constructedArea || 'N/A'}</div>
+                    <div className="text-xl font-semibold">{propertyAreaText(property,'constructedArea')}</div>
                     <div className="text-sm text-muted-foreground">Constructed Area</div>
                   </div>
                 </div>
@@ -709,8 +709,8 @@ const PropertyDetails = () => {
                       {[
                         { label: 'Security Deposit', value: property.securityDeposit, isCurrency: true },
                         { label: 'Agreement Period', value: property.agreementPeriod },
-                        { label: 'Agreement Start Date', value: property.agreementStartDate ? new Date(property.agreementStartDate).toLocaleDateString() : null },
-                        { label: 'Agreement End Date', value: property.agreementEndDate ? new Date(property.agreementEndDate).toLocaleDateString() : null },
+                        { label: 'Agreement Start Date', value: property.agreementStartDate ? formatDisplayDate(property.agreementStartDate) : null },
+                        { label: 'Agreement End Date', value: property.agreementEndDate ? formatDisplayDate(property.agreementEndDate) : null },
                         { label: 'Notice Period', value: property.noticePeriod },
                         { label: 'Lock-in Period', value: property.lockInPeriod },
                         { label: 'Payment Due Date', value: property.paymentDueDate ? `${property.paymentDueDate} of each month` : null },
@@ -742,8 +742,8 @@ const PropertyDetails = () => {
                                     <td className="px-4 py-2">{item.year}</td>
                                     <td className="px-4 py-2">{item.months || '11'}</td>
                                     <td className="px-4 py-2">₹{Number(item.amount).toLocaleString()}</td>
-                                    <td className="px-4 py-2">{item.fromDate ? new Date(item.fromDate).toLocaleDateString() : 'N/A'}</td>
-                                    <td className="px-4 py-2">{item.toDate ? new Date(item.toDate).toLocaleDateString() : 'N/A'}</td>
+                                    <td className="px-4 py-2">{item.fromDate ? formatDisplayDate(item.fromDate) : 'N/A'}</td>
+                                    <td className="px-4 py-2">{item.toDate ? formatDisplayDate(item.toDate) : 'N/A'}</td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -771,7 +771,7 @@ const PropertyDetails = () => {
                         { label: 'Maintenance To Be Paid By', value: property.maintenanceToBePaidBy, capitalize: true },
                         { label: 'Rental Status', value: property.rentalStatus, capitalize: true },
                         { label: 'Project Condition', value: property.projectCondition },
-                        { label: 'Possession Date', value: property.possessionDate && !(property.listingType === 'rent' && property.rentalStatus === 'rented') ? new Date(property.possessionDate).toLocaleDateString() : null },
+                        { label: 'Possession Date', value: property.possessionDate && !(property.listingType === 'rent' && property.rentalStatus === 'rented') ? formatDisplayDate(property.possessionDate) : null },
                       ].map((item, idx) => (
                         <DetailItem key={idx} {...item} />
                       ))}
@@ -925,14 +925,14 @@ const PropertyDetails = () => {
                             {[
                               { label: 'Phone', value: tenant.phone },
                               { label: 'Monthly Rent', value: tenant.monthlyRent, isCurrency: true },
-                              { label: 'Lease Start', value: tenant.leaseStartDate ? new Date(tenant.leaseStartDate).toLocaleDateString() : null },
-                              { label: 'Lease End', value: tenant.leaseEndDate ? new Date(tenant.leaseEndDate).toLocaleDateString() : null },
+                              { label: 'Lease Start', value: tenant.leaseStartDate ? formatDisplayDate(tenant.leaseStartDate) : null },
+                              { label: 'Lease End', value: tenant.leaseEndDate ? formatDisplayDate(tenant.leaseEndDate) : null },
                               { label: 'Employer', value: tenant.employer },
                               { label: 'Payment Due', value: tenant.paymentDueDate ? `${tenant.paymentDueDate}th of each month` : null },
                               { label: 'Notice Period', value: tenant.noticePeriod },
                               { label: 'Annual Escalation', value: tenant.escalationPercentage },
                               { label: 'Emergency Contact', value: tenant.emergencyContact },
-                              { label: 'Last Modified', value: tenant.updatedAt ? `${new Date(tenant.updatedAt).toLocaleDateString('en-GB')} at ${new Date(tenant.updatedAt).toLocaleTimeString()}` : null },
+                              { label: 'Last Modified', value: tenant.updatedAt ? `${formatDisplayDate(tenant.updatedAt)} at ${formatDisplayTime(tenant.updatedAt)}` : null },
                             ].map((item, idx) => (
                               <DetailItem key={idx} {...item} />
                             ))}
@@ -961,8 +961,8 @@ const PropertyDetails = () => {
                                         <td className="px-4 py-2">{item.year}</td>
                                         <td className="px-4 py-2">{item.months || '11'}</td>
                                         <td className="px-4 py-2">₹{Number(item.amount).toLocaleString()}</td>
-                                        <td className="px-4 py-2">{item.fromDate ? new Date(item.fromDate).toLocaleDateString() : 'N/A'}</td>
-                                        <td className="px-4 py-2">{item.toDate ? new Date(item.toDate).toLocaleDateString() : 'N/A'}</td>
+                                        <td className="px-4 py-2">{item.fromDate ? formatDisplayDate(item.fromDate) : 'N/A'}</td>
+                                        <td className="px-4 py-2">{item.toDate ? formatDisplayDate(item.toDate) : 'N/A'}</td>
                                       </tr>
                                     ))}
                                   </tbody>
@@ -1014,7 +1014,11 @@ const PropertyDetails = () => {
                           case 'document_upload': return 'Document Upload';
                           case 'agreement_renewal': return 'Agreement Renewal';
                           case 'agreement_termination': return 'Agreement Termination';
-                          default: return 'Request';
+                          case 'review': return 'Review';
+                          case 'tenant_confirmed': return 'Tenancy confirmed';
+                          case 'tenant_assigned': return 'Tenant assigned';
+                          case 'rental_terms_changed': return 'Rental terms updated';
+                          default: return type.startsWith('agreement_renew')?'Agreement Renewal':'Request';
                         }
                       };
 
@@ -1032,6 +1036,7 @@ const PropertyDetails = () => {
                       };
 
                       const getStatusBadge = (request: RaisedRequest) => {
+                        if(request.status)return <Badge variant="outline" className="text-xs">{request.status.replaceAll("_"," ")}</Badge>;
                         if (request.isRead) {
                           return (
                             <div className="flex flex-col items-end gap-1">
@@ -1041,7 +1046,7 @@ const PropertyDetails = () => {
                               </Badge>
                               {request.resolvedAt && (
                                 <span className="text-[10px] text-muted-foreground">
-                                  {new Date(request.resolvedAt).toLocaleDateString()} at {new Date(request.resolvedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  {formatDisplayDate(request.resolvedAt)} at {formatDisplayTime(request.resolvedAt, { hour: '2-digit', minute: '2-digit' })}
                                 </span>
                               )}
                             </div>
@@ -1061,7 +1066,7 @@ const PropertyDetails = () => {
                               <div>
                                 <h4 className="font-semibold text-sm">{getRequestTypeLabel(request.type)}</h4>
                                 <p className="text-xs text-muted-foreground">
-                                  {new Date(request.timestamp || request.createdAt).toLocaleDateString()}
+                                  {formatDisplayDate(request.timestamp || request.createdAt)}
                                 </p>
                               </div>
                             </div>
@@ -1181,7 +1186,7 @@ const PropertyDetails = () => {
                   </div>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
                     <Calendar className="h-4 w-4" />
-                    Listed on {new Date(property.createdAt).toLocaleDateString()}
+                    Listed on {formatDisplayDate(property.createdAt)}
                   </div>
 
                   {/* Detailed Rent Information for Rentals */}
@@ -1286,7 +1291,7 @@ const PropertyDetails = () => {
                             { label: 'Offer Amount', value: buyer.offerAmount, isCurrency: true },
                             { label: 'Financing', value: buyer.financingType, capitalize: true },
                             { label: 'Pre-approval', value: buyer.preApprovalAmount, isCurrency: true },
-                            { label: 'Expected Closing', value: buyer.closingDate ? new Date(buyer.closingDate).toLocaleDateString() : null },
+                            { label: 'Expected Closing', value: buyer.closingDate ? formatDisplayDate(buyer.closingDate) : null },
                             { label: 'Employment', value: buyer.employmentStatus, capitalize: true },
                             { label: 'Employer', value: buyer.employer },
                             { label: 'Annual Income', value: buyer.annualIncome, isCurrency: true },

@@ -1,3 +1,4 @@
+import {renderTransactionalEmail,type EmailContext} from '@/lib/email-design';
 import 'server-only';
 import {recordRead} from '../read-budget';
 import { getFirebaseAdminAuth } from '../firebase-admin';
@@ -14,13 +15,13 @@ import {rentForBillingPeriod} from '@/lib/rent-resolution';
 import {normalizeEmailAddress} from '@/lib/email-address';
 import {currentConnectionState} from '@/lib/relationship-link-state';
 
-export type TransactionalEmailEvent={
+export type TransactionalEmailEvent={propertyActivity?:boolean;
   eventType:string;eventId:string;recipientUID?:string;recipientRole:string;recipientEmail?:string;
   propertyId?:string;recordId?:string;templateId:string;templateVersion:number;
   subject:string;html:string;text:string;idempotencyKey?:string;
   invitationClaimId?:string;tenancyId?:string;rentPeriod?:string;agreementVersion?:string;scheduledFor?:string;reminderOffset?:number;reminderDueDate?:string;reminderAmount?:string;
 };
-export type UserEvent={actorUID?:string;eventType:string;eventId:string;recipients?:Array<{uid?:string;role:string;email?:string}>;recipientUIDs?:string[];propertyId?:string;recordId?:string;templateId:string;subject:string;title?:string;bodyHtml:string;bodyText:string;action?:{label:string;path:string}};
+export type UserEvent={emailContext?:EmailContext;propertyActivity?:boolean;actorUID?:string;eventType:string;eventId:string;recipients?:Array<{uid?:string;role:string;email?:string;name?:string}>;recipientUIDs?:string[];propertyId?:string;recordId?:string;templateId:string;subject:string;title?:string;bodyHtml:string;bodyText:string;action?:{label:string;path:string}};
 
 const deliveries=()=>getDatabase().collection(COLLECTIONS.emailDeliveries || 'email_deliveries');
 const safeError=()=> 'Email provider delivery failed';
@@ -31,18 +32,20 @@ const emailPattern=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const definedFields=(value:RecordData)=>Object.fromEntries(Object.entries(value).filter(([,entry])=>entry!==undefined));
 const diagnosticCode=(error:unknown)=>typeof error==='object'&&error!==null&&'code' in error?String(error.code):error instanceof Error?error.name:'UNKNOWN_ERROR';
 
-export function brandedEmail(title:string,bodyHtml:string,bodyText:string,action?:{label:string;path:string}) {
-  const base=(process.env.APP_URL||process.env.NEXT_PUBLIC_APP_URL||'').replace(/\/$/,'');
-  const href=base&&action?.path?.startsWith('/')?`${base}${action.path}`:'';
-  const actionHtml=href?`<p style="margin:28px 0"><a href="${href}" style="background:#A25C42;color:#F8F6F0;text-decoration:none;padding:12px 18px;border-radius:4px;display:inline-block">${action!.label}</a></p>`:'';
-  return {html:`<!doctype html><html><body style="margin:0;background:#E6E1D6;color:#242B28;font-family:Arial,Helvetica,sans-serif"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td style="padding:24px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;margin:auto;background:#F8F6F0;border-top:5px solid #A25C42"><tr><td style="padding:28px"><p style="margin:0 0 28px;font-weight:700;letter-spacing:.04em">PropBank</p><h1 style="font-size:25px;line-height:1.2;margin:0 0 18px">${title}</h1>${bodyHtml}${actionHtml}<p style="border-top:1px solid #D4D0C5;padding-top:18px;margin-top:30px;color:#565C56;font-size:13px">This is an automated account notification from PropBank.</p></td></tr></table></td></tr></table></body></html>`,text:`PropBank\n\n${title}\n\n${bodyText}${href?`\n\n${action!.label}: ${href}`:''}\n\nThis is an automated account notification from PropBank.`};
+export function brandedEmail(title:string,bodyHtml:string,bodyText:string,action?:{label:string;path:string},context?:EmailContext) {
+  return renderTransactionalEmail(title,bodyHtml,bodyText,action,context);
+}
+function userEventContent(event:UserEvent,role:string,name?:string){
+  const admin=role==='admin',action=admin&&event.action&&!event.action.path.startsWith('/admin')?{label:'Review in Admin Portal',path:event.propertyId?`/admin?tab=properties&propertyId=${encodeURIComponent(event.propertyId)}`:'/admin?tab=notifications'}:event.action;
+  const accountAdmin=admin&&/^user\.(profile|mobile)/.test(event.eventType),bodyText=accountAdmin?'A customer account profile was updated. Review the authorized account activity. Passwords and private profile values are not included in this notice.':event.bodyText,bodyHtml=accountAdmin?'<p>A customer account profile was updated. Review the authorized account activity.</p>':event.bodyHtml;
+  return brandedEmail(event.title||event.subject,bodyHtml,bodyText,action,{...event.emailContext,audience:role,...(admin?{greeting:'PropBank team'}:name?{greeting:name}:{}),nextStep:event.emailContext?.nextStep||(admin?'Review the recorded activity and take any required action in the Admin Portal.':'Open PropBank to review the latest details. Contact support if you do not recognize this activity.')});
 }
 
 async function resolveRecipient(event:TransactionalEmailEvent) {
   if(event.recipientUID) {
     const snapshot=await getDatabase().collection(COLLECTIONS.users).doc(event.recipientUID).get(),profile=snapshot.data();
     if(!snapshot.exists||profile?.isActive===false)return '';
-    if(/^(relationship\.|owner_verification\.|tenancy\.)/.test(event.eventType)) {
+    if(/^(relationship\.|owner_verification\.|tenancy\.|inspection\.|document\.|review\.|maintenance\.)/.test(event.eventType)) {
       try {
         const account=await getFirebaseAdminAuth().getUser(event.recipientUID);
         return !account.disabled&&account.emailVerified&&emailPattern.test(account.email||'')?(account.email||'').toLowerCase():'';
@@ -60,7 +63,7 @@ async function resolveRecipient(event:TransactionalEmailEvent) {
   // supplied destination.
   if(event.recipientRole==='previous_email'&&event.eventType.startsWith('user.email_')&&emailPattern.test(s(event.recipientEmail)))return s(event.recipientEmail).toLowerCase();
   const configured=(process.env.ADMIN_EMAIL||'').trim().toLowerCase();
-  return event.recipientRole==='admin'&&configured&&event.recipientEmail?.toLowerCase()===configured&&emailPattern.test(configured)?configured:'';
+  return event.recipientRole==='admin'&&configured&&(!event.recipientEmail||event.recipientEmail.toLowerCase()===configured)&&emailPattern.test(configured)?configured:'';
 }
 
 async function deliver(id:string) {
@@ -69,7 +72,7 @@ async function deliver(id:string) {
   if(!value)return 'skipped';
   const finish=async(update:RecordData)=>getDatabase().runTransaction(async tx=>{const fresh=await tx.get(ref);if(fresh.data()?.deliveryLease===lease)tx.update(ref,update);});
   try{
-    if(!await invitationIsCurrent(value)||!await reminderIsCurrent(value)){await finish({status:'cancelled',errorSummary:'Invitation is no longer eligible',updatedAt:now,deliveryLease:'',deliveryLeaseUntil:now});return 'skipped';}
+    if(!await invitationIsCurrent(value)||!await reminderIsCurrent(value)||!await propertyActivityIsCurrent(value)){await finish({status:'cancelled',errorSummary:value.propertyActivity?'Property relationship or recipient is no longer eligible':'Invitation is no longer eligible',updatedAt:now,deliveryLease:'',deliveryLeaseUntil:now});return 'skipped';}
     if(value.firstAttemptAt&&now.getTime()-new Date(wireValue(value.firstAttemptAt) as string).getTime()>=23*60*60*1000)throw new Error('Delivery reconciliation required');
     if(!value.firstAttemptAt)await finish({firstAttemptAt:now});
     const recipient=s(value.recipientEmail)||(value.recipientRole==='admin'?process.env.ADMIN_EMAIL||'':'');
@@ -128,10 +131,9 @@ export async function persistUserEvent(event:UserEvent) {
   dispatchNotificationIntents([id]);return {recorded:1};
 }
 export async function processUserEvent(event:UserEvent) {
-  const content=brandedEmail(event.title||event.subject,event.bodyHtml,event.bodyText,event.action);
-  const recipients:Array<{uid?:string;role:string;email?:string}>=event.recipients||event.recipientUIDs?.map(uid=>({uid,role:'user'}))||[];
+  const recipients:Array<{uid?:string;role:string;email?:string;name?:string}>=event.recipients||event.recipientUIDs?.map(uid=>({uid,role:'user'}))||[];
   const outcomes:Array<{role:string;status:string}>=[];
-  for(const recipient of recipients)outcomes.push({role:recipient.role,status:await processTransactionalEmail({eventType:event.eventType,eventId:event.eventId,recipientUID:recipient.uid,recipientRole:recipient.role,recipientEmail:recipient.email,propertyId:event.propertyId,recordId:event.recordId,templateId:event.templateId,templateVersion:1,subject:event.subject,...content})});
+  for(const recipient of recipients)outcomes.push({role:recipient.role,status:await processTransactionalEmail({eventType:event.eventType,eventId:event.eventId,recipientUID:recipient.uid,recipientRole:recipient.role,recipientEmail:event.propertyActivity&&recipient.role==='admin'?process.env.ADMIN_EMAIL:recipient.email,propertyId:event.propertyId,recordId:event.recordId,templateId:event.templateId,templateVersion:1,subject:event.subject,...userEventContent(event,recipient.role,recipient.name)})});
   return outcomes;
 }
 export function queueUserEvent(event:UserEvent){after(async()=>{try{await persistUserEvent(event);}catch{console.error('Transactional email event persistence failed',{eventType:event.eventType});}});}
@@ -171,6 +173,24 @@ async function invitationIsCurrent(value:RecordData){
   const tenant=(await getDatabase().collection(COLLECTIONS.tenants).doc(s(claim.tenantId)).get()).data();
   return !!tenant&&tenant.propertyId===value.propertyId&&tenant.ownerUID===property.ownerUID&&tenant.isActive===true&&!tenant.userUID&&tenant.linkConfirmationRequired===true&&email!==null&&email===normalizeEmailAddress(tenant.email);
 }
+async function propertyActivityIsCurrent(value:RecordData){
+  if(!value.propertyActivity)return true;
+  if(value.recipientRole==='admin'){
+    const configured=(process.env.ADMIN_EMAIL||'').trim().toLowerCase();
+    if(!emailPattern.test(configured))throw new EmailConfigurationError('ADMIN_EMAIL must be a valid recipient address');
+    return !value.recipientEmail||s(value.recipientEmail).toLowerCase()===configured;
+  }
+  const uid=s(value.recipientUID),property=(await getDatabase().collection(COLLECTIONS.properties).doc(s(value.propertyId)).get()).data();
+  if(!uid||!property)return false;
+  const profile=(await getDatabase().collection(COLLECTIONS.users).doc(uid).get()).data();if(!profile||profile.isActive===false)return false;
+  try{const account=await getFirebaseAdminAuth().getUser(uid);if(account.disabled||!account.emailVerified||s(account.email).toLowerCase()!==s(value.recipientEmail).toLowerCase())return false;}catch(error){if((error as {code?:string}).code==='auth/user-not-found')return false;throw error;}
+  if(property.ownerUID===uid)return true;
+  if(property.listingType==='manage'||property.listingType==='pre_leased'&&s(value.eventType).startsWith('document.'))return false;
+  const tenant=(Array.isArray(property.tenants)?property.tenants:[]).find((t:RecordData)=>t.userUID===uid&&t.isActive===true&&t.linkConfirmationRequired!==true);
+  if(!tenant)return false;
+  if(tenant.id){const canonical=(await getDatabase().collection(COLLECTIONS.tenants).doc(s(tenant.id)).get()).data();if(canonical)return canonical.propertyId===value.propertyId&&canonical.ownerUID===property.ownerUID&&canonical.userUID===uid&&canonical.isActive===true&&canonical.linkConfirmationRequired!==true;}
+  return true;
+}
 async function reminderIsCurrent(value:RecordData){
   if(!['rent.reminder','agreement.expiry_reminder'].includes(s(value.eventType)))return true;
   const snapshot=await getDatabase().collection(COLLECTIONS.properties).doc(s(value.propertyId)).get();if(!snapshot.exists)return false;
@@ -197,12 +217,12 @@ export async function retryEmailDelivery(request:Request,id:string) {
 /** An unresolved recipient is staged durably before the authoritative business write. */
 export async function stageUserEvent(tx:Transaction,event:UserEvent){
  const id=idFor(`notification-intent:${event.eventType}:${event.eventId}`),ref=deliveries().doc(id),existing=await tx.get(ref),now=new Date();
- const recipients=event.recipients||event.recipientUIDs?.map(uid=>({uid,role:'user'}))||[];
+ const recipients:NonNullable<UserEvent['recipients']>=event.recipients||event.recipientUIDs?.map(uid=>({uid,role:'user'}))||[];
  if(recipients.length>60)throw new ApiError(400,'Notification recipient limit exceeded');
- const stored=JSON.parse(JSON.stringify(event)),mail:TransactionalEmailEvent[]=[],addresses=new Set<string>(),content=brandedEmail(event.title||event.subject,event.bodyHtml,event.bodyText,event.action);
+ const stored=JSON.parse(JSON.stringify(event)),mail:TransactionalEmailEvent[]=[],addresses=new Set<string>();
  // Resolve recipients before writes; provider calls are strictly post-commit.
- for(const recipient of recipients){const e:TransactionalEmailEvent={eventType:event.eventType,eventId:event.eventId,recipientUID:recipient.uid,recipientRole:recipient.role,recipientEmail:'email' in recipient?recipient.email:undefined,propertyId:event.propertyId,recordId:event.recordId,templateId:event.templateId,templateVersion:1,subject:event.subject,...content};const address=await resolveRecipient(e);if(address&&!addresses.has(address)){addresses.add(address);e.recipientEmail=address;const existingMail=await tx.get(deliveries().doc(emailDeliveryId(e)));if(!existingMail.exists&&!mail.some(m=>emailDeliveryId(m)===emailDeliveryId(e)))mail.push(e);}}
- return {id,write:()=>{if(!existing.exists)tx.create(ref,{id,kind:'notification_intent',eventType:'notification.intent',sourceEventType:event.eventType,event:stored,status:'pending',retryCount:0,recoveryAt:now,createdAt:now,updatedAt:now});writeEmailOutbox(tx,mail);}};
+ for(const recipient of recipients){const e:TransactionalEmailEvent={...(event.propertyActivity?{propertyActivity:true,...(recipient.role==='admin'?{idempotencyKey:`property-activity-admin:${event.eventType}:${event.eventId}`}:{})}:{}),eventType:event.eventType,eventId:event.eventId,recipientUID:recipient.uid,recipientRole:recipient.role,recipientEmail:'email' in recipient?recipient.email:undefined,propertyId:event.propertyId,recordId:event.recordId,templateId:event.templateId,templateVersion:1,subject:event.subject,...userEventContent(event,recipient.role,recipient.name)};const address=await resolveRecipient(e);if(address&&!addresses.has(address)||event.propertyActivity&&recipient.role==='admin'&&!address){if(address)addresses.add(address);e.recipientEmail=address;const existingMail=await tx.get(deliveries().doc(emailDeliveryId(e)));if(!existingMail.exists&&!mail.some(m=>emailDeliveryId(m)===emailDeliveryId(e)))mail.push(e);}}
+ return {id,deliveryIds:mail.map(emailDeliveryId),write:()=>{if(!existing.exists)tx.create(ref,{id,kind:'notification_intent',eventType:'notification.intent',sourceEventType:event.eventType,event:stored,status:'pending',retryCount:0,recoveryAt:now,createdAt:now,updatedAt:now});writeEmailOutbox(tx,mail);}};
 }
 export function dispatchNotificationIntents(ids:string[]){try{after(async()=>{for(const id of ids)try{await recoverNotification(id);}catch{console.error('Notification recovery deferred');}});}catch{/* Durable intent remains pending. */}}
 export async function recoverNotification(id:string,sendChildren=true){
@@ -213,15 +233,15 @@ export async function recoverNotification(id:string,sendChildren=true){
  await getDatabase().runTransaction(async tx=>{claimed=false;const doc=await tx.get(ref),v=doc.data();if(v&&['pending','failed','sending'].includes(s(v.status))&&Number(v.retryCount||0)>=5){tx.update(ref,{status:'exhausted',updatedAt:now});return;}if(!v||!['pending','failed','sending'].includes(s(v.status))||Number(v.retryCount||0)>=5||v.status==='sending'&&new Date(wireValue(v.deliveryLeaseUntil) as string).getTime()>now.getTime()||v.status==='failed'&&new Date(wireValue(v.recoveryAt) as string).getTime()>now.getTime())return;claimed=true;tx.update(ref,{status:'sending',deliveryLease:lease,deliveryLeaseUntil:new Date(now.getTime()+120000),recoveryAt:new Date(now.getTime()+120000)});});
  if(!claimed)return 'skipped';
  try{
-  const event=value.event as UserEvent,content=brandedEmail(event.title||event.subject,event.bodyHtml,event.bodyText,event.action),recipients:Array<{uid?:string;role:string;email?:string}>=event.recipients||event.recipientUIDs?.map(uid=>({uid,role:'user'}))||[],ids:string[]=[];
+  const event=value.event as UserEvent,recipients:Array<{uid?:string;role:string;email?:string;name?:string}>=event.recipients||event.recipientUIDs?.map(uid=>({uid,role:'user'}))||[],ids:string[]=[];
   const addresses=new Set<string>();
-  for(const recipient of recipients){const mail:TransactionalEmailEvent={eventType:event.eventType,eventId:event.eventId,recipientUID:recipient.uid,recipientRole:recipient.role,recipientEmail:recipient.email,propertyId:event.propertyId,recordId:event.recordId,templateId:event.templateId,templateVersion:1,subject:event.subject,...content};const address=await resolveRecipient(mail);if(address&&!addresses.has(address)){addresses.add(address);const result=await enqueueTransactionalEmail(mail);if(result.id)ids.push(result.id);}}
+  for(const recipient of recipients){const mail:TransactionalEmailEvent={...(event.propertyActivity?{propertyActivity:true,...(recipient.role==='admin'?{idempotencyKey:`property-activity-admin:${event.eventType}:${event.eventId}`}:{})}:{}),eventType:event.eventType,eventId:event.eventId,recipientUID:recipient.uid,recipientRole:recipient.role,recipientEmail:event.propertyActivity&&recipient.role==='admin'?process.env.ADMIN_EMAIL:recipient.email,propertyId:event.propertyId,recordId:event.recordId,templateId:event.templateId,templateVersion:1,subject:event.subject,...userEventContent(event,recipient.role,recipient.name)};const address=await resolveRecipient(mail);if(address&&!addresses.has(address)){addresses.add(address);const result=await enqueueTransactionalEmail(mail);if(result.id)ids.push(result.id);}}
   // Admin previews contain policy text only; participant templates remain private.
-  if(/^(rent\.payment|maintenance\.|visit\.|negotiation\.|owner_verification\.|user\.(mobile|profile)|agent\.)/.test(event.eventType)){
+  if(!event.propertyActivity&&/^(rent\.payment|maintenance\.|visit\.|negotiation\.|owner_verification\.|user\.(mobile|profile)|agent\.)/.test(event.eventType)){
    const noticeId=event.eventType.startsWith('visit.')?idFor(`admin-activity:${event.eventType}:${event.eventId.replace(/:(requester|admin|owner)$/,'')}`):id;
    const nref=getDatabase().collection(COLLECTIONS.adminNotifications).doc(noticeId);
    await getDatabase().runTransaction(async tx=>{const existing=await tx.get(nref);if(!existing.exists)tx.create(nref,{id,type:event.eventType.startsWith('visit.')?'visit_update':event.eventType.startsWith('negotiation.')?'negotiation_update':event.eventType.startsWith('maintenance.')?'service_request':event.eventType,eventType:event.eventType,ownerId:recipients.find(r=>r.role==='owner')?.uid||'',userId:recipients.find(r=>r.role==='customer'||r.role==='requester')?.uid||'',title:'Administrative activity',message:`${event.eventType.replaceAll('.',' ').replaceAll('_',' ')} recorded. Review the authorized details.`,propertyId:event.propertyId||'',recordId:event.recordId||'',relatedId:event.recordId||'',actorUID:event.actorUID||'',eventId:event.eventId,lifecycle:true,isRead:false,readByUIDs:[],timestamp:now,createdAt:now,emailStatus:process.env.ADMIN_EMAIL?'queued':'unconfigured'});});
-   if(!event.eventType.startsWith('visit.')&&!recipients.some(r=>r.role==='admin')&&process.env.ADMIN_EMAIL&&!addresses.has(process.env.ADMIN_EMAIL.trim().toLowerCase())){const result=await enqueueTransactionalEmail({eventType:`admin.${event.eventType}`,eventId:event.eventId,recipientRole:'admin',recipientEmail:process.env.ADMIN_EMAIL,propertyId:event.propertyId,recordId:event.recordId,templateId:'admin-activity',templateVersion:1,subject:'PropBank administrative activity',...brandedEmail('Administrative activity',`<p>${event.eventType.replaceAll('.',' ').replaceAll('_',' ')} recorded.</p>`,`${event.eventType} recorded.`,{label:'Review notifications',path:'/admin?tab=notifications'})});if(result.id)ids.push(result.id);}
+   if(!event.eventType.startsWith('visit.')&&!recipients.some(r=>r.role==='admin')&&process.env.ADMIN_EMAIL&&!addresses.has(process.env.ADMIN_EMAIL.trim().toLowerCase())){const result=await enqueueTransactionalEmail({eventType:`admin.${event.eventType}`,eventId:event.eventId,recipientRole:'admin',recipientEmail:process.env.ADMIN_EMAIL,propertyId:event.propertyId,recordId:event.recordId,templateId:'admin-activity',templateVersion:1,subject:'PropBank administrative activity',...brandedEmail('Administrative activity',`<p>${event.eventType.replaceAll('.',' ').replaceAll('_',' ')} recorded.</p>`,`${event.eventType.replaceAll('.',' ').replaceAll('_',' ')} recorded.`,{label:'Review notifications',path:'/admin?tab=notifications'})});if(result.id)ids.push(result.id);}
   }
   await finish({status:'processed',updatedAt:new Date(),deliveryLease:'',deliveryLeaseUntil:now});
   if(sendChildren)for(const child of ids)try{await deliver(child);}catch{/* Pending child is independently recoverable. */}

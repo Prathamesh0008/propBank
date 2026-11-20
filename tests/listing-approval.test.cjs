@@ -101,11 +101,11 @@ test('submission atomically queues both emails and concurrent resubmission dedup
  assert.equal(Object.values(app.state.properties).filter(p=>p.title==='Review Home').length,1);
  const rows=Object.values(app.state.email_deliveries);assert.equal(rows.length,2);
  assert.ok(rows.every(row=>row.status==='pending'));assert.equal(app.emails.length,0);
- assert.ok(rows.some(row=>row.recipientEmail==='owner@test.invalid'&&row.text.includes(first.id)&&row.text.includes('pending review')));
+ assert.ok(rows.some(row=>row.recipientEmail==='owner@test.invalid'&&row.text.includes(first.id)&&row.text.includes('Status: Pending review')));
  assert.ok(rows.some(row=>row.recipientEmail==='admin@test.invalid'&&row.text.includes('/admin?tab=properties&propertyId=')&&row.text.includes('owner@test.invalid')));
  const adminEmail=rows.find(row=>row.recipientRole==='admin');
  assert.equal(adminEmail.subject,'PropBank \u2013 New Property Submitted for Review');
- for(const value of ['Review Home',first.id,'Location: Isolated address','Owner name: Owner','Owner email: owner@test.invalid','Status: Pending Review','Submission date:','https://propbank.test/admin?tab=properties&propertyId='+first.id])assert.ok(adminEmail.text.includes(value),value);
+ for(const value of ['Review Home',first.id,'Address: Isolated address','Submitted by: Owner','Customer email: owner@test.invalid','Status: Pending review','Submitted:','https://propbank.test/admin?tab=properties&propertyId='+first.id])assert.ok(adminEmail.text.includes(value),value);
  assert.match(adminEmail.html,/Review property/);
  assert.equal(rows.find(row=>row.recipientRole==='owner').subject,'Property submitted - Pending Review');
  await app.flush();assert.equal(app.emails.length,2);assert.ok(Object.values(app.state.email_deliveries).every(row=>row.status==='sent'));

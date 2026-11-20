@@ -1,5 +1,8 @@
+import {documentPage,pageOptions} from '../query-pages';
+import {stagePropertyActivity,propertyOperationId,activePropertyTenants} from './property-activity';
+import {requirePropertyMember} from '../permissions';
 import 'server-only';
-import { randomUUID } from 'node:crypto';
+import { randomUUID,createHash } from 'node:crypto';
 import { AccessError, requireUser } from '../auth';
 import { COLLECTIONS, getDatabase, SITE_SETTINGS_DOCUMENT } from '../firestore';
 import { requireAdmin, requireSelfOrAdmin, isPropertyTenant } from '../permissions';
@@ -15,6 +18,7 @@ import {prepareFile,saveMediaRecord,prepareMediaBindings,restoreFileReferences} 
 import {fileFields} from '../file-projection';
 import {discoverFor} from './relationship-links';
 import {syncAuthenticationProfile} from './auth-activity';
+import {adminServiceRequestPage} from './admin-service-requests';
 import {
   INSPECTION_ALL_FILE_FIELDS,
   inspectionPayload,
@@ -57,15 +61,17 @@ export async function listServices() {
 }
 export async function listServiceRequests(request:Request) {
   const user=await identity(request),params=new URL(request.url).searchParams;
+  if(!params.get('propertyId')&&params.get('admin')==='true')return adminServiceRequestPage(params,user);
+  let memberProperty:RecordData|null=null;
   let query:FirebaseFirestore.Query=getDatabase().collection(COLLECTIONS.serviceRequests);
-  if(params.get('propertyId')) {const property=await propertyMember(user,params.get('propertyId')!);if(!property)return fail('Property not found',404);query=query.where('propertyId','==',params.get('propertyId'));}
+  if(params.get('propertyId')) {const property=await propertyMember(user,params.get('propertyId')!);memberProperty=property;if(!property)return fail('Property not found',404);query=query.where('propertyId','==',params.get('propertyId'));}
   else if(params.get('admin')==='true')requireAdmin(user);
   else if(params.get('userUID')) {requireSelfOrAdmin(user,params.get('userUID')!);query=query.where('userUID','==',params.get('userUID'));}
   else return fail('Missing userUID parameter or admin access',400);
-  const snapshot=await query.get();let records=snapshot.docs.map(doc=>({...doc.data(),id:doc.id} as RecordData));
-  if(params.get('propertyId')&&user.role!=='admin') {const property=await getProperty(params.get('propertyId')!);if(property?.ownerUID!==user.uid)records=records.filter(record=>record.userUID===user.uid);}
+  const {size,cursor}=pageOptions(params,100),page=await documentPage(query,size,cursor);let records=page.docs.map(doc=>({...doc.data(),id:doc.id} as RecordData));
+  if(params.get('propertyId')&&user.role!=='admin') {const property=memberProperty;if(property?.ownerUID!==user.uid)records=records.filter(record=>record.userUID===user.uid);}
   const data=records.map(wireValue);
-  return jsonResponse({success:true,message:'Service requests fetched successfully',data});
+  return jsonResponse({success:true,message:'Service requests fetched successfully',data,nextCursor:page.nextCursor,scope:'loaded-page'});
 }
 function notificationContext(property:RecordData|null,user:RecordData,uid:string,propertyId:string) {
   const tenants=(property?.tenants as RecordData[]|null)||[];const tenant=tenants.find(t=>t.isActive)||{};
@@ -85,10 +91,17 @@ export async function createServiceRequest(request:Request) {
   if(service.isActive===false)return fail('Service is inactive',400);
   const property=req.propertyId?await propertyMember(user,s(req.propertyId)):null;
   if(req.propertyId&&!property)return fail('Property not found',404);
+  const id=propertyOperationId(request,'service-request',s(req.propertyId),user.uid);
+  const fingerprint=createHash('sha256').update(JSON.stringify(req)).digest('hex');
+  const previous=request.headers.has('Idempotency-Key')?(await getDatabase().collection(COLLECTIONS.serviceRequests).doc(id).get()).data():null;if(previous){if(previous.requestFingerprint&&previous.requestFingerprint!==fingerprint)throw new ApiError(409,'Request key already used for different details');if(previous.userUID!==req.userUID||previous.propertyId!==req.propertyId||previous.serviceId!==req.serviceId||previous.message!==req.message)throw new ApiError(409,'Request key already used for different details');return jsonResponse({success:true,serviceRequest:wireModel('ServiceRequest',previous),duplicate:true},200);}
   const image=req.image?await prepareFile(s(req.image),user,s(req.propertyId),'service-request'):'';
-  const now=new Date();const value=model('ServiceRequest',{...req,id:randomUUID(),userName:profile.name,userEmail:profile.email,userPhone:profile.phoneNumber,serviceName:service.name,image,status:'pending',createdAt:now,updatedAt:now});
+  const now=new Date();const value=model('ServiceRequest',{...req,id,userName:profile.name,userEmail:profile.email,userPhone:profile.phoneNumber,serviceName:service.name,image,status:'pending',createdAt:now,updatedAt:now});
   const intentIds:string[]=[];
-  await saveMediaRecord(COLLECTIONS.serviceRequests,s(value.id),{...storeModel('ServiceRequest',value),history:[{status:'pending',actorUID:user.uid,at:now}]},user,true,async tx=>{const intent=await stageUserEvent(tx,{actorUID:user.uid,eventType:'maintenance.created',eventId:`${s(value.id)}:created`,recipients:[{uid:s(req.userUID),role:'requester'},...(property?.ownerUID?[{uid:s(property.ownerUID),role:'owner'}]:[]),{role:'admin',email:process.env.ADMIN_EMAIL}],propertyId:s(req.propertyId),recordId:s(value.id),templateId:'maintenance-activity',subject:'Maintenance request created',title:'Maintenance request created',bodyHtml:`<p>${escapeHtml(s(service.name))} was submitted successfully.</p>`,bodyText:`${s(service.name)} was submitted successfully.`,action:{label:'View request',path:req.propertyId?`/manage-property/${s(req.propertyId)}`:'/manage-property'}});intentIds.push(intent.id);return intent.write;});
+  await saveMediaRecord(COLLECTIONS.serviceRequests,s(value.id),{...storeModel('ServiceRequest',value),requestFingerprint:fingerprint,history:[{status:'pending',actorUID:user.uid,at:now}]},user,true,async tx=>{
+    if(!property){const intent=await stageUserEvent(tx,{actorUID:user.uid,emailContext:{status:'pending',rows:[{label:'Service',value:service.name},{label:'Requested by',value:profile.name},{label:'Request details',value:req.message},{label:'Submitted',value:now,format:'datetime'}]},eventType:'maintenance.created',eventId:`${id}:created`,recipients:[{uid:s(req.userUID),role:'requester'},{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:id,templateId:'maintenance-activity',subject:'Service request created',bodyHtml:'<p>A service request was submitted.</p>',bodyText:'A service request was submitted.'});intentIds.push(intent.id);return intent.write;}
+    const current=await tx.get(getDatabase().collection(COLLECTIONS.properties).doc(s(req.propertyId)));if(!current.exists)throw new ApiError(404,'Property not found');
+    const activity=await stagePropertyActivity(tx,user,{...current.data(),id:s(req.propertyId)},{requester:{...profile,uid:s(req.userUID)},id,eventType:'maintenance.created',type:'service_request',title:'Service request created',details:`Service category: ${s(service.name)}`,status:'pending',tenantScope:user.uid===property.ownerUID||user.role==='admin'?'all':'requester'});intentIds.push(...activity.ids);return activity.write;
+  });
   dispatchNotificationIntents(intentIds);
   return jsonResponse({success:true,message:'Service request created successfully. One of our members will reach out to you soon!',serviceRequest:wireModel('ServiceRequest',value)},201);
 }
@@ -113,9 +126,10 @@ export async function updateServiceRequest(request:Request,id:string) {
     updates.history=[...(Array.isArray(before.history)?before.history:[]),{status:req.status||before.status,action:req.action||'update',actorUID:user.uid,comment:req.adminNotes,at:now}];
     updated={...before,...updates};const bind=await prepareMediaBindings(tx,user,COLLECTIONS.serviceRequests,id,s(before.propertyId),updated,before);
     const property=before.propertyId?(await tx.get(getDatabase().collection(COLLECTIONS.properties).doc(s(before.propertyId)))).data():null;
-    const intent=await stageUserEvent(tx,{actorUID:user.uid,eventType:`maintenance.${s(updated.status)||'updated'}`,eventId:`${id}:${Array.isArray(updated.history)?updated.history.length:0}:${s(updated.status)}`,recipients:[{uid:s(updated.userUID),role:'requester'},...(property?.ownerUID?[{uid:s(property.ownerUID),role:'owner'}]:[]),{uid:user.uid,role:'admin'}],propertyId:s(updated.propertyId),recordId:id,templateId:'maintenance-activity',subject:'Service request updated',title:'Service request updated',bodyHtml:`<p>${escapeHtml(s(updated.serviceName))}: ${escapeHtml(s(updated.status))}</p>${updated.adminNotes?`<p>${escapeHtml(s(updated.adminNotes))}</p>`:''}`,bodyText:`${s(updated.serviceName)}: ${s(updated.status)}${updated.adminNotes?`. ${s(updated.adminNotes)}`:''}`,action:{label:'View request',path:updated.propertyId?`/manage-property/${s(updated.propertyId)}`:'/manage-property'}});intentIds.push(intent.id);intent.write();bind();tx.update(ref,updates);
+    if(property){const activity=await stagePropertyActivity(tx,user,{...property,id:s(before.propertyId)},{recordId:id,id:`${id}:${Array.isArray(updated.history)?updated.history.length:0}`,eventType:`maintenance.${s(updated.status)||'updated'}`,type:'service_request',title:req.action?'Service request archive updated':'Service request updated',details:`Service category: ${s(updated.serviceName)}`,status:s(updated.status),tenantUIDs:[s(updated.userUID)],tenantScope:req.action?'none':'all',notifyOwner:!req.action});intentIds.push(...activity.ids);activity.write();}
+    else{const intent=await stageUserEvent(tx,{actorUID:user.uid,emailContext:{status:s(updated.status),rows:[{label:'Service',value:updated.serviceName},{label:'Update',value:updated.resolutionReport||updated.adminRemarks},{label:'Updated',value:new Date(),format:'datetime'}]},eventType:'maintenance.updated',eventId:`${id}:${Array.isArray(updated.history)?updated.history.length:0}`,recipients:[{uid:s(updated.userUID),role:'requester'},{role:'admin',email:process.env.ADMIN_EMAIL}],recordId:id,templateId:'maintenance-activity',subject:'Service request updated',bodyHtml:'<p>A service request was updated.</p>',bodyText:'A service request was updated.'});intentIds.push(intent.id);intent.write();}
+    bind();tx.update(ref,updates);
   });
-  const property=updated.propertyId?await getProperty(s(updated.propertyId)):null;
   dispatchNotificationIntents(intentIds);
   return jsonResponse({success:true,message:'Service request updated successfully'});
 }
@@ -140,10 +154,6 @@ export async function createReportOrReview(request:Request,kind:'report'|'review
     Object.assign(req,permitted);
   }
   if(kind==='review') {
-    const answers=req.reviewerType==='tenant'?req.tenantPart:req.ownerPart;
-    if(!isRecord(answers)||!Object.values(answers).some(value=>typeof value==='string'&&value.trim()))return plainError('At least one review response is required',400);
-  }
-  if(kind==='review') {
     const reviewerType=user.uid===property.ownerUID?'owner':isPropertyTenant(user,property)?'tenant':'';
     if(!reviewerType)return plainError('An active owner or tenant relationship is required to review this property',403);
     if(req.reviewerType&&req.reviewerType!==reviewerType)return plainError('Reviewer relationship does not match property',403);
@@ -151,28 +161,33 @@ export async function createReportOrReview(request:Request,kind:'report'|'review
     if(reviewerType==='tenant')req.ownerPart={};
     else req.tenantPart={};
   }
-  if(kind==='report')for(const field of fileFields.inspection_reports){if(Array.isArray(req[field]))req[field]=await Promise.all((req[field] as string[]).map(value=>prepareFile(value,user,s(req.propertyId),field)));else if(req[field])req[field]=await prepareFile(s(req[field]),user,s(req.propertyId),field);}
+  if(kind==='review') {
+    const answers=req.reviewerType==='tenant'?req.tenantPart:req.ownerPart;
+    if(!isRecord(answers)||!Object.values(answers).some(value=>typeof value==='string'&&value.trim()))return plainError('At least one review response is required',400);
+  }
   const now=new Date(),name=kind==='report'?'InspectionReport':'Review',collection=kind==='report'?COLLECTIONS.inspectionReports:COLLECTIONS.reviews;
   const active=((property.tenants as RecordData[]|null)||[]).filter(t=>t.isActive===true);
-  const tenant=active.find(t=>t.userUID===user.uid)||active[0]||{};
-  const value=model(name,{...req,id:randomUUID(),propertyTitle:property.title,createdAt:now,updatedAt:now,
+  const selectedTenantId=request.headers.get('X-Tenancy-ID')||'';
+  if(kind==='review'&&req.reviewerType==='owner'&&!active.length)throw new ApiError(400,'An active tenancy is required to review a tenant');
+  if(kind==='review'&&req.reviewerType==='owner'&&active.length>1&&!selectedTenantId)throw new ApiError(400,'Choose the tenancy being reviewed');
+  const tenant=active.find(t=>t.userUID===user.uid)||active.find(t=>t.id===selectedTenantId)||active[0]||{};
+  if(selectedTenantId&&(!active.some(t=>t.id===selectedTenantId)||req.reviewerType!=='owner'))throw new ApiError(403,'Review tenancy is not authorized');
+  const operationId=propertyOperationId(request,kind,s(req.propertyId),user.uid),fingerprint=createHash('sha256').update(JSON.stringify({...req,selectedTenantId})).digest('hex');
+  const prior=request.headers.has('Idempotency-Key')?(await getDatabase().collection(collection).doc(operationId).get()).data():null;
+  if(prior){if(prior.requestFingerprint&&prior.requestFingerprint!==fingerprint)throw new ApiError(409,'Request key already used for different details');if(prior.propertyId!==req.propertyId||(prior.userId||prior.reviewerId)!==user.uid)throw new AccessError(403,'Request key is not authorized');return jsonResponse({success:true,[kind]:wireModel(name,prior),duplicate:true},200);}
+  if(kind==='report')for(const field of fileFields.inspection_reports){if(Array.isArray(req[field]))req[field]=await Promise.all((req[field] as string[]).map(value=>prepareFile(value,user,s(req.propertyId),field)));else if(req[field])req[field]=await prepareFile(s(req[field]),user,s(req.propertyId),field);}
+  const value=model(name,{...req,id:operationId,propertyTitle:property.title,createdAt:now,updatedAt:now,
     ...(kind==='report'?{userId:user.uid,userName:profile.name,userEmail:profile.email,userPhone:profile.phoneNumber}:
       {reviewerId:user.uid,reviewerName:profile.name,reviewerEmail:profile.email,reviewerPhone:profile.phoneNumber,ownerId:property.ownerUID,ownerName:property.ownerName,ownerEmail:property.ownerEmail,ownerPhone:property.primaryNo,tenantId:s(tenant.id),tenantName:tenant.firstName?`${s(tenant.firstName)} ${s(tenant.lastName)}`:''})});
-  await saveMediaRecord(collection,s(value.id),storeModel(name,value),user,true);
-  await bestEffort(async()=>{
-    const context=notificationContext(property,profile,user.uid,s(req.propertyId));
-    const formatted=req.reportType==='on_handover'?'On Handover':'On Possession';
-    const part=(req.reviewerType==='tenant'?req.tenantPart:req.ownerPart) as RecordData;
-    const fields=req.reviewerType==='tenant'?
-      [['Owner Understandable','ownerUnderstandable'],['Soft Nature','softNature'],['Owner Transparent','ownerTransparent'],['Problem Solver','problemSolver'],['Easy on Refund Money','easyOnRefundMoney'],['Overall Experience','overallExperience']]:
-      [['Tenant Understandable','tenantUnderstandable'],['Soft Nature','softNature'],['Tenant Transparent','tenantTransparent'],['Problem Solver','problemSolver'],['Punctual on Payment','punctualOnPayment'],['Overall Experience','overallExperience']];
-    const details=kind==='review'?[req.reviewerType==='tenant'?'A. Reviewing Owner:':'B. Reviewing Tenant:',...fields.map(([label,key])=>`- ${label}: ${s(part[key])}`)].join('\n'):'';
-    await createNotification({...context,type:kind==='report'?'inspection_report':'review',title:kind==='report'?'New Inspection Report Submitted':'New Review Submitted',
-      message:kind==='report'?`${s(profile.name)} submitted an inspection report (${formatted}) for property: ${s(property.title)}\nProperty ID: ${s(req.propertyId)}\nReport Type: ${formatted}`:
-        `${s(profile.name)} (${s(req.reviewerType)}) submitted a review for property: ${s(property.title)}\nProperty ID: ${s(req.propertyId)}\nReviewer: ${s(profile.name)} (${s(profile.email)})\n\n${details}`,
-      propertyTitle:property.title,propertyAddress:property.address,propertyListingType:property.listingType,
-      ...(kind==='review'?{ownerPhone:property.primaryNo,reviewerType:req.reviewerType,tenantPart:req.tenantPart,ownerPart:req.ownerPart,tenantName:'',tenantEmail:'',tenantPhone:'',buyers:''}:{})});
+  const intentIds:string[]=[];
+  await saveMediaRecord(collection,s(value.id),{...storeModel(name,value),requestFingerprint:fingerprint},user,true,async tx=>{
+    const current=await tx.get(getDatabase().collection(COLLECTIONS.properties).doc(s(req.propertyId)));if(!current.exists)throw new ApiError(404,'Property not found');
+    const fresh:RecordData={...current.data(),id:s(req.propertyId)};requirePropertyMember(user,fresh);
+    if(fresh.ownerUID!==property.ownerUID)throw new ApiError(409,'Property ownership changed; reload before submitting');
+    if(kind==='review'&&req.reviewerType==='owner'&&tenant.id&&(!Array.isArray(fresh.tenants)||!fresh.tenants.some((t:RecordData)=>t.id===tenant.id&&t.isActive===true)))throw new ApiError(409,'Reviewed tenancy changed; reload before submitting');
+    const activity=await stagePropertyActivity(tx,user,fresh,{id:s(value.id),eventType:kind==='report'?'inspection.submitted':'review.submitted',type:kind==='report'?'inspection_report':'review',title:kind==='report'?'Inspection report submitted':'Review submitted',details:kind==='report'?`Report type: ${req.reportType==='on_handover'?'On Handover':'On Possession'}`:`Reviewer relationship: ${s(req.reviewerType)}`,status:'submitted',tenantScope:user.uid===fresh.ownerUID?'all':'requester',...(kind==='review'?{tenantUIDs:[s(tenant.userUID)],adminDetails:{reviewerType:req.reviewerType,tenantPart:req.tenantPart,ownerPart:req.ownerPart}}:{adminDetails:{reportType:req.reportType,tenantName:active.length===1||tenant.userUID===user.uid?s(tenant.firstName)+' '+s(tenant.lastName):''}})});intentIds.push(...activity.ids);return activity.write;
   });
+  dispatchNotificationIntents(intentIds);
   return jsonResponse({success:true,message:kind==='report'?'Inspection report created successfully':'Review submitted successfully and admin has been notified',[kind]:wireModel(name,value)},201);
 }
 export async function listReports(request:Request,field:'propertyId'|'userId',id:string) {

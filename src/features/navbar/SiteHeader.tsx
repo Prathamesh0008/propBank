@@ -2,7 +2,7 @@
 
 import { Link } from "@/lib/navigation";
 import { useState, useEffect } from "react";
-import { auth, signOutUser } from "@/firebase";
+import { auth } from "@/firebase";
 import { API_BASE_URL } from "@/utils/config";
 import axios from "axios";
 import { firebaseAuthorizationHeaders } from '@/lib/api-client';
@@ -23,38 +23,42 @@ const navigation = [
 
 const SiteHeader = () => {
   const pathname = usePathname();
-  const {user,profileStatus}=useAuth();
+  const {user,profileStatus,signOut}=useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [userPhone, setUserPhone] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string>("");
   const [userName, setUserName] = useState<string>("");
   const [userRole, setUserRole] = useState<string>("");
 
+  const uid=user?.uid;
   useEffect(() => {
-      if (user) {
+      const controller=new AbortController();
+      if (uid) {
         // Avoid showing the previous account’s privileged navigation during user changes.
         setUserRole("");
         setUserName("");
         setUserEmail("");
         setUserPhone("");
-        void getUserData(user.uid);
+        void getUserData(uid,controller.signal);
       } else {
         setUserPhone("");
         setUserEmail("");
         setUserName("");
         setUserRole("");
       }
-  }, [user]);
+      return ()=>controller.abort();
+  }, [uid]);
 
-  const getUserData = async (uid: string) => {
+  const getUserData = async (uid: string,signal:AbortSignal) => {
     try {
       const response = await axios.get(`${API_BASE_URL}/users/${uid}?summary=true`, {
+        signal,
         headers: Object.fromEntries((await firebaseAuthorizationHeaders({
           "Content-Type": "application/json",
         })).entries()),
       });
 
-      if(auth.currentUser?.uid!==uid)return;
+      if(signal.aborted||auth.currentUser?.uid!==uid)return;
       if (response.status === 200) {
         const data = response.data;
         if (data.user) {
@@ -70,8 +74,7 @@ const SiteHeader = () => {
   };
 
   const handleLogout = async () => {
-    await signOutUser();
-    setIsOpen(false);
+    try{await signOut();setIsOpen(false);}catch{/* AuthContext exposes the recovery state. */}
   };
 
   const visibleLinks = navigation.filter(({ access }) =>

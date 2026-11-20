@@ -11,6 +11,8 @@ function render(result={},reviewId='') {
   const cache=new Map();
   const query={isLoading:false,isFetching:false,isError:false,error:null,refetch:async()=>{},...result};
   const load=file=>{
+    file=path.resolve(file);
+    if(!path.extname(file))file+=fs.existsSync(file+'.tsx')?'.tsx':'.ts';
     if(cache.has(file))return cache.get(file);
     const output={};cache.set(file,output);
     const code=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
@@ -21,7 +23,8 @@ function render(result={},reviewId='') {
       if(name==='@/lib/api-client')return {apiFetch:()=>{throw new Error('Rendering must not access the network');}};
       if(name==='@/lib/navigation')return {Link:({to,children,...rest})=>React.createElement('a',{href:to,...rest},children)};
       if(name.endsWith('.module.css'))return new Proxy({},{get:(_,key)=>key==='__esModule'?false:String(key)});
-      if(name.startsWith('@/'))return load(path.resolve('src',name.slice(2))+'.ts');
+      if(name.startsWith('@/'))return load(path.resolve('src',name.slice(2)));
+      if(name.startsWith('.'))return load(path.resolve(path.dirname(file),name));
       return require(name);
     };
     new Function('require','exports',code)(scopedRequire,output);return output;

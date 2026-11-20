@@ -258,7 +258,7 @@ export async function cleanupMedia(id:string,user:AuthenticatedUser,explicit=fal
   try{await getR2Client().send(new DeleteObjectCommand({Bucket:claim.bucket,Key:claim.key}));await db.runTransaction(async tx=>{const fresh=await tx.get(ref);if(fresh.data()?.status!=='deleting'||fresh.data()?.cleanupLease!==lease)throw new ApiError(409,'Cleanup state changed');if(claim.deleteDocumentId){const dref=db.collection('documents').doc(claim.deleteDocumentId),doc=await tx.get(dref);if(doc.exists&&mediaId(doc.data()?.fileUrl)===id&&doc.data()?.deletionStatus==='pending')tx.delete(dref);}tx.update(ref,{status:'deleted',updatedAt:new Date(),lastError:''});});}
   catch{try{await db.runTransaction(async tx=>{const fresh=await tx.get(ref);if(fresh.data()?.status==='deleting'&&fresh.data()?.cleanupLease===lease)tx.update(ref,{status:'cleanup_pending',lastError:'Storage deletion pending',updatedAt:new Date()});});}catch{/* Durable deleting state remains retriable. */}throw new ApiError(502,'Storage deletion failed and is queued for reconciliation');}
 }
-export async function deleteDocumentMedia(id:string,documentId:string,user:AuthenticatedUser) {
+export async function deleteDocumentMedia(id:string,documentId:string,user:AuthenticatedUser,stage?:(tx:FirebaseFirestore.Transaction,document:RecordData,property:RecordData)=>Promise<()=>void>) {
   const db=getDatabase(),ref=files().doc(id),dref=db.collection('documents').doc(documentId);
   await db.runTransaction(async tx=>{
     const doc=await tx.get(dref),asset=await tx.get(ref);
@@ -271,6 +271,7 @@ export async function deleteDocumentMedia(id:string,documentId:string,user:Authe
     if(user.role!=='admin'&&user.uid!==d.userId&&user.uid!==property.data()?.ownerUID)throw new AccessError(403,'Document deletion access required');
     if(mediaId(d.fileUrl)!==id||a.propertyId!==d.propertyId)throw new AccessError(403,'File belongs to another property');
     if((a.bindings||[]).some((b:Binding)=>b.collection!=='admin_notifications'&&(b.collection!=='documents'||b.id!==documentId)))throw new ApiError(409,'File has another active record; resolve references before deleting');
+    const notice=stage?await stage(tx,d,property.data()!):()=>{};notice();
     tx.update(dref,{deletionStatus:'pending',updatedAt:new Date()});
     tx.update(ref,{status:'cleanup_pending',deleteDocumentId:documentId,updatedAt:new Date()});
   });

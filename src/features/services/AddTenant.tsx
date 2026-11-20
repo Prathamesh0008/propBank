@@ -1,4 +1,6 @@
 "use client";
+import {formatDisplayDate} from '@/lib/date-format';
+
 import AgreementInventoryPanel from './AgreementInventoryPanel';
 import {InventoryEditor} from "./InventoryEditor";
 import {propertyInventory,inventoryError,type InventoryItem,type AgreementInventory} from "@/lib/agreement-inventory";
@@ -18,7 +20,7 @@ import { Label } from "@/ui/label";
 import { Textarea } from "@/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
 import { Checkbox } from "@/ui/checkbox";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "../../firebase";
 import { onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
@@ -106,6 +108,7 @@ const AddTenant = () => {
   const [editingTenantId,setEditingTenantId]=useState('');
   const [tenancyRevision,setTenancyRevision]=useState(0);
   const [inventoryLoaded,setInventoryLoaded]=useState(false);
+  const submission=useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
@@ -424,7 +427,7 @@ const AddTenant = () => {
   };
 
   const handleSubmit = async () => {
-    if (isSubmitting) return;
+    if (isSubmitting||submission.current) return;
     if(!inventoryLoaded){toast({title:'Property inventory not loaded',description:'Reload this page before saving tenant details.',variant:'destructive'});return;}
 
     const invalidTenants = tenants.filter(tenant => !validateTenant(tenant));
@@ -466,7 +469,7 @@ const AddTenant = () => {
     if(invalidNextAgreement){toast({title:'Check next agreement details',description:invalidNextAgreement,variant:'destructive'});return;}
 
     const invalidInventory=tenants.map(tenant=>inventoryError(tenant.inventory)).find(Boolean);if(invalidInventory){toast({title:'Check inventory',description:invalidInventory,variant:'destructive'});return;}
-    setIsSubmitting(true);
+    submission.current=true;setIsSubmitting(true);
     try {
       const propertyResponse = await apiFetch(`${API_BASE_URL}/properties/${propertyId}`);
       const propertyData = await propertyResponse.json();
@@ -532,7 +535,7 @@ const AddTenant = () => {
 
       const data = await response.json();
 
-      if (data.success) {
+      if (response.ok&&data.success) {
         await Promise.all(['relationshipLinks','userProperties','productHub','property','allProperties'].map(key=>queryClient.invalidateQueries({queryKey:[key]})));
         setIsSubmitting(false);
         setIsSuccess(true);
@@ -545,7 +548,7 @@ const AddTenant = () => {
           navigate(adminMode?"/admin":"/manage-property");
         }, 1500);
       } else {
-        setIsSubmitting(false);
+        submission.current=false;setIsSubmitting(false);
         toast({
           title: "Error",
           description: data.message || "Failed to add tenants",
@@ -554,7 +557,7 @@ const AddTenant = () => {
       }
 
     } catch (error) {
-      setIsSubmitting(false);
+      submission.current=false;setIsSubmitting(false);
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to save tenant details. Please try again.",
@@ -564,11 +567,11 @@ const AddTenant = () => {
   };
 
   const removeExistingTenant=async(tenantId:string)=>{
-    if(!adminMode||isSubmitting)return;
-    setIsSubmitting(true);
+    if(!adminMode||isSubmitting||submission.current)return;
+    submission.current=true;setIsSubmitting(true);
     try{const response=await apiFetch(`${API_BASE_URL}/admin/properties/${propertyId}/tenancy`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'remove',expectedRevision:tenancyRevision,tenantId})});const data=await response.json();if(!response.ok)throw new Error(data.message||'Tenant could not be removed');setExistingTenants([]);setTenancyRevision(Number(data.tenancyRevision));toast({title:'Tenant removed',description:'The previous tenancy remains in relationship history.'});}
     catch(error){toast({title:'Unable to remove tenant',description:error instanceof Error?error.message:'Please refresh and try again.',variant:'destructive'});}
-    finally{setIsSubmitting(false);}
+    finally{submission.current=false;setIsSubmitting(false);}
   };
 
   return (
@@ -705,11 +708,11 @@ const AddTenant = () => {
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                         <div>
                           <label className="text-xs font-medium text-muted-foreground">Lease Start</label>
-                          <p>{tenant.leaseStartDate ? new Date(tenant.leaseStartDate).toLocaleDateString() : 'N/A'}</p>
+                          <p>{tenant.leaseStartDate ? formatDisplayDate(tenant.leaseStartDate) : 'N/A'}</p>
                         </div>
                         <div>
                           <label className="text-xs font-medium text-muted-foreground">Lease End</label>
-                          <p>{tenant.leaseEndDate ? new Date(tenant.leaseEndDate).toLocaleDateString() : 'N/A'}</p>
+                          <p>{tenant.leaseEndDate ? formatDisplayDate(tenant.leaseEndDate) : 'N/A'}</p>
                         </div>
                         <div>
                           <label className="text-xs font-medium text-muted-foreground">Monthly Rent</label>
@@ -751,8 +754,8 @@ const AddTenant = () => {
                                       <td className="px-3 py-2">{item.year}</td>
                                       <td className="px-3 py-2">{item.months || '11'}</td>
                                       <td className="px-3 py-2">₹{Number(item.amount).toLocaleString()}</td>
-                                      <td className="px-3 py-2">{item.fromDate ? new Date(item.fromDate).toLocaleDateString() : '-'}</td>
-                                      <td className="px-3 py-2">{item.toDate ? new Date(item.toDate).toLocaleDateString() : '-'}</td>
+                                      <td className="px-3 py-2">{item.fromDate ? formatDisplayDate(item.fromDate) : '-'}</td>
+                                      <td className="px-3 py-2">{item.toDate ? formatDisplayDate(item.toDate) : '-'}</td>
                                     </tr>
                                   ))}
                                 </tbody>

@@ -1,7 +1,9 @@
 "use client";
+import {formatDisplayDateTime} from '@/lib/date-format';
+
 import styles from "./ServiceWorkspace.module.css";
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState,useRef } from 'react';
+import { useQuery,useInfiniteQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Link,useParams } from '@/lib/navigation';
 import { workflowRequest } from '@/lib/client-workflows';
@@ -16,7 +18,8 @@ interface RequestRecord {id:string;propertyId:string;serviceName:string;message:
 const ids={maintenance:['cleaning','general-repairs','appliance-maintenance','plumbing','leakage','fixtures','painting','electrical','other'],legal:['rent-agreement-registration','sale-agreement-procedure','legal-consultation'],related:['society-procedure','pre-rental','painting','plumbing','electrical','other']};
 export function ServiceRequestHistory({propertyId,admin=false}:{propertyId?:string;admin?:boolean}) {
   const {user}=useAuth();const [failure,setFailure]=useState(''),[busy,setBusy]=useState('');
-  const query=useQuery({queryKey:['service-requests',user?.uid,propertyId,admin],enabled:!!user&&(admin||!!propertyId),queryFn:()=>workflowRequest<{data:RequestRecord[]}>(`service-requests?${admin?'admin=true':`propertyId=${encodeURIComponent(propertyId!)}`}`)});
+  const query=useInfiniteQuery({queryKey:['service-requests',user?.uid,propertyId,admin],enabled:!!user&&(admin||!!propertyId),initialPageParam:'',staleTime:60000,refetchOnWindowFocus:false,queryFn:({pageParam})=>workflowRequest<{data:RequestRecord[];nextCursor?:string|null}>(`service-requests?${admin?'admin=true':`propertyId=${encodeURIComponent(propertyId!)}`}&pageSize=25${pageParam?'&cursor='+encodeURIComponent(pageParam):''}`),getNextPageParam:page=>page.nextCursor||undefined});
+  const records=[...new Map((query.data?.pages.flatMap(page=>page.data)||[]).map(record=>[record.id,record])).values()];
   async function update(event:React.FormEvent<HTMLFormElement>,id:string) {
     event.preventDefault();const element=event.currentTarget,form=new FormData(element);setBusy(id);setFailure('');
     try{
@@ -33,13 +36,13 @@ export function ServiceRequestHistory({propertyId,admin=false}:{propertyId?:stri
   async function archive(id:string,action:'archive'|'unarchive') {setBusy(id);setFailure('');try{await workflowRequest(`service-requests/${id}`,{action},'PUT');await query.refetch();}catch(error){setFailure(error instanceof Error?error.message:'Could not update archive state');}finally{setBusy('');}}
   return <Card className={styles.history}><CardHeader><CardTitle>{admin?'Service requests and resolution':'Request history and admin responses'}</CardTitle></CardHeader><CardContent className="space-y-4">
     {query.isLoading&&<p role="status">Loading requests…</p>}{(query.error||failure)&&<p role="alert" className="text-destructive">{query.error?.message||failure}</p>}
-    {!query.isLoading&&!query.error&&!query.data?.data?.length&&<p>No requests yet.</p>}
-    {query.data?.data?.map(request=><article key={request.id} className={`${styles.requestRow} space-y-3 break-words`}>
+    {!query.isLoading&&!query.error&&!records.length&&<p>{query.hasNextPage?'No requests on loaded pages. Load more to continue.':'No requests yet.'}</p>}
+    {records.map(request=><article key={request.id} className={`${styles.requestRow} space-y-3 break-words`}>
       <h3 className="font-semibold">{request.serviceName||'Service request'} · {request.propertyId}</h3><p>{request.message}</p><p>Status: {request.status.replaceAll('_',' ')}{request.isArchived?' · Archived':''}</p>
       {request.image&&<a href={request.image} target="_blank" rel="noopener noreferrer">Open request attachment</a>}
       {(request.resolutionReport||request.adminNotes)&&<p>Admin response: {request.resolutionReport} {request.adminNotes}</p>}
       {request.adminImage&&<a href={request.adminImage} target="_blank" rel="noopener noreferrer">Open resolution attachment</a>}
-      <details><summary>History</summary><ol>{request.history?.map((entry,index)=><li key={index}>{entry.status} · {new Date(entry.at).toLocaleString('en-IN')} {entry.comment}</li>)}</ol></details>
+      <details><summary>History</summary><ol>{request.history?.map((entry,index)=><li key={index}>{entry.status} · {formatDisplayDateTime(entry.at)} {entry.comment}</li>)}</ol></details>
       {admin&&<form onSubmit={e=>void update(e,request.id)} className="grid gap-3 sm:grid-cols-2">
         <div><Label htmlFor={`status-${request.id}`}>Status</Label><select id={`status-${request.id}`} name="status" defaultValue={request.status} className="h-10 w-full border rounded px-2">{['pending','in_progress','resolved','completed','cancelled'].map(status=><option key={status}>{status}</option>)}</select></div>
         <div className="sm:col-span-2 text-sm text-muted-foreground"><strong>Resolved</strong> means the work has been addressed and is awaiting final closure. <strong>Completed</strong> closes the request.</div>
@@ -50,21 +53,23 @@ export function ServiceRequestHistory({propertyId,admin=false}:{propertyId?:stri
         <Button type="button" variant="outline" disabled={busy===request.id} onClick={()=>void archive(request.id,request.isArchived?'unarchive':'archive')}>{request.isArchived?'Restore to active':'Archive request'}</Button>
       </form>}
     </article>)}
+    {query.hasNextPage&&<Button type="button" variant="outline" disabled={query.isFetchingNextPage} onClick={()=>void query.fetchNextPage()}>{query.isFetchingNextPage?'Loading requests...':'Load more requests'}</Button>}
   </CardContent></Card>;
 }
 export function readFile(file:File):Promise<string> {return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(new Error('Could not read file'));reader.readAsDataURL(file);});}
 export default function ServiceRequestWorkflow({group}:{group:keyof typeof ids}) {
+  const submission=useRef(false),requestKey=useRef(crypto.randomUUID());
   const {propertyId}=useParams();const {user}=useAuth();const [service,setService]=useState(''),[comment,setComment]=useState(''),[file,setFile]=useState<File|null>(null),[busy,setBusy]=useState(false),[feedback,setFeedback]=useState(''),[failure,setFailure]=useState(''),[generation,setGeneration]=useState(0);
   const catalog=useQuery({queryKey:['services'],queryFn:()=>workflowRequest<{data:Service[]}>('services')});
   const options=catalog.data?.data?.filter(s=>s.isActive!==false&&(ids[group].includes(s.id)||!Object.values(ids).flat().includes(s.id)))||[];
   async function submit(event?:React.FormEvent,withoutImage=false) {
-    event?.preventDefault();if(!user||!propertyId)return;setBusy(true);setFailure('');setFeedback('');
+    event?.preventDefault();if(!user||!propertyId||submission.current)return;submission.current=true;setBusy(true);setFailure('');setFeedback('');
     try{
       if(file&&(file.size>5*1024*1024||!['image/png','image/jpeg','image/webp'].includes(file.type)))throw new Error('Choose a JPEG, PNG or WebP image under 5 MB.');
       let image:string|undefined;
       if(file&&!withoutImage)try{image=await readFile(file);}catch{setFailure('The optional image could not be read. Retry it, or submit the request without the image.');return;}
-      await workflowRequest('service-requests',{propertyId,userUID:user.uid,serviceId:service,message:comment,...(image?{image}:{})});setFeedback('Request submitted. The admin response will appear in the history below.');setGeneration(generation+1);setComment('');setFile(null);
-    }catch(error){setFailure(error instanceof Error?error.message:'Could not submit request');}finally{setBusy(false);}
+      await workflowRequest('service-requests',{propertyId,userUID:user.uid,serviceId:service,message:comment,...(image?{image}:{})},'POST',{'Idempotency-Key':requestKey.current});requestKey.current=crypto.randomUUID();setFeedback('Request submitted. The admin response will appear in the history below.');setGeneration(generation+1);setComment('');setFile(null);
+    }catch(error){setFailure(error instanceof Error?error.message:'Could not submit request');}finally{submission.current=false;setBusy(false);}
   }
   return <main className={`container mx-auto max-w-5xl px-4 py-8 space-y-6 ${styles.workspace}`}><Link to="/manage-property">← Manage Property</Link><Card className={styles.panel}><CardHeader><CardTitle>{group==='legal'?'Legal services':group==='related'?'Other related services':'Raise a maintenance request'}</CardTitle></CardHeader><CardContent>
     <p className="mb-4">Property: {propertyId}</p>

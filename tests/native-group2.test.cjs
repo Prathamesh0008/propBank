@@ -111,7 +111,7 @@ test('document payloads enforce 20 MiB limit before storage writes',async()=>{
 test('owner agreement requests and termination preserve terms in history',async()=>{
  const app=isolated({users,properties}),renew=route(app,'agreements/renew'),terminate=route(app,'agreements/terminate');
  assert.equal((await renew.POST(request('/agreements/renew','tenant','POST',{propertyId:'P'}))).status,403);
- const response=await renew.POST(request('/agreements/renew','owner','POST',{propertyId:'P'}));assert.equal(response.status,200);assert.equal(app.state.properties.P.agreementStatus,'renewal_requested');
+ const response=await renew.POST(request('/agreements/renew','owner','POST',{propertyId:'P',terms:{monthlyRent:'50000',agreementPeriod:'12',agreementStartDate:'2027-01-01',agreementEndDate:'2027-12-31'}}));assert.equal(response.status,200);assert.equal(app.state.properties.P.agreementStatus,'renewal_requested');
  assert.equal((await terminate.POST(request('/agreements/terminate','owner','POST',{propertyId:'P',noticePeriod:'1 Month',noticeStartDate:'2030-01-01',terminationDate:'2030-02-01'}))).status,200);
  assert.equal(app.state.properties.P.anticipatedTerminationDate,'2030-02-01T00:00:00.000Z');
  assert.equal((await terminate.POST(request('/agreements/terminate','owner','POST',{propertyId:'P'}))).status,200);
@@ -121,10 +121,10 @@ test('owner agreement requests and termination preserve terms in history',async(
 test('tenant requests persist pending status without changing owner-approved terms',async()=>{
  const app=isolated({users,properties}),renew=route(app,'agreements/request-renewal'),terminate=route(app,'agreements/request-termination');
  assert.equal((await renew.POST(request('/agreements/request-renewal','other','POST',{propertyId:'P'}))).status,403);
- assert.equal((await renew.POST(request('/agreements/request-renewal','tenant','POST',{propertyId:'P',terms:{monthlyRent:'50000'}}))).status,200);
+ assert.equal((await renew.POST(request('/agreements/request-renewal','tenant','POST',{propertyId:'P',terms:{monthlyRent:'50000',agreementPeriod:'12',agreementStartDate:'2027-01-01',agreementEndDate:'2027-12-31'}}))).status,200);
  assert.equal(app.state.properties.P.monthlyRent,properties.P.monthlyRent);assert.equal(app.state.properties.P.agreementRequest.status,'pending');
  assert.equal((await terminate.POST(request('/agreements/request-termination','tenant','POST',{propertyId:'P'}))).status,409);
- const notification=Object.values(app.state.admin_notifications)[0];assert.equal(notification.title,'Renewal Requested by Tenant');assert.equal(notification.ownerId,'owner');await app.flush();assert.equal(app.emails.length,2);
+ const notification=Object.values(app.state.admin_notifications)[0];assert.equal(notification.title,'Agreement renewal activity');assert.equal(notification.propertyId,'P');assert.equal(notification.type,'agreement_renewal_submitted');await app.flush();assert.deepEqual(new Set(app.emails.map(mail=>mail.to[0])),new Set(['owner@test.invalid','tenant@test.invalid','admin@test.invalid']));
 });
 
 test('notifications retain anonymous inquiry, enrichment, property query precedence, admin permissions and array response',async()=>{
@@ -135,7 +135,7 @@ test('notifications retain anonymous inquiry, enrichment, property query precede
  const created=await json(await r.POST(request('/admin/notifications','tenant','POST',{type:'property_enquiry',propertyId:'P',propertyTitle:'Fake title',userId:'tenant',timestamp:'invalid',isRead:true})));assert.equal(created.notification.propertyTitle,'Existing Home');assert.equal(created.notification.ownerPhone,'');assert.equal(created.notification.userPhone,'+919123456782');
  assert.equal((await r.GET(request('/admin/notifications','owner'))).status,403);assert.equal((await r.GET(request('/admin/notifications?propertyId=P','other'))).status,403);
  const property=await json(await r.GET(request('/admin/notifications?propertyId=P&unread=true','owner')));assert.equal(property.length,1);assert.equal(property[0].isRead,false);
- const unread=await json(await r.GET(request('/admin/notifications?unread=true','admin')));assert.equal(unread.length,2);await app.flush();assert.equal(app.emails.length,2);const generalEmail=app.emails.find(mail=>/New Quick Inquiry/.test(mail.subject));assert.ok(generalEmail);assert.match(generalEmail.html,/Buying/);assert.match(generalEmail.html,/Requested on 2030-01-01 at 09:00 AM/);
+ const unread=await json(await r.GET(request('/admin/notifications?unread=true','admin')));assert.equal(unread.length,2);await app.flush();assert.equal(app.emails.length,2);const generalEmail=app.emails.find(mail=>/New Quick Inquiry/.test(mail.subject));assert.ok(generalEmail);assert.match(generalEmail.html,/Buying/);assert.match(generalEmail.html,/Requested visit date/);assert.match(generalEmail.html,/01\/01\/2030/);assert.match(generalEmail.html,/Requested visit time/);assert.match(generalEmail.html,/09:00 AM/);
 });
 test('notifications archive/unarchive retain resolvedAt/history, remarks retain existing image, delete is idempotent',async()=>{
  const app=isolated({users,admin_notifications:{N:{...defaults,id:'wrong',type:'general_inquiry',timestamp:new Date(),isRead:false,adminImage:'https://old/image',archiveHistory:[]}}});const read=route(app,'admin/notifications/[id]/read'),remarks=route(app,'admin/notifications/[id]/remarks'),del=route(app,'admin/notifications/[id]');

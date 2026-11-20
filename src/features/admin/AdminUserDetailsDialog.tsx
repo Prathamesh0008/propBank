@@ -1,4 +1,6 @@
 "use client";
+import {formatDisplayDateTime, formatDisplayDate} from '@/lib/date-format';
+
 import styles from "./AdminUserDetailsDialog.module.css";
 
 import { apiFetch } from '@/lib/api-client';
@@ -95,13 +97,13 @@ const AdminUserDetailsDialog: React.FC<AdminUserDetailsDialogProps> = ({
                         <div className={styles.authGrid}>
                             <div><span>Verified email</span><strong>{detail.emailVerified?'Yes':'No'}</strong></div>
                             <div><span>Authentication providers</span><strong>{detail.providerIds?.join(', ')||'Not recorded'}</strong></div>
-                            <div><span>Registered</span><strong>{detail.createdAt?new Date(detail.createdAt).toLocaleString():'Not recorded'}</strong></div>
-                            <div><span>Last recorded login</span><strong>{detail.lastSuccessfulSignInAt?new Date(detail.lastSuccessfulSignInAt).toLocaleString():'Not recorded'}</strong></div>
+                            <div><span>Registered</span><strong>{detail.createdAt?formatDisplayDateTime(detail.createdAt):'Not recorded'}</strong></div>
+                            <div><span>Last recorded login</span><strong>{detail.lastSuccessfulSignInAt?formatDisplayDateTime(detail.lastSuccessfulSignInAt):'Not recorded'}</strong></div>
                             <div><span>Owned properties</span><strong>{detail.relationships?.ownedPropertyIds?.length||0}</strong></div>
                             <div><span>Rented properties</span><strong>{detail.relationships?.rentedPropertyIds?.length||0}</strong></div>
                         </div>
                         {detail.relationships?.nextCursor&&<p>Relationship counts cover loaded records. <button type="button" disabled={relationshipLoading} onClick={()=>void moreRelationships()}>Load more relationships</button></p>}{relationshipError&&<p role="alert">{relationshipError}</p>}
-                        <div className={styles.activity}><h3>Authentication activity</h3>{detail.authActivity?.length?detail.authActivity.map((event:any)=><div key={event.id}><strong>{String(event.eventType).replaceAll('_',' ')}</strong><span>{event.createdAt?new Date(event.createdAt).toLocaleString():''}</span></div>):<p>No server-recorded activity.</p>}</div>
+                        <div className={styles.activity}><h3>Authentication activity</h3>{detail.authActivity?.length?detail.authActivity.map((event:any)=><div key={event.id}><strong>{String(event.eventType).replaceAll('_',' ')}</strong><span>{event.createdAt?formatDisplayDateTime(event.createdAt):''}</span></div>):<p>No server-recorded activity.</p>}</div>
 
                         {/* Inspection Reports Section */}
                         <div className="mt-8 space-y-4">
@@ -127,7 +129,7 @@ const AdminUserDetailsDialog: React.FC<AdminUserDetailsDialogProps> = ({
                                                     </p>
                                                 </div>
                                                 <span className="text-xs text-muted-foreground">
-                                                    {new Date(report.createdAt).toLocaleDateString()}
+                                                    {formatDisplayDate(report.createdAt)}
                                                 </span>
                                             </div>
                                             <p className="text-sm mt-2 whitespace-pre-line">{report.report}</p>

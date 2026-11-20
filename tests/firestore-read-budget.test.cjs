@@ -78,10 +78,11 @@ test('read instrumentation is opt-in and reports only counts and fixed labels',(
 });
 
 test('admin enquiries query only their relevant delivery events',async()=>{
- const app=isolated({users,admin_notifications:{E:{type:'property_enquiry'}},email_deliveries:{A:{eventType:'enquiry.property_created',recordId:'E',status:'sent'},B:{eventType:'user.welcome',recordId:'E',status:'sent'}}});
+ const deliveryId=require('node:crypto').createHash('sha256').update('enquiry:property:E:admin').digest('hex');
+ const app=isolated({users,admin_notifications:{E:{type:'property_enquiry'}},email_deliveries:{[deliveryId]:{eventType:'enquiry.property_created',recordId:'E',status:'sent'},B:{eventType:'user.welcome',recordId:'E',status:'sent'}}});
  const response=await app.load('@/lib/server/services/enquiries').listEnquiries(request('/enquiries','admin'));assert.equal(response.status,200);
  const read=app.reads.find(row=>row.collection==='email_deliveries');assert.equal(read.returnedDocuments,1);
- assert.ok(read.filters.some(([key,value])=>key==='eventType'&&value==='enquiry.property_created'));
+ assert.ok(read.filters.some(([key,value,op])=>key==='__name__'&&op==='in'&&value.length===1&&value[0]===deliveryId));
 });
 
 test('admin visit property filter is applied before reads and profile enrichment',async()=>{

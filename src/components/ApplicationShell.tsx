@@ -12,7 +12,7 @@ const loading=<main className="flex min-h-screen items-center justify-center bg-
 
 export default function ApplicationShell({children}:{children:ReactNode}){
   const {loading:authLoading,profileStatus}=useAuth(),pathname=usePathname(),router=useRouter(),redirecting=useRef('');
-  const checking=authLoading||profileStatus==='checking',completionRequired=profileStatus==='incomplete',authRoute=pathname==='/auth';
+  const checking=authLoading||profileStatus==='checking',completionRequired=profileStatus==='incomplete'||profileStatus==='unverified',authRoute=pathname==='/auth';
 
   useEffect(()=>{
     if(checking||!completionRequired||authRoute)return;

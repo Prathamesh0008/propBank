@@ -1,12 +1,13 @@
 import 'server-only';
+import {createHash} from 'node:crypto';
 import {enquiryStatuses} from '../../enquiry';
 import {requireUser, AccessError, type AuthenticatedUser} from '../auth';
 import {getDatabase, COLLECTIONS} from '../firestore';
 import {getFirebaseAdminAuth} from '../firebase-admin';
 import {ApiError, jsonResponse} from '../http';
-import {readObject, knownFields, epoch} from './domain-contracts';
+import {readObject, knownFields} from './domain-contracts';
 import {stringValue as s, wireValue, type RecordData} from './contracts';
-import {bestEffort,escapeHtml} from './property-effects';
+import {escapeHtml} from './property-effects';
 import {stageUserEvent,dispatchNotificationIntents} from './transactional-email';
 
 // Separate from notification payloads: owners/customers never receive internal
@@ -26,22 +27,39 @@ function project(id:string,notification:RecordData,tracking:RecordData={},delive
     brokerUID:s(tracking.brokerUID),brokerName:s(tracking.brokerName),status:tracking.status||'new',
     version:tracking.version||0,history:tracking.history||[],emailDeliveryStatus:s(delivery.status)||'not_queued',emailDeliveryFailure:s(delivery.errorSummary)});
 }
+// Document-ID order includes historical enquiries without timestamps. Related
+// records are fetched in bounded batches rather than collection scans or N+1 reads.
 export async function listEnquiries(request:Request) {
   const user=await requireUser(request);requireInboxRole(user);
-  const result:RecordData[]=[];
-  if(user.role==='admin') {
-    // No timestamp orderBy: historical enquiries missing that field must remain visible.
-    const [snapshot,deliverySnapshot]=await Promise.all([notifications().where('type','==','property_enquiry').get(),getDatabase().collection(COLLECTIONS.emailDeliveries||'email_deliveries').where('eventType','==','enquiry.property_created').get()]);
-    const deliveriesByEnquiry=new Map<string,RecordData>();
-    for(const doc of deliverySnapshot.docs){const row=doc.data();if(row.eventType!=='enquiry.property_created'||!s(row.recordId))continue;const current=deliveriesByEnquiry.get(s(row.recordId));if(!current||epoch(row.updatedAt)>epoch(current.updatedAt))deliveriesByEnquiry.set(s(row.recordId),row);}
-    for(const doc of snapshot.docs){const tracking=await assignments().doc(doc.id).get();result.push(project(doc.id,doc.data(),tracking.data(),deliveriesByEnquiry.get(doc.id)) as RecordData);}
-  }else {
-    // Caller-supplied UIDs/filters cannot widen this query.
-    const snapshot=await assignments().where('brokerUID','==',user.uid).get();
-    for(const doc of snapshot.docs){const notification=await notifications().doc(doc.id).get();if(notification.exists&&notification.data()?.type==='property_enquiry')result.push(project(doc.id,notification.data()!,doc.data()) as RecordData);}
+  const params=new URL(request.url).searchParams,cursor=params.get('cursor')||'';
+  const rawLimit=params.get('limit'),limit=rawLimit===null?25:Number(rawLimit);
+  if(!Number.isInteger(limit)||limit<1||limit>50||cursor.length>200||cursor.includes('/')||/[\u0000-\u001f\u007f]/.test(cursor)||cursor==='.'||cursor==='..')throw new ApiError(400,'Invalid enquiry pagination');
+  const db=getDatabase();
+  let query:FirebaseFirestore.Query=user.role==='admin'?notifications().where('type','==','property_enquiry'):assignments().where('brokerUID','==',user.uid);
+  query=query.orderBy('__name__').limit(limit+1);
+  if(cursor)query=query.startAfter(cursor);
+  const snapshot=await query.get(),page=snapshot.docs.slice(0,limit),hasMore=snapshot.docs.length>limit;
+  async function batch(collection:FirebaseFirestore.CollectionReference,ids:string[]) {
+    const rows=new Map<string,RecordData>();
+    const unique=[...new Set(ids)];
+    for(let offset=0;offset<unique.length;offset+=30){
+      const result=await collection.where('__name__','in',unique.slice(offset,offset+30)).get();
+      for(const doc of result.docs)rows.set(doc.id,doc.data());
+    }
+    return rows;
   }
-  result.sort((a,b)=>epoch(b.timestamp)-epoch(a.timestamp));
-  return jsonResponse({success:true,enquiries:result});
+  const ids=page.map(doc=>doc.id);
+  const related=await batch(user.role==='admin'?assignments():notifications(),ids);
+  // Intake uses this stable delivery key, including retries. No outbox scan.
+  const deliveryIds=ids.map(id=>createHash('sha256').update(`enquiry:property:${id}:admin`).digest('hex'));
+  const deliveries=user.role==='admin'?await batch(db.collection(COLLECTIONS.emailDeliveries||'email_deliveries'),deliveryIds):new Map<string,RecordData>();
+  const result:RecordData[]=[];
+  for(const [index,doc] of page.entries()){
+    const notification=user.role==='admin'?doc.data():related.get(doc.id);
+    if(notification?.type!=='property_enquiry')continue;
+    result.push(project(doc.id,notification,user.role==='admin'?related.get(doc.id):doc.data(),deliveries.get(deliveryIds[index])) as RecordData);
+  }
+  return jsonResponse({success:true,enquiries:result,hasMore,nextCursor:hasMore?page.at(-1)!.id:null,order:'record_id'});
 }
 export async function updateEnquiry(request:Request,id:string) {
   const user=await requireUser(request);requireInboxRole(user);
@@ -83,7 +101,7 @@ export async function updateEnquiry(request:Request,id:string) {
     const tracking={notificationId:id,brokerUID,brokerName:brokerUID?brokerName:'',status,version:Number(before.version||0)+1,updatedAt:now,
       history:[...history,{action,actorUID:user.uid,at:now,notes:s(req.notes).trim(),previousBrokerUID:s(before.brokerUID),brokerUID,previousStatus:s(before.status)||'new',status}]};
     result=project(id,notification.data()!,tracking);mail={action,version:tracking.version,brokerUID,previousBrokerUID:s(before.brokerUID),status,propertyId:s(notification.data()?.propertyId),propertyTitle:s(notification.data()?.propertyTitle)||'Property enquiry'};
-    if(mail){const recipients:Array<{uid?:string;role:string;email?:string}>=[];for(const uid of [mail.brokerUID,mail.previousBrokerUID])if(uid&&!recipients.some(value=>value.uid===uid))recipients.push({uid,role:'agent'});if(user.role==='admin')recipients.push({uid:user.uid,role:'admin'});else recipients.push({role:'admin',email:process.env.ADMIN_EMAIL});const label=mail.action.replaceAll('_',' ');const intent=await stageUserEvent(tx,{eventType:`enquiry.${mail!.action}`,eventId:`${id}:${mail!.version}:${mail!.action}`,recipients,propertyId:mail.propertyId,recordId:id,templateId:'enquiry-tracking',subject:`Enquiry ${label}`,title:'Enquiry assignment update',bodyHtml:`<p><strong>${escapeHtml(mail!.propertyTitle)}</strong></p><p>Tracking status: ${escapeHtml(mail!.status.replaceAll('_',' '))}. Assignment: ${escapeHtml(label)}.</p>`,bodyText:`${mail!.propertyTitle}. Tracking status: ${mail!.status.replaceAll('_',' ')}. Assignment: ${label}.`,action:{label:'Open enquiry inbox',path:'/admin?tab=enquiries'}});intentIds.push(intent.id);intent.write();}
+    if(mail){const recipients:Array<{uid?:string;role:string;email?:string}>=[];for(const uid of [mail.brokerUID,mail.previousBrokerUID])if(uid&&!recipients.some(value=>value.uid===uid))recipients.push({uid,role:'agent'});if(user.role==='admin')recipients.push({uid:user.uid,role:'admin'});else recipients.push({role:'admin',email:process.env.ADMIN_EMAIL});const label=mail.action.replaceAll('_',' ');const intent=await stageUserEvent(tx,{emailContext:{status:mail!.status,rows:[{label:'Property',value:mail!.propertyTitle},{label:'Assignment',value:label},{label:'Recorded',value:now,format:'datetime'}]},eventType:`enquiry.${mail!.action}`,eventId:`${id}:${mail!.version}:${mail!.action}`,recipients,propertyId:mail.propertyId,recordId:id,templateId:'enquiry-tracking',subject:`Enquiry ${label}`,title:'Enquiry assignment update',bodyHtml:`<p><strong>${escapeHtml(mail!.propertyTitle)}</strong></p><p>Tracking status: ${escapeHtml(mail!.status.replaceAll('_',' '))}. Assignment: ${escapeHtml(label)}.</p>`,bodyText:`${mail!.propertyTitle}. Tracking status: ${mail!.status.replaceAll('_',' ')}. Assignment: ${label}.`,action:{label:'Open enquiry inbox',path:'/admin?tab=enquiries'}});intentIds.push(intent.id);intent.write();}
     tx.set(ref,tracking);
   });
   dispatchNotificationIntents(intentIds);

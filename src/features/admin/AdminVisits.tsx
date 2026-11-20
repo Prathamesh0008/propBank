@@ -1,4 +1,6 @@
 "use client";
+import {formatDisplayDateTime} from '@/lib/date-format';
+
 import {DateRangePicker} from "@/ui/date-picker";
 import {useAuth} from '@/contexts/AuthContext';
 import {useState} from 'react';
@@ -20,11 +22,11 @@ function VisitCard({visit,onSave}:{visit:VisitRow;onSave:(status:string)=>Promis
  const [status,setStatus]=useState(visit.status),[busy,setBusy]=useState(false);
  return <Card className={styles.visit}><CardHeader><CardTitle className="text-lg">{visit.title}</CardTitle></CardHeader><CardContent className="space-y-3">
   <p className="text-sm break-words">Requester: {visit.requester.name||visit.userId} / {visit.requester.email||'Email unavailable'} / {visit.requester.phone||'Phone unavailable'}</p>
-  <p className="text-sm">Scheduled: {new Date(visit.visitDate).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})} (IST)</p>
+  <p className="text-sm">Scheduled: {formatDisplayDateTime(visit.visitDate, {timeZone:'Asia/Kolkata'})} (IST)</p>
   {visit.property?<Link className="underline" to={`/manage-property/${visit.property.id}`}>{visit.property.title||visit.property.id}</Link>:<p className="text-sm">{visit.propertyId?'Linked property unavailable':'No linked property'}</p>}
   <p className="text-sm whitespace-pre-wrap break-words">{visit.description}</p><p className="text-sm">Status: {visit.status}</p>
   <div className="flex flex-wrap gap-2"><label>Visit status<select className="border rounded h-10 w-full" aria-label="Visit status" value={status} onChange={e=>setStatus(e.target.value)} disabled={busy}>{['scheduled','completed','cancelled'].map(value=><option key={value} value={value}>{value}</option>)}</select></label><Button disabled={busy||status===visit.status} onClick={async()=>{setBusy(true);try{await onSave(status);}finally{setBusy(false);}}}>Save visit status</Button></div>
-  <details><summary>Administrative visit history</summary>{visit.visitAdminHistory.length?<ul>{visit.visitAdminHistory.map((event,index)=><li key={index} className="text-sm">{event.actorUID} / {new Date(event.at).toLocaleString()} / {event.previousStatus} to {event.status}</li>)}</ul>:<p className="text-sm">No administrative changes recorded.</p>}</details>
+  <details><summary>Administrative visit history</summary>{visit.visitAdminHistory.length?<ul>{visit.visitAdminHistory.map((event,index)=><li key={index} className="text-sm">{event.actorUID} / {formatDisplayDateTime(event.at)} / {event.previousStatus} to {event.status}</li>)}</ul>:<p className="text-sm">No administrative changes recorded.</p>}</details>
  </CardContent></Card>;
 }
 export default function AdminVisits({notifications,onMarkRead}:{notifications:AdminNotification[];onMarkRead:(id:string,read:boolean)=>Promise<void>}){

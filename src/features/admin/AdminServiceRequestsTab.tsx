@@ -1,4 +1,6 @@
 "use client";
+import {formatDisplayDateTime} from '@/lib/date-format';
+
 import styles from "./AdminServiceRequestsTab.module.css";
 
 import React, { useState } from 'react';
@@ -905,7 +907,7 @@ export const AdminServiceRequestsTab: React.FC<AdminServiceRequestsTabProps> = (
                                     {notification.requestVisit && (
                                       <div>
                                         <span className="text-xs text-muted-foreground">Visit Requested:</span>
-                                        <p className="text-sm font-medium">{notification.visitDate} at {notification.visitTime}</p>
+                                        <p className="text-sm font-medium">{formatDisplayDateTime(notification.visitDate)} at {notification.visitTime}</p>
                                       </div>
                                     )}
                                   </div>
@@ -1205,7 +1207,7 @@ export const AdminServiceRequestsTab: React.FC<AdminServiceRequestsTabProps> = (
                                 {notification.priority}
                               </Badge>
                               <span className="text-xs text-muted-foreground">
-                                {new Date(notification.timestamp).toLocaleString()}
+                                {formatDisplayDateTime(notification.timestamp)}
                               </span>
                             </div>
                           </div>

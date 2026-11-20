@@ -34,6 +34,7 @@ const InspectionReport = () => {
   const [property, setProperty] = useState<any>(null);
   const [reportType, setReportType] = useState<string>("");
   const [report, setReport] = useState<string>("");
+  const submission=useRef(false),requestKey=useRef(crypto.randomUUID());
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   
@@ -243,6 +244,7 @@ const InspectionReport = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if(submission.current)return;
 
     if (!user) {
       toast({
@@ -272,7 +274,7 @@ const InspectionReport = () => {
       return;
     }
 
-    setSubmitting(true);
+    submission.current=true;setSubmitting(true);
     try {
       const type = inspectionType(reportType);
       if (!type) throw new Error('Invalid report type');
@@ -287,6 +289,7 @@ const InspectionReport = () => {
         headers: {
           'Content-Type': 'application/json',
           'X-User-ID': user.uid,
+          'Idempotency-Key':requestKey.current,
         },
         body: JSON.stringify({
           propertyId: propertyId || '',
@@ -300,7 +303,8 @@ const InspectionReport = () => {
 
       const data = await response.json();
 
-      if (data.success) {
+      if (response.ok&&data.success) {
+        requestKey.current=crypto.randomUUID();
         toast({
           title: "Report Submitted",
           description: "Your inspection report has been submitted successfully and the admin has been notified.",
@@ -332,7 +336,7 @@ const InspectionReport = () => {
         variant: "destructive"
       });
     } finally {
-      setSubmitting(false);
+      submission.current=false;setSubmitting(false);
     }
   };
 

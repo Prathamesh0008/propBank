@@ -1,4 +1,6 @@
 "use client";
+import {formatDisplayDate} from '@/lib/date-format';
+
 
 import { apiFetch } from '@/lib/api-client';
 
@@ -71,7 +73,7 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
       const notificationPayload = {
         type: "general_inquiry",
         title: "New General Inquiry",
-        message: `${formData.name} is interested in ${formData.listingType === 'buy' ? 'buying' : formData.listingType === 'sell' ? 'selling' : 'renting'} a ${formData.propertyType} property.${formData.requestVisit ? ` Preferred visit or callback time: ${formData.visitDate} at ${formData.visitTime}.` : ''}`,
+        message: `${formData.name} is interested in ${formData.listingType === 'buy' ? 'buying' : formData.listingType === 'sell' ? 'selling' : 'renting'} a ${formData.propertyType} property.${formData.requestVisit ? ` Preferred visit or callback time: ${formatDisplayDate(formData.visitDate)} at ${formData.visitTime}.` : ''}`,
         // Inquiry details
         inquiryType: formData.listingType,
         propertyType: formData.propertyType,

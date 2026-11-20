@@ -1,3 +1,5 @@
+import {propertyPricing,readStoredPropertyMoney} from '@/lib/property-presentation';
+import {validPropertyMoney} from '@/lib/property-money';
 import {rentForBillingPeriod,localRentDate} from '@/lib/rent-resolution';
 import {purposeFields,leaseSummary,leaseExpired} from '@/lib/property-purpose';
 import 'server-only';
@@ -106,8 +108,23 @@ export function wireModel(name: string, input: RecordData): RecordData {
 
 export function parsePrice(value: unknown) { return Number.parseFloat(stringValue(value).replace(/[₹,]/g,'').trim()); }
 export const ownerReviewFields=['moderationStatus','moderationRevision','moderationReason','moderationSubmittedAt','moderationReviewedAt'] as const;
+/** Compatible read projection; storage and submission validation remain unchanged. */
+export function propertyReadValues(input:RecordData):RecordData {
+  const property={...input};
+  for(const [key,alias] of [['expectedRent','expected_rent'],['monthlyRent','monthly_rent'],['sellingPrice','selling_price']]) {
+    if((property[key]===undefined||property[key]===null||property[key]==='')&&(typeof property[alias]==='string'||typeof property[alias]==='number')&&validPropertyMoney(String(property[alias])))property[key]=String(property[alias]);
+  }
+  for(const key of ['monthlyRent','sellingPrice','securityDeposit','expectedRent','carpetArea','constructedArea','plotArea','floor'])if(typeof property[key]==='number'&&Number.isFinite(property[key]))property[key]=String(property[key]);
+  for(const key of ['monthlyRent','sellingPrice','securityDeposit','expectedRent']){
+    const value=property[key];
+    // Canonical decimal strings are authoritative; do not round or reformat them.
+    if(typeof value==='string'&&!validPropertyMoney(value,key!=='securityDeposit')&&readStoredPropertyMoney(value,key==='securityDeposit')!==null)property[key]=value.replace(/[\u20b9,\s]/g,'');
+  }
+  return property;
+}
 export function propertyResponse(property: RecordData, projection = 'normal', userRole?: string) {
   const result = model('PropertyResponse', {});
+  property=propertyReadValues(property);
   for (const [to,from] of projections[projection]) result[to] = property[from];
   if (projection === 'normal') {
     result.price = property.price;
@@ -116,6 +133,12 @@ export function propertyResponse(property: RecordData, projection = 'normal', us
       const price = parsePrice(fallback);
       if (Number.isFinite(price)) result.price = price;
     }
+  }
+  if (projection==='normal'&&['rent','sell','pre_leased','manage'].includes(String(property.listingType))) {
+    const price=propertyPricing(property).amount;
+    // Keep the legacy generic field for authorized readers, without inventing an
+    // effective contractual rent. Public unresolved prices remain unavailable.
+    result.price=price??(userRole&&property.listingType!=='manage'?result.price:0);
   }
   if (userRole) result.userRole = userRole;
   const response=wireModel('PropertyResponse',result);

@@ -1,4 +1,9 @@
 "use client";
+import {propertyPriceText, propertyOccupancy, propertyAreaText} from '@/lib/property-presentation';
+
+import {formatAddress} from "@/lib/address-format";
+import {formatDisplayDate} from '@/lib/date-format';
+
 import PropertyPurposeSummary from "./PropertyPurposeSummary";
 
 import {
@@ -33,12 +38,12 @@ const PropertyDetailsDialog = ({ property }: PropertyDetailsDialogProps) => {
                     </DialogTitle>
                     <DialogDescription className="flex items-center gap-1.5 text-sm text-slate-500 font-semibold uppercase tracking-wider">
                         <MapPin className="h-4 w-4 text-slate-400 shrink-0" />
-                        {property.address || property.city || "Location not specified"}
+                        {formatAddress(property.address) || formatAddress(property.city) || "Location not specified"}
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="grid gap-5 py-4">
-                    <PropertyPurposeSummary property={property}/>{/* Main Info Grid */}
+                    <PropertyPurposeSummary property={property}/><p>{propertyPriceText(property)}</p><p>{propertyOccupancy(property)}</p>{/* Main Info Grid */}
                     <div className="grid grid-cols-2 gap-4 bg-slate-50/50 p-4 rounded-xl border border-slate-100/80">
                         {/* Configuration */}
                         {property.configuration && (
@@ -69,7 +74,7 @@ const PropertyDetailsDialog = ({ property }: PropertyDetailsDialogProps) => {
                                     <Ruler className="h-3.5 w-3.5" />
                                     <span>Carpet Area</span>
                                 </div>
-                                <p className="font-bold text-slate-800 text-sm">{property.carpetArea}</p>
+                                <p className="font-bold text-slate-800 text-sm">{propertyAreaText(property,'carpetArea')}</p>
                             </div>
                         )}
 
@@ -80,7 +85,7 @@ const PropertyDetailsDialog = ({ property }: PropertyDetailsDialogProps) => {
                                     <Ruler className="h-3.5 w-3.5" />
                                     <span>Buildup Area</span>
                                 </div>
-                                <p className="font-bold text-slate-800 text-sm">{property.constructedArea}</p>
+                                <p className="font-bold text-slate-800 text-sm">{propertyAreaText(property,'constructedArea')}</p>
                             </div>
                         )}
 
@@ -99,7 +104,7 @@ const PropertyDetailsDialog = ({ property }: PropertyDetailsDialogProps) => {
                                     )}
                                     {property.possessionDate && !(property.listingType === 'rent' && property.rentalStatus === 'rented') && (
                                         <span className="text-sm font-bold text-slate-800">
-                                            {new Date(property.possessionDate).toLocaleDateString()}
+                                            {formatDisplayDate(property.possessionDate)}
                                         </span>
                                     )}
                                 </div>

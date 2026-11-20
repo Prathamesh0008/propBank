@@ -1,9 +1,11 @@
 'use client';
+import {formatDisplayDateTime} from '@/lib/date-format';
+
 import {useEffect,useMemo,useState} from 'react';
 import {EmailAuthProvider,reauthenticateWithCredential,sendPasswordResetEmail,updatePassword,verifyBeforeUpdateEmail} from 'firebase/auth';
 import {Bell,Clock3,KeyRound,LogOut,ShieldCheck,UserRound} from 'lucide-react';
 import {apiFetch} from '@/lib/api-client';
-import {auth,signOutUser} from '@/firebase';
+import {auth} from '@/firebase';
 import {useAuth} from '@/contexts/AuthContext';
 import {useNavigate} from '@/lib/navigation';
 import styles from './MyAccount.module.css';
@@ -14,11 +16,11 @@ type Tab='profile'|'security'|'activity';
 type Activity={id:string;eventType:string;createdAt:string};
 type Account={name:string;email:string;phoneNumber:string;photoURL:string;role:string;roleLabel:string;isActive:boolean;agencyName:string;agencyPhone:string;agencyWebsite:string;bio:string;emailVerified:boolean;accountStatus:string;providerIds:string[];createdAt:string;lastSuccessfulSignInAt:string;activity:Activity[];notificationPreferences:{productUpdates:boolean;activitySummaries:boolean;security:boolean}};
 const empty:Account={name:'',email:'',phoneNumber:'',photoURL:'',role:'individual',roleLabel:'Individual',isActive:true,agencyName:'',agencyPhone:'',agencyWebsite:'',bio:'',emailVerified:false,accountStatus:'active',providerIds:[],createdAt:'',lastSuccessfulSignInAt:'',activity:[],notificationPreferences:{productUpdates:true,activitySummaries:true,security:true}};
-const formatDate=(value:string)=>value&&!value.startsWith('0001-')?new Intl.DateTimeFormat('en-IN',{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)):'Not available';
+const formatDate=(value:string)=>formatDisplayDateTime(value, {}, 'Not available');
 const activityName=(value:string)=>({session_established:'Signed in',registration:'Account registered',profile_changed:'Profile updated',phone_changed:'Phone number changed',email_change_requested:'Email change requested',email_changed:'Email address changed',password_changed:'Password changed',password_reset_requested:'Password reset requested',account_linked:'Sign-in provider linked',notification_preferences_changed:'Notification preferences updated',account_status_changed:'Account status changed',role_changed:'Account role changed'}[value]||value.replaceAll('_',' '));
 
 export default function MyAccount(){
- const {user}=useAuth(),navigate=useNavigate(),[tab,setTab]=useState<Tab>('profile'),[account,setAccount]=useState<Account>(empty),[draft,setDraft]=useState<Account>(empty),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[currentPassword,setCurrentPassword]=useState(''),[newPassword,setNewPassword]=useState(''),[newEmail,setNewEmail]=useState('');
+ const {user,signOut}=useAuth(),navigate=useNavigate(),[tab,setTab]=useState<Tab>('profile'),[account,setAccount]=useState<Account>(empty),[draft,setDraft]=useState<Account>(empty),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[currentPassword,setCurrentPassword]=useState(''),[newPassword,setNewPassword]=useState(''),[newEmail,setNewEmail]=useState('');
  const passwordProvider=account.providerIds.includes('password'),googleOnly=account.providerIds.length>0&&!passwordProvider;
  const initials=useMemo(()=>account.name.split(/\s+/).filter(Boolean).slice(0,2).map(value=>value[0]).join('').toUpperCase()||'PB',[account.name]);
  const load=async()=>{setLoading(true);setError('');try{const response=await apiFetch('/api/account');const data=await response.json();if(!response.ok)throw new Error(data.message||'Account details could not be loaded.');const value={...empty,...data.account,notificationPreferences:{...empty.notificationPreferences,...data.account.notificationPreferences}};setAccount(value);setDraft(value);}catch(caught){setError(caught instanceof Error?caught.message:'Account details could not be loaded.');}finally{setLoading(false);}};
@@ -31,7 +33,7 @@ export default function MyAccount(){
  const changePassword=async(event:React.FormEvent)=>{event.preventDefault();if(!user||saving)return;setSaving(true);setError('');setNotice('');try{await reauthenticate();if(newPassword.length<8)throw new Error('Use at least eight characters for your new password.');await updatePassword(user,newPassword);await audit('password_changed');setCurrentPassword('');setNewPassword('');setNotice('Password changed successfully.');await load();}catch(caught){setError(message(caught));}finally{setSaving(false);}};
  const requestEmailChange=async(event:React.FormEvent)=>{event.preventDefault();if(!user||saving)return;setSaving(true);setError('');setNotice('');try{await reauthenticate();await verifyBeforeUpdateEmail(user,newEmail.trim());await audit('email_change_requested');setCurrentPassword('');setNotice('Verification was sent to the new address. Your account email remains unchanged until that link is completed. Sign in again afterward to refresh PropBank.');}catch(caught){setError(message(caught));}finally{setSaving(false);}};
  const reset=async()=>{if(!user?.email||saving)return;setSaving(true);setError('');try{await sendPasswordResetEmail(auth,user.email);await fetch('/api/auth/activity',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'password_reset_requested',email:user.email})}).catch(()=>null);setNotice('Password reset instructions were requested for your verified email.');}catch(caught){setError(message(caught));}finally{setSaving(false);}};
- const logout=async()=>{await signOutUser();navigate('/auth',{replace:true});};
+ const logout=async()=>{try{await signOut();navigate('/auth',{replace:true});}catch{setError('Unable to sign out. Please try again.');}};
  if(loading)return <main className={styles.page}><p className={styles.state}>Loading your account…</p></main>;
  return <main className={styles.page}>
   <header className={styles.header}><div className={styles.identity}><span className={styles.avatar}>{account.photoURL?<img src={account.photoURL} alt=""/>:initials}</span><div><p className={styles.eyebrow}>My account</p><h1>{account.name}</h1><p>{account.email} · {account.roleLabel}</p></div></div><span className={account.emailVerified?styles.verified:styles.warning}><ShieldCheck aria-hidden="true"/>{account.emailVerified?'Email verified':'Verification pending'}</span></header>

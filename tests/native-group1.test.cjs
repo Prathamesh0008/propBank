@@ -8,9 +8,11 @@ const os=require('node:os');
 const {execFileSync}=require('node:child_process');
 const ts=require('typescript');
 
-const {isolated}=require('./fixtures/native-server.cjs');
+const {isolated:baseIsolated}=require('./fixtures/native-server.cjs');
+const {registrySeed}=require('./fixtures/mobile-registry.cjs');
+const isolated=seed=>baseIsolated({...registrySeed(seed?.users||{}),...seed});
 const defaults={createdAt:new Date('2024-01-02T03:04:05Z'),updatedAt:new Date('2024-01-02T03:04:05Z'),isActive:true};
-const users={owner:{...defaults,uid:'owner',email:'owner@test.invalid',name:'Owner',role:'individual',phoneNumber:'+91123'},tenant:{...defaults,uid:'tenant',email:'tenant@test.invalid',name:'Tenant',role:'individual',phoneNumber:'456'},admin:{...defaults,uid:'admin',email:'admin@test.invalid',name:'Admin',role:'admin'}};
+const users={owner:{...defaults,uid:'owner',email:'owner@test.invalid',name:'Owner',role:'individual',phoneNumber:'+919123456781'},tenant:{...defaults,uid:'tenant',email:'tenant@test.invalid',name:'Tenant',role:'individual',phoneNumber:'+919123456782'},admin:{...defaults,uid:'admin',email:'admin@test.invalid',name:'Admin',role:'admin',phoneNumber:'+919123456784'}};
 function request(url,uid,method='GET',body) {return new Request(`http://local/api${url}`,{method,headers:{...(uid?{Authorization:`Bearer ${uid}`} : {}),'Content-Type':'application/json'},...(body!==undefined?{body:typeof body==='string'?body:JSON.stringify(body)}:{})});}
 const route=(app,name)=>app.load(`@/app/api/${name}/route`);
 const context=id=>({params:Promise.resolve({id})});
@@ -36,12 +38,13 @@ test('auth registration preserves complete phone/role and creation date, validat
  assert.equal((await r.POST(request('/auth/user','fresh','POST',{uid:'fresh',email:'fresh@test.invalid',name:'Fresh',phoneNumber:'9',role:'admin'}))).status,403);
  assert.equal((await r.POST(request('/auth/user','fresh','POST',{uid:'someone-else',email:'fresh@test.invalid',name:'Fresh',phoneNumber:'9'}))).status,403);
  assert.equal((await r.POST(request('/auth/user','fresh','POST',{uid:'fresh'}))).status,400);
- assert.equal((await r.POST(request('/auth/user','fresh','POST',{uid:'fresh',email:'fresh@test.invalid',name:'Fresh',phoneNumber:'4-56'}))).status,409);
- const created=await r.POST(request('/auth/user','fresh','POST',{uid:'fresh',email:'fresh@test.invalid',name:'Fresh',phoneNumber:'+91 999',role:'individual'}));
- assert.equal(created.status,200);assert.equal(app.state.users.fresh.role,'individual');assert.equal(app.state.users.fresh.phoneNumber,'+91999');
- const updated=await r.POST(request('/auth/user','owner','POST',{uid:'owner',email:'owner@test.invalid',name:'Updated Owner',phoneNumber:'999',role:'individual'}));
- const data=await body(updated);assert.equal(data.user.role,'individual');assert.equal(data.user.phoneNumber,'+91123');assert.equal(data.user.createdAt,'2024-01-02T03:04:05Z');
- assert.ok(app.writes.every(w=>w.collection==='users'));
+ assert.equal((await r.POST(request('/auth/user','fresh','POST',{uid:'fresh',email:'fresh@test.invalid',name:'Fresh',phoneNumber:'4-56'}))).status,400);
+ const created=await r.POST(request('/auth/user','fresh','POST',{uid:'fresh',email:'fresh@test.invalid',name:'Fresh',phoneNumber:'+91 9988776655',role:'individual'}));
+ assert.equal(created.status,200);assert.equal(app.state.users.fresh.role,'individual');assert.equal(app.state.users.fresh.phoneNumber,'+919988776655');
+ const updated=await r.POST(request('/auth/user','owner','POST',{uid:'owner',email:'owner@test.invalid',name:'Updated Owner',phoneNumber:'+919123456781',role:'individual'}));
+ const data=await body(updated);assert.equal(data.user.role,'individual');assert.equal(data.user.phoneNumber,'+919123456781');assert.equal(data.user.createdAt,'2024-01-02T03:04:05Z');
+ assert.ok(app.writes.every(w=>['users','mobile_number_registry','mobile_number_registry_accounts','auth_activity','email_deliveries','admin_notifications'].includes(w.collection)));
+ assert.ok(Object.values(app.state.mobile_number_registry).some(claim=>claim.ownerUID==='fresh'));
 });
 test('invalid profile roles cannot turn an existing owner into a rejected property user',async()=>{
  const app=isolated({users});const collection=route(app,'users'),profile=route(app,'users/[id]');
@@ -64,22 +67,22 @@ test('tenant email fallback cannot override a different linked Firebase UID',asy
 test('users read, search, POST, PUT/PATCH upsert and partial profile update preserve Go envelopes',async()=>{
  const app=isolated({users});const r=route(app,'users/[id]'),search=route(app,'users/search');
  assert.deepEqual(await body(await r.GET(request('/users/missing','owner'),context('missing'))),{success:false,message:'User not registered'});
- const found=await search.GET(request('/users/search?phone=%2B91%20-123','owner'));assert.equal((await body(found)).user.uid,'owner');
- assert.equal((await search.GET(request('/users/search?phone=none','owner'))).status,404);
- assert.equal((await search.GET(request('/users/search','owner'))).status,400);
+ const found=await search.GET(request('/users/search?phone=%2B91%209123456781','admin'));assert.equal((await body(found)).user.uid,'owner');
+ assert.equal((await search.GET(request('/users/search?phone=none','admin'))).status,404);
+ assert.equal((await search.GET(request('/users/search','admin'))).status,400);
  assert.equal((await r.PATCH(request('/users/tenant','owner','PATCH',{name:'Spoofed'}),context('tenant'))).status,403);
- assert.equal((await r.PUT(request('/users/fresh','fresh','PUT',{name:'New'}),context('fresh'))).status,400);
- const upsert=await r.PUT(request('/users/fresh','fresh','PUT',{name:'New',email:'fresh@test.invalid'}),context('fresh'));assert.equal(upsert.status,201);
+ assert.equal((await r.PUT(request('/users/fresh','fresh','PUT',{name:'New'}),context('fresh'))).status,403);
+ app.claims.fresh={email:'fresh@test.invalid',emailVerified:true};const upsert=await r.PUT(request('/users/fresh','admin','PUT',{name:'New',email:'fresh@test.invalid',phoneNumber:'+919988776655',role:'individual'}),context('fresh'));assert.equal(upsert.status,201);
  app.state.users.owner.rentedPropertyId='existing-rental';
- const updated=await r.PATCH(request('/users/owner','owner','PATCH',{name:'Changed',photoURL:'',phoneNumber:'123 45'}),context('owner'));
+ const updated=await r.PATCH(request('/users/owner','owner','PATCH',{name:'Changed',photoURL:'',phoneNumber:'+919123456781'}),context('owner'));
  assert.equal(updated.status,200);assert.equal((await body(updated)).user.rentedPropertyId,'existing-rental');
  assert.equal((await r.PUT(request('/users/owner','owner','PUT',{role:'admin'}),context('owner'))).status,403);
- assert.equal((await route(app,'users').POST(request('/users','fresh','POST',{uid:'fresh',name:'Fresh',email:'fresh@test.invalid'}))).status,201);
+ app.claims.fresh2={email:'fresh2@test.invalid',emailVerified:true};assert.equal((await route(app,'users').POST(request('/users','admin','POST',{uid:'fresh2',name:'Fresh',email:'fresh2@test.invalid',phoneNumber:'+919988776656',role:'individual'}))).status,201);
  assert.equal((await r.PATCH(request('/users/owner','owner','PATCH','{'),context('owner'))).status,400);
 });
 test('public lists, availability, owner+tenant merge, search filters, price and Go projections',async()=>{
  const app=isolated({users,properties:{
-  A:{...defaults,title:'Home',id:'A',ownerUID:'owner',listingType:'rent',monthlyRent:'₹12,500',configuration:'2BHK',internalImages:['unchanged-url']},
+  A:{...defaults,moderationStatus:'approved',title:'Home',id:'A',ownerUID:'owner',listingType:'rent',monthlyRent:'₹12,500',configuration:'2BHK',internalImages:['unchanged-url']},
   B:{...defaults,title:'Sold',id:'B',ownerUID:'owner',isSold:true},
   C:{...defaults,title:'Rented',id:'C',ownerUID:'someone',listingType:'rent',rentalStatus:'rented',tenants:[{userUID:'owner',isActive:true,email:'owner@test.invalid'}]},
   D:{...defaults,title:'Archived',id:'D',ownerUID:'owner',status:'inactive'},
@@ -105,7 +108,7 @@ test('tenant lookup matches active UID/email, retains header precedence and reje
  app.state.users.tenant.email='owner@test.invalid';
  assert.equal((await r.GET(request('/properties/tenant/?userEmail=owner@test.invalid','tenant'))).status,403);
  assert.equal((await r.GET(request('/properties/tenant/','tenant'))).status,400);
- const req=request('/properties/tenant/?userEmail=owner@test.invalid','tenant');req.headers.set('X-User-ID','tenant');assert.equal((await body(await r.GET(req))).count,1);
+ const req=request('/properties/tenant/?userEmail=owner@test.invalid','tenant');req.headers.set('X-User-ID','tenant');assert.equal((await r.GET(req)).status,403);
 });
 test('browser API transport refreshes Firebase identity, overrides Go JWT and does not leak tokens to other origins',async()=>{
  const calls=[];
@@ -113,7 +116,7 @@ test('browser API transport refreshes Firebase identity, overrides Go JWT and do
  const auth={authStateReady:async()=>calls.push('ready'),get currentUser(){return currentUser;}};
  const exports={};
  const source=ts.transpileModule(fs.readFileSync('src/lib/api-client.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
- vm.runInNewContext(source,{exports,URL,Headers,Request,Response,window:{location:{origin:'http://local'}},require:name=>{assert.equal(name,'@/firebase');return {auth};},fetch:async(input,init)=>{calls.push({input,init});return new Response('{}');}});
+ vm.runInNewContext(source,{exports,URL,Headers,Request,Response,window:{location:{origin:'http://local'}},require:name=>{if(name==='@/lib/data-refresh')return {mutationDomains:()=>[],publishDataRefresh:()=>{}};assert.equal(name,'@/firebase');return {auth};},fetch:async(input,init)=>{calls.push({input,init});return new Response('{}');}});
  await exports.apiFetch('/api/users/owner',{method:'PUT',headers:{Authorization:'Bearer go-jwt','X-User-ID':'owner','Content-Type':'application/json'},body:'{"name":"Owner"}'});
  let sent=calls.at(-1);assert.equal(sent.init.headers.get('Authorization'),'Bearer firebase-id-token');assert.equal(sent.init.headers.get('X-User-ID'),'owner');assert.equal(sent.init.body,'{"name":"Owner"}');
  const before=calls.length;await exports.apiFetch('https://existing-r2.example/object');assert.equal(calls.length,before+1);assert.equal(calls.at(-1).init,undefined);
@@ -123,15 +126,15 @@ test('browser API transport refreshes Firebase identity, overrides Go JWT and do
 });
 test('property creation writes the original schema, preserves URLs, links tenant and emits original side effects',async()=>{
  const app=isolated({users});const r=route(app,'properties');
- const input={propertyTitle:'Native fixture',propertyType:'Residential',location:'Fixture',ownerUID:'owner',rentalStatus:'rented',listingType:'rent',monthlyRent:'10000',tenantEmail:'tenant@test.invalid',tenantName:'First Last',rentSchedule:[{year:'1st',amount:'10000'}],images:['https://existing-r2.example/properties/old/object.webp'],isSold:true,buyerFirstName:'Buyer'};
+ const input={propertyTitle:'Native fixture',propertyType:'Residential',configuration:'2 BHK',securityDeposit:'0',location:'Fixture',ownerUID:'owner',rentalStatus:'rented',listingType:'rent',monthlyRent:'10000',tenantEmail:'tenant@test.invalid',tenantFirstName:'First',tenantLastName:'Last',mobileNumber:'9123456789',tenantName:'First Last',agreementPeriod:'12',agreementStartDate:'2026-01-01',agreementEndDate:'2026-12-31',rentSchedule:[{year:'1st Year',months:'12',amount:'10000',fromDate:'2026-01-01',toDate:'2026-12-31'}],images:['https://existing-r2.example/properties/old/object.webp'],isSold:true,buyerFirstName:'Buyer'};
  assert.equal((await r.POST(request('/properties','tenant','POST',input))).status,403);
  assert.equal((await r.POST(request('/properties','owner','POST',{...input,monthlyRent:123}))).status,400);
  const response=await r.POST(request('/properties','owner','POST',input));assert.equal(response.status,200);
  const data=await body(response),id=data.property.id;assert.match(id,/^[A-Z]{4}[0-9]{4}$/);
- const saved=app.state.properties[id];assert.equal(saved.ownerPhone,'+91123');assert.equal(saved.images[0],input.images[0]);assert.equal(saved.rentSchedule.length,1);assert.equal(saved.tenants[0].userUID,'tenant');assert.equal(saved.tenants[0].firstName,'First');assert.equal(saved.buyers[0].firstName,'Buyer');assert.ok(saved.createdAt instanceof Date);
- assert.equal(data.property.ownerPhone,'+91123');assert.equal(data.property.price,0);assert.equal(data.property.isPreLeased,false);
- assert.equal(app.state.users.tenant.rentedPropertyId,id);assert.equal(Object.values(app.state.admin_notifications)[0].type,'property_added');
- await app.flush();assert.equal(app.emails.length,2);assert.ok(app.emails.every(mail=>mail.from==='PropBank <connect@test.invalid>'));
+ const saved=app.state.properties[id];assert.equal(saved.ownerPhone,'+919123456781');assert.equal(saved.images[0],input.images[0]);assert.equal(saved.rentSchedule.length,1);assert.equal(saved.tenants[0].userUID,undefined);assert.equal(saved.tenants[0].linkConfirmationRequired,true);assert.equal(saved.tenants[0].firstName,'First');assert.equal(saved.buyers[0].firstName,'Buyer');assert.ok(saved.createdAt instanceof Date);
+ assert.equal(data.property.ownerPhone,'+919123456781');assert.equal(data.property.price,0);assert.equal(data.property.isPreLeased,false);
+ assert.equal(app.state.users.tenant.rentedPropertyId,undefined);assert.equal(Object.values(app.state.admin_notifications)[0].type,'property_added');
+ await app.flush();assert.equal(app.emails.length,4);assert.deepEqual(new Set(app.emails.map(mail=>mail.to[0])),new Set(['owner@test.invalid','tenant@test.invalid','admin@test.invalid']));assert.ok(app.emails.every(mail=>mail.from==='PropBank <connect@test.invalid>'));
  assert.ok(!app.writes.some(w=>w.kind==='storage'));
 });
 test('property update validates ownership, clears explicit empty galleries and triggers transitions once',async()=>{
@@ -141,11 +144,11 @@ test('property update validates ownership, clears explicit empty galleries and t
  assert.equal((await r.PATCH(request('/properties/A','owner','PATCH',{ownerUID:'tenant'}),context('A'))).status,403);
  const response=await r.PATCH(request('/properties/A','owner','PATCH',{id:'rewrite',isActive:false,isSold:false,status:'inactive',images:[],monthlyRent:'200',wantToSell:true,tenants:[{firstName:' '},{id:'T',userUID:'tenant',firstName:'First',email:'tenant@test.invalid',isActive:true,paymentDueDate:'10'}]}),context('A'));
  assert.equal(response.status,200);assert.equal(app.state.properties.A.id,'A');assert.equal(app.state.properties.A.isActive,false);assert.equal(app.state.properties.A.status,'inactive');assert.equal(app.state.properties.A.images.length,0);assert.equal(app.state.properties.A.tenants.length,1);assert.ok(app.state.properties.A.tenants[0].createdAt instanceof Date);
- assert.equal(app.state.users.tenant.rentedPropertyId,'A');assert.equal(Object.values(app.state.admin_notifications)[0].type,'want_to_sell');
- await app.flush();assert.equal(app.emails.length,2);assert.match(app.emails[0].subject,/Rent Update/);assert.match(app.emails[1].subject,/Payment Due/);
- await r.PUT(request('/properties/A','owner','PUT',{wantToSell:true}),context('A'));assert.equal(Object.keys(app.state.admin_notifications).length,1);
- await r.PUT(request('/properties/A','admin','PUT',{wantToSell:false}),context('A'));assert.equal(Object.keys(app.state.admin_notifications).length,2);
- const empty=await r.PUT(request('/properties/A','owner','PUT',{tenants:[]}),context('A'));assert.equal(empty.status,200);assert.equal(app.state.properties.A.tenants.length,0);
+ assert.equal(app.state.users.tenant.rentedPropertyId,'A');assert.equal(Object.values(app.state.admin_notifications).find(n=>n.type==='want_to_sell').type,'want_to_sell');
+ await app.flush();assert.equal(app.emails.length,4);assert.deepEqual(new Set(app.emails.map(mail=>mail.to[0])),new Set(['owner@test.invalid','tenant@test.invalid','admin@test.invalid']));assert.deepEqual(new Set(app.emails.map(mail=>mail.subject)),new Set(['Rental terms updated','PropBank - Rental terms updated','PropBank - Property pending approval']));
+ await r.PUT(request('/properties/A','owner','PUT',{wantToSell:true}),context('A'));assert.equal(Object.values(app.state.admin_notifications).filter(n=>['want_to_sell','want_to_sell_cancelled'].includes(n.type)).length,1);
+ await r.PUT(request('/properties/A','admin','PUT',{wantToSell:false}),context('A'));assert.equal(Object.values(app.state.admin_notifications).filter(n=>['want_to_sell','want_to_sell_cancelled'].includes(n.type)).length,2);
+ const empty=await r.PUT(request('/properties/A','owner','PUT',{tenants:[]}),context('A'));assert.equal(empty.status,200);assert.equal(app.state.properties.A.tenants.filter(t=>t.isActive===true).length,0);assert.equal(app.state.properties.A.tenants[0].id,'T');
 });
 test('legacy property image callers use managed private R2 and fail rather than skip malformed images',async()=>{
  const app=isolated({users});const images=app.load('@/lib/server/services/property-images'),user={uid:'owner',role:'individual'};

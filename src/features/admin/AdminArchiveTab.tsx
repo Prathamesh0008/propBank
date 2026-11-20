@@ -1,4 +1,6 @@
 "use client";
+import {formatDisplayDateTime} from '@/lib/date-format';
+
 import styles from "./AdminArchiveTab.module.css";
 
 import { TabsContent } from "@/ui/tabs";
@@ -222,18 +224,18 @@ export default function AdminArchiveTab({
                     <div className="flex flex-wrap gap-x-6 gap-y-1 mb-3 text-xs text-muted-foreground">
                       <span>
                         <span className="font-medium text-gray-600">Received: </span>
-                        {new Date(notification.timestamp).toLocaleString()}
+                        {formatDisplayDateTime(notification.timestamp)}
                       </span>
                       {notification.resolvedAt && (
                         <span>
                           <span className="font-medium text-green-700">✓ Marked Complete: </span>
-                          {new Date(notification.resolvedAt).toLocaleString()}
+                          {formatDisplayDateTime(notification.resolvedAt)}
                         </span>
                       )}
                       {notification.updatedAt && (
                         <span>
                           <span className="font-medium text-gray-600">Last Modified: </span>
-                          {new Date(notification.updatedAt).toLocaleString()}
+                          {formatDisplayDateTime(notification.updatedAt)}
                         </span>
                       )}
                     </div>
@@ -324,7 +326,7 @@ export default function AdminArchiveTab({
                                 {entry.action === "archived" ? "Archived" : "Unarchived"}
                               </span>
                               <span className="text-muted-foreground">
-                                — {new Date(entry.timestamp).toLocaleString()}
+                                — {formatDisplayDateTime(entry.timestamp)}
                               </span>
                             </div>
                           ))}

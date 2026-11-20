@@ -1,4 +1,7 @@
 "use client";
+import {propertyPriceText, propertyPricing} from '@/lib/property-presentation';
+
+import {formatAddress} from "@/lib/address-format";
 
 import PropertyPurposeSummary from "@/features/properties/PropertyPurposeSummary";
 import {purposeLabel} from "@/lib/property-purpose";
@@ -194,23 +197,10 @@ const SearchResults = () => {
     }
   };
 
-  const formatPrice = (property: Property): string => {
-    const isRent = property.listingType === 'rent' || searchType === 'rent';
-    const priceVal = property.price > 0
-      ? property.price
-      : isRent && property.monthlyRent
-      ? parseInt(property.monthlyRent)
-      : !isRent && property.sellingPrice
-      ? parseInt(property.sellingPrice)
-      : 0;
-
-    if (priceVal === 0) return 'Price on request';
-
-    return `₹${priceVal.toLocaleString('en-IN')}${isRent ? '/month' : ''}`;
-  };
+  const formatPrice = (property: Property) => propertyPriceText(property);
 
   const getNumericPrice = (property: Property) => {
-    const candidate = property.price > 0 ? property.price : Number(property.listingType === 'rent' ? property.monthlyRent : property.sellingPrice);
+    const candidate = propertyPricing(property).amount ?? 0;
     return Number.isFinite(candidate) ? candidate : 0;
   };
 
@@ -287,7 +277,7 @@ const SearchResults = () => {
             <div className={styles.propertyBody}>
               <div className={styles.propertyTop}><span>{property.propertyType || 'Property'}{property.configuration ? ` · ${property.configuration}` : ''}</span><span className={styles.price}>{formatPrice(property)}</span></div>
               <h3><Link to={`/property/${property.id}`}>{property.title || 'Explore property'}</Link></h3>
-              <p className={styles.address}><MapPin size={15} />{property.address || property.city || 'Location available on enquiry'}</p>
+              <p className={styles.address}><MapPin size={15} />{formatAddress(property.address) || formatAddress(property.city) || 'Location available on enquiry'}</p>
               <div className={styles.features}>
                 {property.bedrooms > 0 && <span><BedDouble size={15}/>{property.bedrooms} beds</span>}
                 {property.bathrooms > 0 && <span><Bath size={15}/>{property.bathrooms} baths</span>}

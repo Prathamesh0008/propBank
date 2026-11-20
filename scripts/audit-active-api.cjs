@@ -28,8 +28,9 @@ for(const [file,source]of parsed) {
  function expressions(n) {
   if(!n)throw new Error(`Missing API URL at ${relative(file)}`);
   if(literal(n)!==null)return [literal(n)];
+  if(ts.isParenthesizedExpression(n))return expressions(n.expression);
   if(ts.isIdentifier(n)&&['API_BASE_URL','baseUrl'].includes(n.text))return ['/api'];
-  if(ts.isIdentifier(n)&&['uid','propertyId','id'].includes(n.text))return [':param'];
+  if(ts.isIdentifier(n)&&['uid','propertyId','id','unread'].includes(n.text))return [':param'];
   if(ts.isCallExpression(n)&&n.expression.getText(source)==='encodeURIComponent')return [':param'];
   if(ts.isConditionalExpression(n))return [...expressions(n.whenTrue),...expressions(n.whenFalse)];
   if(ts.isBinaryExpression(n)&&n.operatorToken.kind===ts.SyntaxKind.PlusToken)return expressions(n.left).flatMap(left=>expressions(n.right).map(right=>left+right));
@@ -37,14 +38,16 @@ for(const [file,source]of parsed) {
    let values=[n.head.text];
    for(const span of n.templateSpans) {
     const value=span.expression.getText(source);
-    const choices=['API_BASE_URL','baseUrl'].includes(value)?['/api']:value==='endpoint'?[':agreementEndpoint']:value==='searchParams.toString()'?['q=:q&listingType=:listingType&projectCondition=:condition']:
+    const choices=['API_BASE_URL','baseUrl'].includes(value)?['/api']:(value==='path'&&relative(file).endsWith('AdminPropertyDetailsDialog.tsx')||value==='url'&&relative(file)==='hooks/useProperties.ts')?expressions(span.expression):value==='endpoint'?[':agreementEndpoint']:value==='searchParams.toString()'?['q=:q&listingType=:listingType&projectCondition=:condition']:
      ts.isConditionalExpression(span.expression)||ts.isTemplateExpression(span.expression)||literal(span.expression)!==null?expressions(span.expression):[':param'];
     values=values.flatMap(prefix=>choices.map(choice=>prefix+choice+span.literal.text));
    }
    return values;
   }
+  if(ts.isIdentifier(n)&&n.text==='path'&&relative(file).endsWith('AdminPropertyDetailsDialog.tsx'))return ['inspection-reports/property/:param','documents/property/:param'];
   if(ts.isIdentifier(n)&&n.text==='endpoint'&&relative(file).endsWith('AgreementWorkflow.tsx'))return ['agreements/renew','agreements/terminate','agreements/request-renewal','agreements/request-termination'];
   if(ts.isIdentifier(n)&&n.text==='url') {
+   if(relative(file)==='hooks/useProperties.ts')return ['properties?ownerUID=:uid','properties?admin=true'];
    if(relative(file)==='services/visitService.ts')return ['/api/visits?userId=:uid&status=:status'];
    if(relative(file).endsWith('TerminateAgreement.tsx'))return ['/api/:agreementEndpoint'];
   }
@@ -56,6 +59,7 @@ for(const [file,source]of parsed) {
    if(['apiFetch','fetch','workflowRequest'].includes(callee)||axios) {
     let methodNode;
     let methods=[axios?axios[1].toUpperCase():callee==='workflowRequest'?(n.arguments[2]?literal(n.arguments[2]):n.arguments[1]?'POST':'GET'):'GET'];
+    if(callee==='workflowRequest'&&n.arguments[2])methods=expressions(n.arguments[2]);
     if(!axios&&callee!=='workflowRequest'&&n.arguments[1]&&ts.isObjectLiteralExpression(n.arguments[1]))for(const p of n.arguments[1].properties)if(ts.isPropertyAssignment(p)&&p.name.getText(source)==='method'){methodNode=p.initializer;methods=expressions(p.initializer);}
     const urls=expressions(n.arguments[0]).flatMap(url=>url.includes(':agreementEndpoint')?['/api/agreements/'+(relative(file).endsWith('RenewAgreement.tsx')?'renew':'terminate'),'/api/agreements/'+(relative(file).endsWith('RenewAgreement.tsx')?'request-renewal':'request-termination')]:[callee==='workflowRequest'?'/api/'+url:url]);
     const urlNode=n.arguments[0];
@@ -74,7 +78,7 @@ for(const [file,source]of parsed) {
      // The route inventory compares pathnames below, so retain an explicit query
      // marker without treating it as an unresolved path parameter.
      endpoint=endpoint.replace(/\?:param$/,'?query=:filter');
-     if(endpoint.includes(':param'))throw new Error(`Unnormalized endpoint ${endpoint}`);
+     if(endpoint.includes(':param'))throw new Error(`Unnormalized endpoint ${endpoint} at ${relative(file)}: ${n.getText(source)}`);
      operations.push({method,endpoint,caller:relative(file)+':'+(source.getLineAndCharacterOfPosition(n.getStart()).line+1),reachable:reachable.has(file)});
     }
    }

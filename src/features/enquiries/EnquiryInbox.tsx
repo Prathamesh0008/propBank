@@ -1,7 +1,9 @@
 "use client";
+import {formatDisplayDateTime} from '@/lib/date-format';
+
 import styles from './EnquiryInbox.module.css';
 import {useState} from 'react';
-import {useQuery} from '@tanstack/react-query';
+import {useQuery,useInfiniteQuery} from '@tanstack/react-query';
 import {useAuth} from '@/contexts/AuthContext';
 import {workflowRequest} from '@/lib/client-workflows';
 import {enquiryStatuses, type ManagedEnquiry, type EnquiryStatus} from '@/lib/enquiry';
@@ -29,20 +31,23 @@ function EnquiryRow({enquiry,admin,agents,onSave}:{enquiry:ManagedEnquiry;admin:
   <div className="flex flex-wrap gap-2"><label>Enquiry status<select aria-label="Enquiry status" className="border rounded h-10 w-full" value={status} onChange={e=>setStatus(e.target.value as EnquiryStatus)} disabled={busy}>
     {Object.entries(enquiryStatuses).map(([value,label])=><option key={value} value={value}>{label}</option>)}
   </select></label><Button disabled={busy||(status===enquiry.status&&!notes.trim())} onClick={()=>save('status')}>Save progress</Button></div>
-  <p className="text-xs text-muted-foreground">Submitted {new Date(enquiry.timestamp).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})} IST · Enquiry {enquiry.id} · Property {enquiry.propertyId}</p>
-  <details className={styles.history}><summary>Assignment and status history</summary>{enquiry.history.length?<ul className="space-y-2 mt-2">{enquiry.history.map((event,index)=><li key={index} className="text-sm break-words">{event.action.replaceAll('_',' ')} / {event.actorUID} / {new Date(event.at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})} / {event.previousBrokerUID||'Unassigned'} to {event.brokerUID||'Unassigned'} / {enquiryStatuses[event.previousStatus]} to {enquiryStatuses[event.status]}{event.notes&&<p className="whitespace-pre-wrap">{event.notes}</p>}</li>)}</ul>:<p className="text-sm">No assignment or progress recorded.</p>}</details>
+  <p className="text-xs text-muted-foreground">Submitted {formatDisplayDateTime(enquiry.timestamp, {timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})} IST · Enquiry {enquiry.id} · Property {enquiry.propertyId}</p>
+  <details className={styles.history}><summary>Assignment and status history</summary>{enquiry.history.length?<ul className="space-y-2 mt-2">{enquiry.history.map((event,index)=><li key={index} className="text-sm break-words">{event.action.replaceAll('_',' ')} / {event.actorUID} / {formatDisplayDateTime(event.at, {timeZone:'Asia/Kolkata'})} / {event.previousBrokerUID||'Unassigned'} to {event.brokerUID||'Unassigned'} / {enquiryStatuses[event.previousStatus]} to {enquiryStatuses[event.status]}{event.notes&&<p className="whitespace-pre-wrap">{event.notes}</p>}</li>)}</ul>:<p className="text-sm">No assignment or progress recorded.</p>}</details>
  </CardContent></Card>;
 }
 export default function EnquiryInbox({admin=false,agents=[]}:{admin?:boolean;agents?:Agent[]}) {
  const {user,loading}=useAuth(),[error,setError]=useState('');
- const query=useQuery({queryKey:['enquiries',user?.uid],queryFn:()=>workflowRequest<{enquiries:ManagedEnquiry[]}>('enquiries'),enabled:!!user&&!loading,staleTime:60_000});
+ const query=useInfiniteQuery({queryKey:['enquiries',user?.uid,'paged-v1'],initialPageParam:'',queryFn:({pageParam})=>workflowRequest<{enquiries:ManagedEnquiry[];hasMore:boolean;nextCursor:string|null}>(`enquiries?cursor=${encodeURIComponent(pageParam)}`),getNextPageParam:page=>page.hasMore?page.nextCursor||undefined:undefined,enabled:!!user&&!loading,staleTime:60_000});
+ const enquiries=[...new Map((query.data?.pages.flatMap(page=>page.enquiries)||[]).map(row=>[row.id,row])).values()];
  async function save(enquiry:ManagedEnquiry,body:Record<string,unknown>){setError('');try{await workflowRequest(`enquiries/${enquiry.id}`,body,'PATCH');}catch(e){setError(e instanceof Error?e.message:'Could not update enquiry');}finally{await query.refetch();}}
  return <section className={styles.inbox} aria-label={admin?'Property enquiry inbox':'Assigned property enquiries'}>
   <h2 className={styles.heading}>{admin?'Property enquiry inbox':'Your assigned property enquiries'}</h2>
   <p className="text-sm">Notes and history are private to administrators and the currently assigned broker. Progress records do not schedule visits or finalize negotiations.</p>
   <Button variant="outline" onClick={()=>query.refetch()} disabled={query.isFetching}>Refresh enquiries</Button>
   {error&&<p role="alert" className="text-destructive">{error}</p>}
-  {query.isLoading?<p role="status">Loading enquiries...</p>:query.error?<p role="alert">Could not load enquiries. Refresh to retry.</p>:!query.data?.enquiries.length?<p>No enquiries in your permitted scope.</p>:query.data.enquiries.map(enquiry=><EnquiryRow key={`${enquiry.id}:${enquiry.version}`} enquiry={enquiry} admin={admin} agents={agents.filter(a=>a.role==='agent'&&a.isActive!==false)} onSave={body=>save(enquiry,body)}/>)}
+  {query.isLoading?<p role="status">Loading enquiries...</p>:query.error?<p role="alert">Could not load enquiries. Refresh to retry.</p>:!enquiries.length?<p>{query.hasNextPage?'No available enquiries on this page. Load more to continue.':'No enquiries in your permitted scope.'}</p>:enquiries.map(enquiry=><EnquiryRow key={`${enquiry.id}:${enquiry.version}`} enquiry={enquiry} admin={admin} agents={agents.filter(a=>a.role==='agent'&&a.isActive!==false)} onSave={body=>save(enquiry,body)}/>)}
+  {query.hasNextPage&&<Button variant="outline" disabled={query.isFetching} onClick={()=>void query.fetchNextPage()}>{query.isFetchingNextPage?'Loading...':'Load more enquiries'}</Button>}
+  <p className="text-xs text-muted-foreground">Showing loaded enquiries in record order. Load more to view further records.</p>
  </section>;
 }
 export function BrokerEnquiries(){
