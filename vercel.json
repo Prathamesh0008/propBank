@@ -1,0 +1,20 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/rent-agreements",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/rent-agreements?continuation=true",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/visits",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/notification-recovery",
+      "schedule": "*/2 * * * *"
+    }
+  ]
+}

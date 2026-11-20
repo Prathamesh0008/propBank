@@ -136,7 +136,7 @@ test('service catalog supplies client categories without creating service record
  assert.equal((await route(app,'service-requests').POST(request('/service-requests','tenant','POST',{userUID:'tenant',propertyId:'P',serviceId:'plumbing',message:'Pipe leaking'}))).status,201);
 });
 
-test('authorized cron endpoint runs existing visits and additive property reminders without live delivery',async()=>{
+test('authorized canonical reminder alias runs independently without live delivery',async()=>{
  const app=isolated({users});app.env.CRON_SECRET='x'.repeat(40);app.env.FROM_EMAIL='staging@test.invalid';const r=route(app,'cron/reminders');const response=await r.GET(request('/cron/reminders','x'.repeat(40)));
  assert.equal(response.status,200);const body=await response.json();assert.equal(body.success,true);assert.equal(body.properties.scanned,0);assert.equal(app.emails.length,0);
 });

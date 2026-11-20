@@ -27,11 +27,13 @@ export function dueReminder(visit:Record<string,unknown>,now:number) {
     && typeof minutes==='number'&&minutes>=0&&minutes<=10080
     && Number.isFinite(at)&&at>=now&&at-minutes*60000<=now;
 }
-export async function runVisitReminders(now=new Date()) {
+export async function runVisitReminders(now=new Date(),cursorToken='') {
   if(!process.env.RESEND_API_KEY||!process.env.FROM_EMAIL||!process.env.ADMIN_EMAIL)throw new ApiError(503,'Reminder email delivery is not configured');
   const db=getDatabase();
-  const snapshot=await db.collection(COLLECTIONS.visits).where('visitDate','>=',now).where('visitDate','<=',new Date(now.getTime()+7*86400000)).orderBy('visitDate','asc').limit(1000).get();
-  const results={scanned:snapshot.docs.length,sent:0,failed:0,skipped:0,needsReconciliation:0,limited:snapshot.docs.length>=1000};
+  let query=db.collection(COLLECTIONS.visits).where('visitDate','>=',now).where('visitDate','<=',new Date(now.getTime()+7*86400000)).orderBy('visitDate','asc').limit(50);
+  const visitCursor=decodeCursor(cursorToken);if(visitCursor.after){const anchor=await db.collection(COLLECTIONS.visits).doc(visitCursor.after).get();if(anchor.exists)query=query.startAfter(anchor);}
+  const snapshot=await query.get();
+  const results={scanned:snapshot.docs.length,sent:0,failed:0,skipped:0,needsReconciliation:0,limited:snapshot.docs.length>=50,nextCursor:null as string|null};
   // At most twenty deliveries per invocation; overlapping runs share leases.
   const eligible=snapshot.docs.filter(doc=>{
     const visit=doc.data();if(!dueReminder(visit,now.getTime()))return false;
@@ -47,6 +49,7 @@ export async function runVisitReminders(now=new Date()) {
   await Promise.all(Array.from({length:4},async()=>{
     while(cursor<candidates.length) {
       const doc=candidates[cursor++];
+      try{
       const ref=db.collection(COLLECTIONS.visits).doc(doc.id);
       const lease=randomUUID();
       const claim=await db.runTransaction(async tx=>{
@@ -85,15 +88,14 @@ export async function runVisitReminders(now=new Date()) {
         tx.update(ref,{reminderDelivery:{...data.reminderDelivery,status:sent?'sent':'failed',leaseUntil:now},...(sent?{notifiedAt:now}:{})});
       });
       if(sent)results.sent++;else results.failed++;
+      }catch{results.failed++;}
     }
   }));
+  const last=eligible.length>20?candidates.at(-1):snapshot.docs.at(-1);if(results.limited&&last)results.nextCursor=encodeCursor({after:last.id,property:'',event:0});
   return results;
 }
 export async function remindersEndpoint(request:Request) {
-  requireCron(request);
-  const result=await runVisitReminders();
-  const properties=await runPropertyReminders(new Date(),new URL(request.url).searchParams.get('propertyCursor')||'');
-  return jsonResponse({success:result.failed===0&&properties.failed===0,...result,properties},result.failed||properties.failed?503:200);
+  return (await import('./canonical-reminders')).canonicalRemindersEndpoint(request);
 }
 
 type ReminderCandidate={kind:'rent_due'|'agreement_expiry';recipientUID:string;recipientRole:'owner'|'tenant';tenancyId:string;period:string;amount:string;dueDate:string;offset:number;agreementVersion:string};

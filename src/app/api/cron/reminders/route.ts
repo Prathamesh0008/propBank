@@ -1,5 +1,5 @@
 import { handle, OPTIONS, unsupported } from '@/lib/server/http';
-import { remindersEndpoint } from '@/lib/server/services/reminders';
+import { canonicalRemindersEndpoint as remindersEndpoint } from '@/lib/server/services/canonical-reminders';
 export const runtime='nodejs';
 export const maxDuration=300;
 export { OPTIONS };

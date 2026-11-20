@@ -15,7 +15,7 @@ import {rentForBillingPeriod} from '@/lib/rent-resolution';
 import {normalizeEmailAddress} from '@/lib/email-address';
 import {currentConnectionState} from '@/lib/relationship-link-state';
 
-export type TransactionalEmailEvent={propertyActivity?:boolean;
+export type TransactionalEmailEvent={propertyActivity?:boolean;canonicalReminder?:boolean;
   eventType:string;eventId:string;recipientUID?:string;recipientRole:string;recipientEmail?:string;
   propertyId?:string;recordId?:string;templateId:string;templateVersion:number;
   subject:string;html:string;text:string;idempotencyKey?:string;
@@ -72,7 +72,8 @@ async function deliver(id:string) {
   if(!value)return 'skipped';
   const finish=async(update:RecordData)=>getDatabase().runTransaction(async tx=>{const fresh=await tx.get(ref);if(fresh.data()?.deliveryLease===lease)tx.update(ref,update);});
   try{
-    if(!await invitationIsCurrent(value)||!await reminderIsCurrent(value)||!await propertyActivityIsCurrent(value)){await finish({status:'cancelled',errorSummary:value.propertyActivity?'Property relationship or recipient is no longer eligible':'Invitation is no longer eligible',updatedAt:now,deliveryLease:'',deliveryLeaseUntil:now});return 'skipped';}
+    if(value.canonicalReminder){const fresh=await (await import('./canonical-reminders')).refreshCanonicalReminder(value);if(!fresh){await finish({status:'cancelled',errorSummary:'Reminder is no longer applicable',updatedAt:now,deliveryLease:'',deliveryLeaseUntil:now});return 'skipped';}if(value.firstAttemptAt&&['subject','html','text','recipientEmail'].some(key=>value![key]!==fresh[key]))throw new Error('Delivery reconciliation required');value={...value,...fresh};await finish({subject:fresh.subject,html:fresh.html,text:fresh.text,recipientEmail:fresh.recipientEmail});}
+    if(!await invitationIsCurrent(value)||(!value.canonicalReminder&&!await reminderIsCurrent(value))||!await propertyActivityIsCurrent(value)){await finish({status:'cancelled',errorSummary:value.propertyActivity?'Property relationship or recipient is no longer eligible':'Invitation is no longer eligible',updatedAt:now,deliveryLease:'',deliveryLeaseUntil:now});return 'skipped';}
     if(value.firstAttemptAt&&now.getTime()-new Date(wireValue(value.firstAttemptAt) as string).getTime()>=23*60*60*1000)throw new Error('Delivery reconciliation required');
     if(!value.firstAttemptAt)await finish({firstAttemptAt:now});
     const recipient=s(value.recipientEmail)||(value.recipientRole==='admin'?process.env.ADMIN_EMAIL||'':'');
@@ -82,7 +83,7 @@ async function deliver(id:string) {
   }catch(error){
     console.error(`Transactional email delivery failed ${JSON.stringify({deliveryId:id,eventType:value.eventType,...(error instanceof EmailProviderError?{providerStatus:error.status,providerErrorCode:error.providerCode}:{}),configurationFailure:error instanceof EmailConfigurationError})}`);
     const exhausted=Number(value.retryCount||0)+1>=5,permanent=error instanceof EmailProviderError&&error.providerCode!=='sender_domain_not_verified'&&[400,404,422].includes(error.status),reconciliation=error instanceof Error&&error.message==='Delivery reconciliation required';
-    await finish({status:exhausted?'exhausted':permanent?'permanent_failure':reconciliation?'reconciliation_required':'failed',recoveryAt:new Date(now.getTime()+Math.min(60,5*2**Number(value.retryCount||0))*60000),lastAttemptAt:now,updatedAt:now,retryCount:Number(value.retryCount||0)+1,errorSummary:error instanceof EmailConfigurationError?error.message:error instanceof EmailProviderError&&error.providerCode==='sender_domain_not_verified'?'Sender domain is not verified in Resend; correct its DNS records':error instanceof Error&&error.message==='Delivery reconciliation required'?'Delivery reconciliation required before retry':safeError(),failureCategory:error instanceof EmailConfigurationError?'configuration':'provider_or_transport',...(error instanceof EmailProviderError?{providerStatus:error.status,providerErrorCode:error.providerCode}:{}),nextRetryAt:new Date(now.getTime()+5*60*1000),deliveryLease:'',deliveryLeaseUntil:now});return 'failed';
+    await finish({status:exhausted?'exhausted':permanent?'permanent_failure':reconciliation?'reconciliation_required':'failed',recoveryAt:new Date(now.getTime()+Math.min(60,5*2**Number(value.retryCount||0))*60000),lastAttemptAt:now,updatedAt:now,retryCount:Number(value.retryCount||0)+1,errorSummary:error instanceof EmailConfigurationError?error.message:error instanceof EmailProviderError&&error.providerCode==='sender_domain_not_verified'?'Sender domain is not verified in Resend; correct its DNS records':error instanceof Error&&error.message==='Delivery reconciliation required'?'Delivery reconciliation required before retry':safeError(),failureCategory:error instanceof EmailConfigurationError?'configuration':'provider_or_transport',...(value.canonicalReminder&&error instanceof EmailConfigurationError?{firstAttemptAt:null}:{}),...(error instanceof EmailProviderError?{providerStatus:error.status,providerErrorCode:error.providerCode}:{}),nextRetryAt:new Date(now.getTime()+5*60*1000),deliveryLease:'',deliveryLeaseUntil:now});return 'failed';
   }
 }
 
@@ -192,6 +193,7 @@ async function propertyActivityIsCurrent(value:RecordData){
   return true;
 }
 async function reminderIsCurrent(value:RecordData){
+  if(value.canonicalReminder)return !!await (await import('./canonical-reminders')).refreshCanonicalReminder(value);
   if(!['rent.reminder','agreement.expiry_reminder'].includes(s(value.eventType)))return true;
   const snapshot=await getDatabase().collection(COLLECTIONS.properties).doc(s(value.propertyId)).get();if(!snapshot.exists)return false;
   const property=snapshot.data()!;if(property.isActive!==true||property.status==='inactive'||property.rentalStatus!=='rented'||['terminated','expired','cancelled'].includes(s(property.agreementStatus)))return false;
