@@ -1,6 +1,6 @@
 "use client";
 
-import {formatAddress} from "@/lib/address-format";
+import {formatPropertyAddress} from "@/lib/property-address";
 
 import { apiFetch } from '@/lib/api-client';
 
@@ -207,7 +207,7 @@ const ArchivedProperties = () => {
                             {property.unitNumber ? ` (${property.unitNumber})` : ""}
                           </h2>
                           <p className={styles.address}>
-                            {formatAddress(property.address, property.city, property.state)}
+                            {formatPropertyAddress(property)}
                           </p>
                         </div>
                         <DropdownMenu>

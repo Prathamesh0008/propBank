@@ -1,3 +1,5 @@
+import {assertPersonalAddressKeys} from '@/lib/personal-address';
+import {resolvePropertyAddress} from '@/lib/property-address';
 import {stagePropertyActivity} from './property-activity';
 import {sameRentSchedule,rentContract} from '@/lib/rent-resolution';
 import {documentPage,pageOptions,memberPropertyPage} from '../query-pages';
@@ -147,6 +149,8 @@ export async function readProperty(request:Request,id:string) {
   if(!available(property,property))return propertyError('Property not found',404);
   return jsonResponse({success:true,property:publicPropertyResponse(property)});
 }
+const addressFields=['structuredAddress','addressVersion','city','state','zipCode'];
+const addressInputFields=['structuredAddress','location','address','unitNumber','buildingName','city','state','zipCode'];
 const additiveFields=[...purposeFields,'propertyCategory','buildingName','plotArea','areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit','expectedRent','structure'];
 function validateProperty(input:RecordData,previous?:RecordData) {
   validatePropertyRentSchedule(input,previous);
@@ -190,6 +194,8 @@ async function createPropertyRecord(request:Request) {
   try {
     if (body!==null&&!isRecord(body)) throw new Error('invalid request object');
     const raw=normalizePurpose((body||{}) as RecordData);
+    if('addressVersion' in raw || 'expectedAddressVersion' in raw)throw new Error('Address version is server controlled on creation');
+    if('structuredAddress' in raw)Object.assign(raw,resolvePropertyAddress(raw.structuredAddress),{addressVersion:1});
     if(Array.isArray(raw.tenants)&&raw.tenants.some(t=>isRecord(t)&&Object.keys(t).some(key=>['agreementinventory','inventoryhistory'].includes(key.toLowerCase()))))throw new Error('Inventory snapshots are server controlled');
     if(raw.listingType==='pre_leased'&&raw.createdAs==='tenant')throw new Error('Pre-leased sales must be submitted by an owner or authorized agent');
     if(raw.listingType==='manage' && (user.role==='agent'||raw.createdAs==='tenant'))throw new Error('Only owners and administrators may register management properties');
@@ -215,7 +221,7 @@ async function createPropertyRecord(request:Request) {
     const canonical=(value:unknown):unknown=>Array.isArray(value)?value.map(canonical):isRecord(value)?Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])])):value;
     submissionFingerprint=createHash('sha256').update(JSON.stringify([user.uid,canonical(raw)])).digest('hex');
     if(raw.createdAs!==undefined&&!['owner','tenant'].includes(s(raw.createdAs)))throw new Error('Invalid property relationship');
-    req={...model('CreatePropertyRequest',raw,true),...Object.fromEntries(additiveFields.filter(key=>key in raw).map(key=>[key,raw[key]])),...(raw.nextAgreementDraft!==undefined?{nextAgreementDraft:raw.nextAgreementDraft}:{}),...(typeof raw.agentOwnerEmail==='string'?{agentOwnerEmail:raw.agentOwnerEmail.trim().toLowerCase()}:{})};
+    req={...model('CreatePropertyRequest',raw,true),...Object.fromEntries([...additiveFields,...addressFields].filter(key=>key in raw).map(key=>[key,raw[key]])),...(raw.nextAgreementDraft!==undefined?{nextAgreementDraft:raw.nextAgreementDraft}:{}),...(typeof raw.agentOwnerEmail==='string'?{agentOwnerEmail:raw.agentOwnerEmail.trim().toLowerCase()}:{})};
     if(!s(req.buildingName).trim()&&s(req.propertyTitle).trim())req.buildingName=req.propertyTitle;
     if(raw.createdAs==='tenant') {
       const details=raw.reportedOwner;
@@ -258,7 +264,7 @@ async function createPropertyRecord(request:Request) {
   }
   const id=await generateID();
   const property=model('Property',{});
-  for(const key of additiveFields)if(key in req)property[key]=req[key];
+  for(const key of [...additiveFields,...addressFields])if(key in req)property[key]=req[key];
   if(req.nextAgreementDraft)property.nextAgreementDraft=req.nextAgreementDraft;
   for(const [to,from] of projections.request) property[to]=req[from];
   property.rentSchedule=req.rentSchedule;
@@ -284,7 +290,7 @@ async function createPropertyRecord(request:Request) {
   if(!tenantCreated&&user.role==='agent')Object.assign(property,{submittedByUID:user.uid,submittingAgentUID:user.uid,submittingAgentName:s((await getUser(user.uid))?.name)});
   Object.assign(property,{moderationStatus:'pending_review',moderationRevision:1,moderationSubmittedAt:now,moderationHistory:[{action:'submitted',actorUID:user.uid,at:now,revision:1}]});
   // Atomic create avoids overwriting a property on a race or infrastructure failure.
-  const data={...storeModel('Property',property),...Object.fromEntries(additiveFields.filter(key=>key in property).map(key=>[key,property[key]]))};
+  const data={...storeModel('Property',property),...Object.fromEntries([...additiveFields,...addressFields].filter(key=>key in property).map(key=>[key,property[key]]))};
   if(property.nextAgreementDraft)data.nextAgreementDraft=property.nextAgreementDraft;
   if(tenantCreated)for(const key of ['createdAs','submittedByUID','ownershipVerification','reportedOwner'])data[key]=property[key];
   for(const key of ['createdByUID','adminCreatedForUID','relationshipHistory','submittedByUID','submittingAgentUID','submittingAgentName'])if(key in property)data[key]=property[key];
@@ -309,9 +315,28 @@ export async function updateProperty(request:Request,id:string) {
   if(!Number.isInteger(expectedRentVersion))return propertyError('Invalid rental terms version',400);
   if(user.role!=='admin'&&user.uid!==existing.ownerUID&&isRecord(req.preLeased)&&'existingTenant' in req.preLeased)return propertyError('Only the owner or an administrator may edit existing tenant details',403);
   if(user.role==='agent'&&existing.submittedByUID===user.uid) {
-    const agentAllowed=new Set([...listingContentFields,'ownerUID','moderationAction','reason','expectedRevision']);
+    const agentAllowed=new Set([...listingContentFields,'expectedAddressVersion','ownerUID','moderationAction','reason','expectedRevision']);
     if(Object.keys(req).some(key=>!agentAllowed.has(key)))return propertyError('Agents may edit listing content only',403);
   }
+  if('addressVersion' in req)return propertyError('Address version is server controlled',400);
+  const expectedAddressVersion=req.expectedAddressVersion;
+  delete req.expectedAddressVersion;
+  if(('structuredAddress' in req || expectedAddressVersion!==undefined) && (!Number.isSafeInteger(expectedAddressVersion)||Number(expectedAddressVersion)<0))return propertyError('Address: supply the current expectedAddressVersion',400);
+  try {
+    if('structuredAddress' in req)Object.assign(req,resolvePropertyAddress(req.structuredAddress,existing));
+    else if(existing.structuredAddress && addressInputFields.some(key=>key in req&&JSON.stringify(req[key])!==JSON.stringify(existing[key])))return propertyError('Edit the structured address together; legacy aliases cannot replace it',400);
+  }catch(error){return propertyError(error instanceof Error?error.message:'Invalid address',400);}
+  if(!req.structuredAddress && !existing.structuredAddress) {
+    for(const key of ['unitNumber','buildingName','city','state','zipCode'])if((req[key]===null||typeof req[key]==='string'&&!s(req[key]).trim())&&s(existing[key]).trim())delete req[key];
+    if('location' in req || 'address' in req) {
+      const value='location' in req?req.location:req.address;
+      if(typeof value!=='string'||!value.trim())return propertyError('Address: enter a nonempty address',400);
+      if('location' in req&&'address' in req&&req.location!==req.address)return propertyError('Address and location must agree',400);
+      req.address=value;req.location=value;
+    }
+  }
+  const addressChanged=addressInputFields.some(key=>key in req&&JSON.stringify(req[key])!==JSON.stringify(existing[key]));
+  const addressExpected=(addressChanged || 'structuredAddress' in req) ? Number(expectedAddressVersion ?? existing.addressVersion ?? 0) : undefined;
   if('tenantEmail' in req&&req.tenantEmail!==existing.tenantEmail&&!(Array.isArray(existing.tenants)&&existing.tenants.length))return propertyError('Use the tenant invitation workflow to change tenancy contacts',400);
   if('moderationAction' in req)return moderateListing(req,id,user);
   if(Object.keys(req).some(key=>key.startsWith('moderation')))return propertyError('Moderation fields are server controlled',400);
@@ -327,7 +352,7 @@ export async function updateProperty(request:Request,id:string) {
     else delete req.furnishedChecklist;
   }else if('furnishedChecklist' in req)req.furnishedChecklist=activeFurnishedItems(req.furnishedChecklist,nextUnitCondition,nextStructure);
   try {req=normalizePurpose(req,existing);validateProperty(req,existing);delete req.rentScheduleVersion;model('Property',{...existing,...req},true);}catch(error){return propertyError(error instanceof Error?error.message:'Invalid property fields',400);}
-  const allowed=new Set([...schemas.Property.map(field=>field.name),...additiveFields,'nextAgreementDraft','isRented']);
+  const allowed=new Set([...schemas.Property.map(field=>field.name),...additiveFields,...addressFields,'nextAgreementDraft','isRented']);
   for(const key of Object.keys(req))if(!allowed.has(key))return propertyError(`Unsupported property field: ${key}`,400);
   let images=existing.images;
   if(Array.isArray(req.images)) {
@@ -345,7 +370,9 @@ export async function updateProperty(request:Request,id:string) {
       const valid=value.filter(t=>isRecord(t)&&['email','firstName','lastName','phone'].some(k=>s(t[k]).trim()));
       const established=Array.isArray(existing.tenants)?existing.tenants.filter(isRecord):[];
       for(const tenant of valid as RecordData[]) {
+        try{assertPersonalAddressKeys(tenant);}catch{return propertyError('Use the tenant workflow to edit personal addresses',400);}
         const prior=established.find(t=>t.id===tenant.id);
+        if(['previousAddress','previousAddressStructured','previousAddressVersion'].some(key=>key in tenant&&JSON.stringify(tenant[key]??'')!==JSON.stringify(prior?.[key]??'')))return propertyError('Use the tenant workflow to edit personal addresses',400);
         try{validatePropertyRentSchedule({...tenant,...('leaseStartDate'in tenant?{agreementStartDate:tenant.leaseStartDate}:{}),...('leaseEndDate'in tenant?{agreementEndDate:tenant.leaseEndDate}:{})},prior?{...prior,agreementStartDate:prior.leaseStartDate,agreementEndDate:prior.leaseEndDate}:undefined);}catch(error){return propertyError(error instanceof Error?error.message:'Invalid tenant rent schedule',400);}
         const protectedNames=['ownerUID','propertyId','userUID','id','createdAt','linkConfirmationRequired','phoneE164','linkedAt','linkedByUID'];
         if(Object.keys(tenant).some(key=>protectedNames.some(field=>field.toLowerCase()===key.toLowerCase()&&field!==key)))return propertyError('Relationship field aliases cannot be changed',403);
@@ -374,13 +401,13 @@ export async function updateProperty(request:Request,id:string) {
   else if(req.status==='active'||req.isActive===true)Object.assign(updates,{status:'active',isActive:true});
   // Keep the legacy address display alias synchronized with the form location.
   if ('location' in updates && !('address' in updates)) updates.address=updates.location;
-  await writeProperty(id,updates,user,false,undefined,Number(expectedRentVersion));
+  await writeProperty(id,updates,user,false,undefined,Number(expectedRentVersion),addressExpected);
   const updated=await getProperty(id);
   if(!updated) throw new Error('Property disappeared after update');
   await propertyUpdatedEffects(existing,updated,updates);
   return jsonResponse({success:true,message:'Property updated successfully',property:propertyResponse(updated,'normal',user.role==='admin'?'admin':'owner')});
 }
-async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnType<typeof requireUser>>,create=false,submission?:{ref:FirebaseFirestore.DocumentReference;events:TransactionalEmailEvent[]}, expectedRentVersion?:number) {
+async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnType<typeof requireUser>>,create=false,submission?:{ref:FirebaseFirestore.DocumentReference;events:TransactionalEmailEvent[]}, expectedRentVersion?:number, expectedAddressVersion?:number) {
   const db=getDatabase(),ref=properties().doc(id);
   if(Array.isArray(updates.tenants))for(const tenant of updates.tenants as RecordData[]) {tenant.id ||= randomUUID();tenant.createdAt ||= new Date();tenant.updatedAt=new Date();}
   const candidates:RecordData[]=[];
@@ -400,6 +427,10 @@ async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnTyp
     const before=await tx.get(ref);
     if(create&&before.exists)throw new Error('Property ID conflict');
     if(!create) {if(!before.exists)throw new Error('Property not found');requirePropertyEditor(user,before.data()||{});}
+    if(!create && expectedAddressVersion !== undefined) {
+      if(Number(before.data()?.addressVersion||0)!==expectedAddressVersion)throw new ApiError(409,'Address changed; refresh the property before editing');
+      if(addressInputFields.some(key=>key in updates&&JSON.stringify(updates[key])!==JSON.stringify(before.data()?.[key])))updates.addressVersion=expectedAddressVersion+1;
+    }
     if(!create) {
       reconcileRentTerms(before.data()!,updates,before.data()!,expectedRentVersion??Number(before.data()?.rentTermsVersion||0));
       applyListingEdit(before.data()||{},updates,user.uid);
@@ -485,7 +516,7 @@ async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnTyp
 const moderationFields=['moderationStatus','moderationRevision','moderationSubmittedAt','moderationReviewedAt','moderationReviewerUID','moderationReason','moderationHistory'];
 // Operational tenancy and archive changes retain approval. Changes to published
 // listing content require another review, including edits to legacy listings.
-const listingContentFields=[...purposeFields,'title','description','address','location','city','state','zipCode','propertyType','propertyCategory','listingType','configuration','unitNumber','floor','carpetArea','constructedArea','plotArea','areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit','squareFeet','buildingName','structure','bedrooms','bathrooms','monthlyRent','sellingPrice','price','images','amenities','projectCondition','isPreLeased','preLeasedType','rentalIncome','purpose','specificRequirement'];
+const listingContentFields=[...purposeFields,'structuredAddress','title','description','address','location','city','state','zipCode','propertyType','propertyCategory','listingType','configuration','unitNumber','floor','carpetArea','constructedArea','plotArea','areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit','squareFeet','buildingName','structure','bedrooms','bathrooms','monthlyRent','sellingPrice','price','images','amenities','projectCondition','isPreLeased','preLeasedType','rentalIncome','purpose','specificRequirement'];
 function applyListingEdit(before:RecordData,updates:RecordData,uid:string) {
   if(before.createdAs==='tenant'||!['rent','sell','sell_rent','pre_leased'].includes(s(updates.listingType??before.listingType)))return;
   const changed=listingContentFields.some(key=>key in updates&&JSON.stringify(updates[key])!==JSON.stringify(before[key]));

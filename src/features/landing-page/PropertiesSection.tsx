@@ -1,16 +1,14 @@
 "use client";
 
-import {formatAddress} from "@/lib/address-format";
-
-import PropertyPurposeSummary from "@/features/properties/PropertyPurposeSummary";
-import {purposeLabel} from "@/lib/property-purpose";
-
-import React from "react";
+import React, { useState } from "react";
 import { Link } from "@/lib/navigation";
-import { Loader2, Home, MapPin, ArrowUpRight } from "lucide-react";
+import { Loader2, Home, MapPin, ArrowUpRight, BedDouble, Maximize, ImageOff } from "lucide-react";
 import { Button } from "@/ui/button";
 import PropertyDetailsDialog from "@/features/properties/PropertyDetailsDialog";
-import { Property } from "@/services/propertyService";
+import {formatPropertyAddress} from "@/lib/property-address";
+import { propertyPricing, propertyAreaText } from "@/lib/property-presentation";
+import { purposeLabel } from "@/lib/property-purpose";
+import type { Property } from "@/services/propertyService";
 import styles from "./PropertiesSection.module.css";
 
 interface PropertiesSectionProps {
@@ -31,64 +29,73 @@ interface PropertiesSectionProps {
   observerTargetRef: React.RefObject<HTMLDivElement>;
 }
 
-const getPlaceholderImage = (propertyType?: string): string => {
-  const type = propertyType?.toLowerCase() || "";
-  if (type.includes("commercial")) return "/images/portfolio/commercial.jpg";
-  if (type.includes("industrial")) return "/images/portfolio/industrial.jpg";
-  return "/images/portfolio/residential.jpg";
-};
+const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+function PropertyCard({ property, sendingEnquiry, handleEnquireProperty }: {
+  property: Property;
+  sendingEnquiry: string | null;
+  handleEnquireProperty: (property: Property) => Promise<void>;
+}) {
+  const [failedImage, setFailedImage] = useState("");
+  const image = Array.isArray(property.images) ? property.images.find(src => typeof src === "string" && src.trim()) : undefined;
+  const title = property.title?.trim() || property.buildingName?.trim() || "Property details";
+  const location = formatPropertyAddress(property);
+  const pricing = propertyPricing(property);
+  const bedroomText = property.configuration?.trim() || (property.bedrooms > 0 ? `${property.bedrooms} ${property.bedrooms === 1 ? "bedroom" : "bedrooms"}` : "");
+  const area = Number.isFinite(Number(property.squareFeet)) && Number(property.squareFeet) > 0
+    ? `${Number(property.squareFeet).toLocaleString("en-IN")} sq ft`
+    : ["carpetArea", "constructedArea", "plotArea"].map(key => propertyAreaText(property, key as "carpetArea" | "constructedArea" | "plotArea")).find(value => value !== "Not recorded");
+  return (
+    <article className={styles.listing}>
+      <Link to={`/property/${encodeURIComponent(property.id)}`} prefetch={false} className={styles.cardLink} aria-label={`View ${title} details`}>
+        <div className={styles.photo}>
+          {image && image !== failedImage ? <img src={image} alt={title} loading="lazy" decoding="async" onError={() => setFailedImage(image)} />
+            : <div className={styles.noPhoto}><ImageOff size={26} strokeWidth={1.3} aria-hidden="true" /><span>Photograph not available</span></div>}
+          {property.listingType && <span className={styles.listingTag}>{purposeLabel(property.listingType)}</span>}
+        </div>
+        <div className={styles.listingBody}>
+          <h3 title={title}>{title}</h3>
+          {location && <p className={styles.location} title={location}><MapPin size={14} aria-hidden="true" /><span>{location}</span></p>}
+          <div className={styles.price}>{pricing.amount !== null ? <>{currency.format(pricing.amount)}{pricing.monthly && <span> / month</span>}</> : "Price on request"}</div>
+          <p className={styles.priceLabel}>{pricing.label}</p>
+          {(bedroomText || area) && <div className={styles.features}>
+            {bedroomText && <span><BedDouble size={15} strokeWidth={1.5} aria-hidden="true" />{bedroomText}</span>}
+            {area && <span><Maximize size={15} strokeWidth={1.5} aria-hidden="true" />{area}</span>}
+          </div>}
+        </div>
+      </Link>
+      <div className={styles.actions}>
+        <PropertyDetailsDialog property={property} />
+        <Button size="sm" disabled={sendingEnquiry === property.id} onClick={() => void handleEnquireProperty(property)}>{sendingEnquiry === property.id ? "Sending..." : "Enquire"}</Button>
+      </div>
+    </article>
+  );
+}
 
 export const PropertiesSection: React.FC<PropertiesSectionProps> = ({
-  properties,
-  loading,
-  loadingMore,
-  hasMore,
-  loadMoreProperties,
-  isSearching,
-  selectedCategories,
-  searchQuery,
-  searchType,
-  selectedProjectCondition,
-  budgetRange,
-  filteredCount,
-  sendingEnquiry,
-  handleEnquireProperty,
-  observerTargetRef,
+  properties, loading, loadingMore, hasMore, loadMoreProperties, isSearching,
+  selectedCategories, searchQuery, searchType, selectedProjectCondition,
+  budgetRange, filteredCount, sendingEnquiry, handleEnquireProperty, observerTargetRef,
 }) => {
   const filtered = isSearching || selectedCategories.length > 0 || Boolean(searchQuery.trim()) || searchType !== "all" || Boolean(selectedProjectCondition) || budgetRange.min > 0 || budgetRange.max > 0;
   return (
     <section id="featured-properties" aria-labelledby="featured-properties-heading" className={styles.section}>
       <div className={styles.shell}>
         <div className={styles.heading}>
-          <div><h2 id="featured-properties-heading">{filtered ? "Your search, refined." : "Discover what's available."}</h2></div>
-          <div className={styles.headingSide}><p>{filtered ? `${filteredCount} matching properties${searchQuery ? ` for “${searchQuery}”` : ""}` : "Explore current listings and find the space that meets your plans."}</p><Link to="/search" className={styles.viewAll}>Explore all listings <ArrowUpRight size={16} aria-hidden="true" /></Link></div>
+          <div><p className={styles.kicker}>EXPLORE PROPERTIES</p><h2 id="featured-properties-heading">Featured Properties</h2>
+            {filtered && <p className={styles.searchSummary}>{filteredCount} matching {filteredCount === 1 ? "property" : "properties"} in loaded records{searchQuery.trim() ? ` for "${searchQuery.trim()}"` : ""}</p>}
+          </div>
+          <Link to="/properties" className={styles.viewAll}>View All Properties <ArrowUpRight size={17} aria-hidden="true" /></Link>
         </div>
-        {loading ? <div className={styles.state} role="status"><Loader2 className={styles.spin} aria-hidden="true"/><p>Finding available properties…</p></div> : properties.length === 0 ?
-          <div className={styles.state}><Home size={28} aria-hidden="true"/><h3>No properties to show just yet.</h3><p>Try another search or return to the full listings.</p><Link className={styles.viewAll} to="/search">Browse all properties ↗</Link></div>
+        {loading ? <div className={styles.state} role="status"><Loader2 className={styles.spin} aria-hidden="true" /><p>Finding available properties...</p></div>
+          : properties.length === 0 ? <div className={styles.state}><Home size={28} strokeWidth={1.3} aria-hidden="true" /><h3>{filtered ? "No matches in the loaded properties" : "New properties will appear here"}</h3><p>{filtered ? "Try another location or adjust your filters." : "Explore the directory for available listings."}</p><Link className={styles.viewAll} to="/properties">View All Properties <ArrowUpRight size={16} aria-hidden="true" /></Link></div>
           : <>
             <div className={styles.grid}>
-              {properties.map(property => {
-                const price = Number(property.price) > 0 ? Number(property.price) : Number(property.listingType === "rent" ? property.monthlyRent : property.sellingPrice) || 0;
-                const fallback = getPlaceholderImage(property.propertyType);
-                return <article key={property.id} className={styles.listing}>
-                  <div className={styles.photo}>
-                    <img src={property.images?.[0] || fallback} alt={property.title || "Available property"} loading="lazy" onError={(event) => { const image = event.currentTarget; if(image.getAttribute("src") !== fallback) image.src = fallback; else image.style.opacity = "0"; }}/>
-                    <span className={styles.listingTag}>{purposeLabel(property.listingType||"")}</span>
-                  </div>
-                  <div className={styles.listingBody}>
-                    <div className={styles.listingMeta}><span>{property.propertyType || "Property"}</span>{property.configuration && <span>{property.configuration}</span>}</div>
-                    <h3>{property.title || "Available property"}</h3>
-                    {(property.address || property.city) && <p className={styles.location}><MapPin size={15} aria-hidden="true"/>{formatAddress(property.address) || formatAddress(property.city)}</p>}
-                    <div className={styles.listingBottom}>
-                      <PropertyPurposeSummary property={property}/><div className={styles.price}>{price > 0 ? `₹${price.toLocaleString("en-IN")}` : "Price on request"}{price > 0 && property.listingType === "rent" && <span> / month</span>}</div>
-                      <div className={styles.actions}><PropertyDetailsDialog property={property} /><Button size="sm" disabled={sendingEnquiry === property.id} onClick={()=>handleEnquireProperty(property)}>{sendingEnquiry === property.id ? "Sending…" : "Enquire"}</Button></div>
-                    </div>
-                  </div>
-                </article>;
-              })}
+              {properties.map(property => <PropertyCard key={property.id} property={property} sendingEnquiry={sendingEnquiry} handleEnquireProperty={handleEnquireProperty} />)}
             </div>
-            <div ref={observerTargetRef} className={styles.pagination} aria-live="polite">
-              {loadingMore ? <span><Loader2 size={18} className={styles.spin} aria-hidden="true"/> Loading more properties…</span> : hasMore ? <button onClick={loadMoreProperties} type="button">Load more properties <span aria-hidden="true">↓</span></button> : <span>You've reached the end of the available listings.</span>}
+            <div ref={observerTargetRef} className={loadingMore || hasMore ? styles.pagination : styles.endMarker} aria-live="polite">
+              {loadingMore ? <span role="status"><Loader2 size={18} className={styles.spin} aria-hidden="true" /> Loading more properties...</span>
+                : hasMore ? <button onClick={loadMoreProperties} type="button">Load more properties <span aria-hidden="true">{"\u2193"}</span></button> : <span className={styles.srOnly}>End of loaded listings.</span>}
             </div>
           </>}
       </div>

@@ -1,7 +1,7 @@
 "use client";
 import {propertyPriceText, propertyOccupancy, propertyAreaText} from '@/lib/property-presentation';
 
-import {formatAddress} from "@/lib/address-format";
+import {formatPropertyAddress} from "@/lib/property-address";
 import {formatDisplayDate} from '@/lib/date-format';
 
 import PropertyPurposeSummary from "./PropertyPurposeSummary";
@@ -38,7 +38,7 @@ const PropertyDetailsDialog = ({ property }: PropertyDetailsDialogProps) => {
                     </DialogTitle>
                     <DialogDescription className="flex items-center gap-1.5 text-sm text-slate-500 font-semibold uppercase tracking-wider">
                         <MapPin className="h-4 w-4 text-slate-400 shrink-0" />
-                        {formatAddress(property.address) || formatAddress(property.city) || "Location not specified"}
+                        {formatPropertyAddress(property) || "Location not specified"}
                     </DialogDescription>
                 </DialogHeader>
 

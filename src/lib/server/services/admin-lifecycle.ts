@@ -1,5 +1,5 @@
 import {propertyEmailContext} from '@/lib/email-design';
-import {formatAddress} from '@/lib/address-format';
+import {formatPropertyAddress} from '@/lib/property-address';
 import {formatDisplayDateTime} from '@/lib/date-format';
 import {sameRentSchedule} from '@/lib/rent-resolution';
 import 'server-only';
@@ -34,7 +34,7 @@ export async function stageAdminLifecycle(tx:Transaction,events:AdminLifecycleEv
   const requested=adminEmailRequested(event);
   const property=event.property||(await tx.get(db.collection(COLLECTIONS.properties).doc(event.propertyId))).data();
   if(!actors.has(event.actorUID))actors.set(event.actorUID,(await tx.get(db.collection(COLLECTIONS.users).doc(event.actorUID))).data()||{});
-  const actor=actors.get(event.actorUID)!,name=[s(property?.buildingName)||s(property?.title)||'Property',s(property?.unitNumber)].filter(Boolean).join(' - '),address=formatAddress(property?.address||property?.location,property?.city,property?.state,property?.zipCode)||'Address not recorded';
+  const actor=actors.get(event.actorUID)!,name=[s(property?.buildingName)||s(property?.title)||'Property',s(property?.unitNumber)].filter(Boolean).join(' - '),address=formatPropertyAddress(property||{})||'Address not recorded';
   const message=`${event.message.replace('was committed.','was recorded.').replace('was successfully committed.','was recorded.')} Property: ${name}. Address: ${address}. Requested by: ${s(actor.name)||'Authorized account'} (${actor.role==='admin'?'Administrator':event.actorUID===property?.ownerUID?'Owner':'Tenant'}). ${formatDisplayDateTime(now)}.`;
   const mail:TransactionalEmailEvent=event.emailDelivery||{eventType:`admin.${event.type}`,eventId:event.eventId,propertyId:event.propertyId,recordId:event.tenantId||event.propertyId,recipientRole:'admin',recipientEmail:recipient,templateId:'admin-property-lifecycle',templateVersion:1,subject:`PropBank - ${event.title}`,idempotencyKey:`admin-lifecycle:${event.eventId}`, ...brandedEmail(event.title,`<p>${message.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!))}</p>`,message,{label:'Review property',path:destination},propertyEmailContext(property||{},[{label:'Performed by',value:actor.name},{label:'Role',value:actor.role==='admin'?'Administrator':event.actorUID===property?.ownerUID?'Owner':'Tenant'},{label:'Recorded',value:now,format:'datetime'}],{greeting:'PropBank team'}))};
   const deliveryId=requested&&configured?emailDeliveryId(mail):'';

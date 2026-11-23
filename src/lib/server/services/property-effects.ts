@@ -1,3 +1,4 @@
+import {formatPropertyAddress} from '@/lib/property-address';
 import {renderLegacyEmail} from '@/lib/email-legacy';
 import {propertyEmailContext} from '@/lib/email-design';
 import {propertyPricing} from '@/lib/property-presentation';
@@ -53,7 +54,7 @@ async function notify(property:RecordData,type:'property_added'|'want_to_sell'|'
     ownerEmail:added?property.ownerEmail:property.ownerEmail||owner?.email||'',ownerRole:owner?.role||'',
     tenantName:entries(property.tenants).length?fullName(tenant):'',tenantEmail:tenant.email||'',tenantPhone:tenant.phone||'',
     buyers:entries(property.buyers).length?JSON.stringify(entries(property.buyers).map(b=>wireModel('BuyerInfo',b))):'',
-    ...(added?{propertyTitle:property.title,propertyAddress:property.location,propertyListingType:property.listingType}:{}),
+    ...(added?{propertyTitle:property.title,propertyAddress:formatPropertyAddress(property),propertyListingType:property.listingType}:{}),
     timestamp:new Date(Math.floor(now.getTime()/1000)*1000),isRead:false,priority:added||cancelled?'medium':'high',createdAt:now,updatedAt:now,
   });
   await getDatabase().collection(COLLECTIONS.adminNotifications).doc(s(notification.id)).set(storeModel('AdminNotification',notification));

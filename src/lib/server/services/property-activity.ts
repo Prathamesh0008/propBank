@@ -5,7 +5,7 @@ import {AccessError,type AuthenticatedUser} from '../auth';
 import {ApiError} from '../http';
 import {COLLECTIONS,getDatabase} from '../firestore';
 import {requirePropertyMember} from '../permissions';
-import {formatAddress} from '@/lib/address-format';
+import {formatPropertyAddress} from '@/lib/property-address';
 import {formatDisplayDateTime} from '@/lib/date-format';
 import {privateLeaseEvidence} from './document-access';
 import {stringValue as s,isRecord,type RecordData} from './contracts';
@@ -46,7 +46,7 @@ export async function stagePropertyActivity(tx:FirebaseFirestore.Transaction,use
   const recipients=Array.from(new Set([...(event.notifyOwner===false?[]:[s(property.ownerUID)]),...eligible.map(t=>s(t.userUID))])).filter(uid=>uid&&uid!==user.uid)
     .map(uid=>({uid,role:uid===property.ownerUID?'owner':'tenant',name:uid===property.ownerUID?s(property.ownerName):(()=>{const t=eligible.find(t=>t.userUID===uid);return t?[s(t.firstName),s(t.lastName)].filter(Boolean).join(' '):'';})()}));
   const propertyName=[s(property.buildingName)||s(property.title)||'Property',s(property.unitNumber)].filter(Boolean).join(' — ');
-  const address=formatAddress(property.address||property.location,property.city,property.state,property.zipCode)||'Address not recorded';
+  const address=formatPropertyAddress(property)||'Address not recorded';
   const actorName=s(user.profile?.name)||'Authorized account';
   const role=user.role==='admin'?'Administrator':user.uid===property.ownerUID?'Owner':listingAgent?'Submitting agent':'Tenant';
   const requesterUID=s(event.requester?.uid)||user.uid,requesterName=s(event.requester?.name)||actorName,requesterRole=requesterUID===property.ownerUID?'Owner':tenants.some(t=>t.userUID===requesterUID)?'Tenant':requesterUID===user.uid?role:'Registered user';

@@ -6,7 +6,8 @@ export function propertyEditPayload(candidate: Data, dirty: Data, previous: Data
     const storedKey = key === 'propertyTitle' ? 'title' : key;
     if (storedKey in candidate) result[storedKey] = candidate[storedKey];
   }
-  if (dirty.propertyTitle && (!previous.buildingName || previous.buildingName === previous.title)) result.buildingName = candidate.title;
+  if (dirty.structuredAddress) result.expectedAddressVersion = previous.addressVersion ?? 0;
+  if (dirty.propertyTitle && !previous.structuredAddress && !dirty.structuredAddress && (!previous.buildingName || previous.buildingName === previous.title)) result.buildingName = candidate.title;
   for (const key of ['images','furnishedChecklist']) if (key in candidate && JSON.stringify(candidate[key]) !== JSON.stringify(previous[key] ?? [])) result[key] = candidate[key];
   const terms = ['monthlyRent','securityDeposit','paymentDueDate','agreementStartDate','agreementEndDate','noticePeriod','lockInPeriod','escalationPercentage','escalationAmount'];
   if (terms.some(key=>dirty[key]) && previous.tenants?.some((t:Data)=>t.isActive===true)) {

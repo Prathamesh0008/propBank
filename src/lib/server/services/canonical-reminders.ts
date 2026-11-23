@@ -13,12 +13,13 @@ import {requireCron,runVisitReminders} from './reminders';
 type Data=Record<string,any>;
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
 const emailPattern=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-export function reminderContent(property:Data,tenant:Data,event:CanonicalReminder,role:string,now=new Date()){
+/** Version affects address presentation only; old queued reminders retain the original format. */
+export function reminderContent(property:Data,tenant:Data,event:CanonicalReminder,role:string,now=new Date(),addressFormatVersion=1){
  const today=localRentDate(property,now),remaining=daysBetween(today,event.dueDate),title=property.title||property.buildingName||'Your property';
  const subject=event.kind==='expiry'?`Agreement expires in ${remaining} days`:remaining>0?`Rent due in ${remaining} day${remaining===1?'':'s'}`:remaining===0?'Rent is due today':`Rent is ${-remaining} day${remaining===-1?'':'s'} overdue`;
  const text=event.kind==='expiry'?`${title}: the agreement expires on ${formatDisplayDate(event.dueDate)}. Review renewal or move-out arrangements.`:`${title}: ${emailMoney(event.outstanding)} remains outstanding for ${formatDisplayMonth(event.period)}. Due date: ${formatDisplayDate(event.dueDate)}. Payment status: ${event.status==='partial'?'Partially paid':'Unpaid'}.`;
  const path=role==='admin'?`/admin?tab=rented&propertyId=${encodeURIComponent(property.id)}`:`/manage-property/${encodeURIComponent(property.id)}`;
- return {subject,text,...brandedEmail(subject,'',text,{label:event.kind==='expiry'?'Review agreement':'Review rent',path},propertyEmailContext(property,[{label:'Billing period',value:event.kind==='rent'?formatDisplayMonth(event.period):undefined},{label:'Rent amount',value:event.kind==='rent'?event.amount:undefined,format:'money'},{label:'Outstanding balance',value:event.kind==='rent'?event.outstanding:undefined,format:'money'},{label:event.kind==='rent'?'Due date':'Agreement expiry',value:event.dueDate,format:'date'}],{audience:role,status:event.kind==='rent'?(event.status==='partial'?'Partially paid':remaining<0?'Overdue':'Unpaid'):'Expiring',preheader:text})),path};
+ return {subject,text,...brandedEmail(subject,'',text,{label:event.kind==='expiry'?'Review agreement':'Review rent',path},propertyEmailContext(property,[{label:'Billing period',value:event.kind==='rent'?formatDisplayMonth(event.period):undefined},{label:'Rent amount',value:event.kind==='rent'?event.amount:undefined,format:'money'},{label:'Outstanding balance',value:event.kind==='rent'?event.outstanding:undefined,format:'money'},{label:event.kind==='rent'?'Due date':'Agreement expiry',value:event.dueDate,format:'date'}],{audience:role,status:event.kind==='rent'?(event.status==='partial'?'Partially paid':remaining<0?'Overdue':'Unpaid'):'Expiring',preheader:text},{legacyAddressFormat:addressFormatVersion!==1})),path};
 }
 async function verifiedEmail(uid:string,tx:FirebaseFirestore.Transaction){
  if(!uid)return '';
@@ -50,7 +51,7 @@ export async function stageCanonicalTenancy(id:string,now=new Date()){
     const deliveryRef=db.collection(COLLECTIONS.emailDeliveries).doc(deliveryId),noticeRef=db.collection(COLLECTIONS.adminNotifications).doc(noticeId);
     const delivery=await tx.get(deliveryRef),notice=await tx.get(noticeRef);
     const content=reminderContent(property,tenant,event,recipient.role,now);
-    const mail:TransactionalEmailEvent={eventType,eventId,recipientUID:recipient.uid||undefined,recipientRole:recipient.role,recipientEmail:recipient.email,propertyId:property.id,recordId:property.id,templateId:event.kind==='rent'?'rent-reminder':'agreement-expiry-reminder',templateVersion:2,subject:content.subject,html:content.html,text:content.text,idempotencyKey:key,canonicalReminder:true,tenancyId:id,rentPeriod:event.period,agreementVersion:event.agreementVersion,scheduledFor:event.scheduledFor,reminderOffset:event.offset,reminderDueDate:event.dueDate,reminderAmount:event.amount};
+    const mail:TransactionalEmailEvent={eventType,eventId,recipientUID:recipient.uid||undefined,recipientRole:recipient.role,recipientEmail:recipient.email,propertyId:property.id,recordId:property.id,templateId:event.kind==='rent'?'rent-reminder':'agreement-expiry-reminder',templateVersion:2,subject:content.subject,html:content.html,text:content.text,idempotencyKey:key,canonicalReminder:true,propertyAddressFormatVersion:1,tenancyId:id,rentPeriod:event.period,agreementVersion:event.agreementVersion,scheduledFor:event.scheduledFor,reminderOffset:event.offset,reminderDueDate:event.dueDate,reminderAmount:event.amount};
     if(!delivery.exists)writes.push(()=>writeEmailOutbox(tx,[mail]));
     if(!notice.exists)writes.push(()=>tx.create(noticeRef,{id:noticeId,type:event.kind==='rent'?'rent_reminder':'agreement_expiry',title:content.subject,message:content.text,propertyId:property.id,tenantId:id,userId:recipient.uid,eventId,emailDeliveryId:deliveryId,emailStatus:recipient.email?'queued':'unconfigured',participantReminder:recipient.role!=='admin',propertyActivity:true,lifecycle:true,participantUIDs:recipient.uid?[recipient.uid]:[],destination:content.path,status:event.status,timestamp:now,createdAt:now,updatedAt:now,isRead:false,readByUIDs:[]}));
     if(!delivery.exists||!notice.exists)staged++;
@@ -74,10 +75,10 @@ export async function refreshCanonicalReminder(value:Data,now=new Date()):Promis
  let address='';
  if(value.recipientRole==='admin')address=(process.env.ADMIN_EMAIL||'').trim().toLowerCase();
  else{const profile=await db.collection(COLLECTIONS.users).doc(value.recipientUID).get();if(!profile.exists||profile.data()?.isActive===false)return null;try{const account=await getFirebaseAdminAuth().getUser(value.recipientUID);if(account.disabled||!account.emailVerified)return null;address=(account.email||'').toLowerCase();}catch(error){if((error as {code?:string}).code==='auth/user-not-found')return null;throw error;}}
- if(!emailPattern.test(address))return value.recipientRole==='admin'?{...reminderContent(property,tenant,event,value.recipientRole,now),recipientEmail:''}:null;
+ if(!emailPattern.test(address))return value.recipientRole==='admin'?{...reminderContent(property,tenant,event,value.recipientRole,now,value.propertyAddressFormatVersion===1?1:0),recipientEmail:''}:null;
  // Do not redirect a previously queued sensitive message to a changed address.
  if(value.recipientEmail&&address!==value.recipientEmail)return null;
- return {...reminderContent(property,tenant,event,value.recipientRole,now),recipientEmail:address};
+ return {...reminderContent(property,tenant,event,value.recipientRole,now,value.propertyAddressFormatVersion===1?1:0),recipientEmail:address};
 }
 /** One durable daily cursor. Repeated scheduler ticks resume; completed days do not rescan. */
 export async function runCanonicalReminders(now=new Date(),continuationOnly=false){

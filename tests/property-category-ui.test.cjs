@@ -5,7 +5,7 @@ const {renderToStaticMarkup}=require('react-dom/server');
 const choices={residential:['Flat','Bungalow'],commercial:['Office','Shop','Showroom','Commercial Plot'],industrial:['Unit','RCC Shed','Land']};
 function harness(category){
  const state=[],requests=[],cache=new Map();let index=0;
- const react={...React,useRef:value=>({current:value}),useEffect:()=>{},useMemo:fn=>fn(),useState:initial=>{const key=index++;if(!(key in state))state[key]=initial;return [state[key],value=>{state[key]=typeof value==='function'?value(state[key]):value;}];}};
+ const react={...React,useId:()=> 'synthetic-address',useRef:value=>({current:value}),useEffect:()=>{},useMemo:fn=>fn(),useState:initial=>{const key=index++;if(!(key in state))state[key]=initial;return [state[key],value=>{state[key]=typeof value==='function'?value(state[key]):value;}];}};
  const load=file=>{if(cache.has(file))return cache.get(file);const out={};cache.set(file,out);const code=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;const scoped=name=>{
   if(name==='react')return react;
   if(name.endsWith('.module.css'))return new Proxy({},{get:(_,key)=>key==='__esModule'?false:String(key)});
@@ -36,6 +36,7 @@ function expression(name){const file=path.resolve('src/features/properties/AddPr
 
 for(const category of Object.keys(choices))test(`${category} forms omit category controls and show only the category's structure options`,async()=>{
  const h=harness(category),owner=h.ownerFields(category),tenant=h.renderTenant();assert.doesNotMatch(renderToStaticMarkup(owner),/Property category|Choose property category/);assert.doesNotMatch(renderToStaticMarkup(tenant),/Property category/);assert.deepEqual(options(owner),choices[category]);assert.deepEqual(options(tenant),choices[category]);assert.equal(h.state[0].propertyCategory,category);assert.equal(h.state[0].propertyType,category);
+ if(category!=='industrial'){const index=h.state.findIndex(value=>value&&typeof value==='object'&&'structured' in value&&'legacyText' in value);assert.ok(index>=0);h.state[index]={structured:{streetLocality:'Fixture Road',city:'Pune',state:'Maharashtra',postalCode:'411001',country:'India'},legacyText:''};}
  h.state[0]={...h.state[0],propertyTitle:'Fixture',location:'Fixture',structure:choices[category][0],configuration:category==='residential'?'2 BHK':'',monthlyRent:'25000',agreementPeriod:'12',agreementStartDate:'2026-01-01',agreementEndDate:'2026-12-31',propertyType:'tampered',propertyCategory:'tampered'};h.state[1]=[{year:'1st Year',months:'12',amount:'25000',fromDate:'2026-01-01',toDate:'2026-12-31'}];h.state[0].paymentDueDate='5';h.state[3]={personName:'Owner',phone:'9876543210'};await nodes(h.renderTenant()).find(node=>node.type==='form').props.onSubmit({preventDefault(){}});assert.equal(h.requests.length,1);assert.equal(h.requests[0].body.propertyType,category);assert.equal(h.requests[0].body.propertyCategory,category);
 });
 test('owner submit uses the selected route category, not editable form metadata',async()=>{
@@ -51,10 +52,10 @@ test('new forms omit Studio while Edit Property retains an existing legacy Studi
 test('owner intake title includes the selected category without a duplicate category badge',()=>{
  const source=fs.readFileSync('src/features/properties/AddPropertyForm.tsx','utf8');assert.match(source,/List your \{selectedPropertyType\.charAt\(0\)\.toUpperCase\(\) \+ selectedPropertyType\.slice\(1\)\} property/);assert.doesNotMatch(source,/bg-primary\/10 text-primary rounded-md/);
 });
-test('owner, tenant and edit intake do not render separate property-title and building-name controls',()=>{
+test('intake retains one property title and prefers the explicit structured building name',()=>{
  const shared=fs.readFileSync('src/features/properties/ClientPropertyFields.tsx','utf8'),owner=fs.readFileSync('src/features/properties/AddPropertyForm.tsx','utf8'),tenant=fs.readFileSync('src/features/properties/TenantPropertyForm.tsx','utf8'),edit=fs.readFileSync('src/features/properties/EditProperty.tsx','utf8');
  assert.ok(shared.indexOf("['propertyTitle','Property Name']")<shared.indexOf("['structure','Property Type']"));assert.doesNotMatch(shared,/\['buildingName','Building \/ Society name'\]/);
- assert.equal((owner.match(/name="propertyTitle"/g)||[]).length,0);assert.match(owner,/buildingName: data\.propertyTitle/);
+ assert.equal((owner.match(/name="propertyTitle"/g)||[]).length,0);assert.match(owner,/buildingName: data\.structuredAddress\?\.structured\.buildingName \|\| data\.propertyTitle/);assert.match(fs.readFileSync('src/components/StructuredAddressFields.tsx','utf8'),/Building \/ Society Name/);
  assert.equal((tenant.match(/Property Name \*/g)||[]).length,1);assert.doesNotMatch(tenant,/Building \/ Society name/);assert.match(tenant,/key==='propertyTitle'\?\{buildingName:value\}/);
  assert.equal((edit.match(/name="propertyTitle"/g)||[]).length,0);
 });

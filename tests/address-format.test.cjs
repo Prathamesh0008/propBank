@@ -30,6 +30,7 @@ test('property card renders a clean address through the shared formatter', () =>
   }).outputText;
   new Function('exports', 'require', code)(out, name => {
     if (name === '@/lib/address-format') return exportsObject;
+    if (name === '@/lib/property-address') return require('./fixtures/native-server.cjs').isolated().load(name);
     if (name.startsWith('@/ui/')) return new Proxy({}, {get: () => ({children}) => React.createElement('div', null, children)});
     return require(name);
   });
@@ -41,6 +42,6 @@ test('property card renders a clean address through the shared formatter', () =>
 });
 test('both Manage Property relationship cards avoid unconditional address separators', () => {
   const source = fs.readFileSync('src/features/properties/ManageProperty.tsx', 'utf8');
-  assert.equal((source.match(/\{formatAddress\(property.address\)\}/g) || []).length, 2);
+  assert.equal((source.match(/\{formatPropertyAddress\(property\)\}/g) || []).length, 2);
   assert.ok(!source.includes('`, ${property.address}`'));
 });

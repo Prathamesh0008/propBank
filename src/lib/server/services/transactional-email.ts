@@ -15,7 +15,7 @@ import {rentForBillingPeriod} from '@/lib/rent-resolution';
 import {normalizeEmailAddress} from '@/lib/email-address';
 import {currentConnectionState} from '@/lib/relationship-link-state';
 
-export type TransactionalEmailEvent={propertyActivity?:boolean;canonicalReminder?:boolean;
+export type TransactionalEmailEvent={propertyActivity?:boolean;canonicalReminder?:boolean;propertyAddressFormatVersion?:number;
   eventType:string;eventId:string;recipientUID?:string;recipientRole:string;recipientEmail?:string;
   propertyId?:string;recordId?:string;templateId:string;templateVersion:number;
   subject:string;html:string;text:string;idempotencyKey?:string;

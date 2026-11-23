@@ -1,5 +1,5 @@
 import {propertyEmailContext} from '@/lib/email-design';
-import {formatAddress} from '@/lib/address-format';
+import {formatPropertyAddress} from '@/lib/property-address';
 import {formatDisplayDateTime} from '@/lib/date-format';
 import {stageAdminLifecycle} from './admin-lifecycle';
 import 'server-only';
@@ -350,7 +350,7 @@ export async function actOnRelationshipLink(request: Request) {
     if (embedded.some(t => t.isActive === true && t.userUID === targetUID)) throw new ApiError(409, 'This account already has an active tenancy here');
     const now = new Date(), updates = {userUID: targetUID, linkConfirmationRequired: false, linkedAt: now, linkedByUID: user.uid};
     const lifecycle=await stageAdminLifecycle(tx,[{property,participantUIDs:[s(targetUID),s(claim.ownerUID)],type:'tenant_confirmed',propertyId:s(claim.propertyId),tenantId:s(claim.tenantId),actorUID:user.uid,eventId:`tenant-confirmed:${s(claim.id)}`,title:'Tenancy confirmed',message:'The tenant relationship was confirmed.'}]);
-    const confirmation=`Tenancy confirmed for ${[s(property.buildingName)||s(property.title),s(property.unitNumber)].filter(Boolean).join(' - ')}. Address: ${formatAddress(property.address||property.location,property.city,property.state)}. ${formatDisplayDateTime(now)}.`;
+    const confirmation=`Tenancy confirmed for ${[s(property.buildingName)||s(property.title),s(property.unitNumber)].filter(Boolean).join(' - ')}. Address: ${formatPropertyAddress(property)}. ${formatDisplayDateTime(now)}.`;
     const participant=await stageUserEvent(tx,{actorUID:user.uid,emailContext:propertyEmailContext(property,[{label:'Confirmed',value:now,format:'datetime'}],{status:'Tenancy confirmed'}),eventType: 'relationship.tenant_linked', eventId: `${s(claim.id)}:linked`, recipients: [{uid: s(targetUID), role: 'tenant'}, {uid: s(claim.ownerUID), role: 'owner'}], propertyId: s(claim.propertyId), recordId: s(claim.tenantId), templateId: 'tenant-linked', subject: 'Tenancy confirmed', title: 'Tenancy confirmed', bodyHtml: `<p>${escapeHtml(confirmation)}</p>`, bodyText: confirmation, action: {label: 'View property', path: `/manage-property/${s(claim.propertyId)}`}});intentIds.push(participant.id);participant.write();lifecycle.write();tx.update(tenantRef, {...updates, updatedAt: now});
     tx.update(propertyRef, {tenants: embedded.map(t => t.id === claim.tenantId ? {...t, ...updates} : t), tenancyRevision: Number(property.tenancyRevision || 0) + 1, updatedAt: now});
     tx.update(ref, {status: 'linked', version, confirmedByUID: targetUID, confirmedAt: claim.confirmedAt || now, authorizedByUID: property.ownerUID, authorizedCandidateUID: targetUID, ownerApprovedAt: ownerAction ? now : claim.createdAt, linkedAt: now, updatedAt: now});

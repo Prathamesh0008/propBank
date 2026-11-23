@@ -3,12 +3,16 @@
 import { ArrowUp, ArrowUpRight, Mail, MessageCircle } from "lucide-react";
 import { Link } from "@/lib/navigation";
 import BrandLogo from "@/features/brand/BrandLogo";
+import { usePathname } from "next/navigation";
+import HomepageFooter from "./HomepageFooter";
 import styles from "./SiteFooter.module.css";
 
 const propertyLinks = [["/manage-property", "Property management"], ["/buy", "Buy"], ["/sell", "Sell"], ["/rent", "Rent"]] as const;
 const companyLinks = [["/about", "About"], ["/services", "Services"], ["/blog", "Journal"], ["/faq", "FAQs"]] as const;
 
 export default function SiteFooter() {
+  const pathname = usePathname();
+  if (pathname === "/") return <HomepageFooter />;
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   return <footer className={styles.footer}>
     <div className={styles.inner}>

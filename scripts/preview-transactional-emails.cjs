@@ -2,7 +2,7 @@
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),ts=require('typescript');
 function previewModules(){
  const cache=new Map();function load(file){const resolved=path.resolve(file.endsWith('.ts')?file:file+'.ts');if(cache.has(resolved))return cache.get(resolved);const out={};cache.set(resolved,out);const code=ts.transpileModule(fs.readFileSync(resolved,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
-  new Function('exports','require','process',code)(out,name=>{if(!name.startsWith('.'))throw Error('Preview loader permits only local pure modules');return load(path.resolve(path.dirname(resolved),name));},{env:{APP_URL:'https://preview.propbank.invalid',NODE_ENV:'test'}});return out;
+  new Function('exports','require','process',code)(out,name=>{if(name==='zod')return require('zod');if(!name.startsWith('.'))throw Error('Preview loader permits only local pure modules');return load(path.resolve(path.dirname(resolved),name));},{env:{APP_URL:'https://preview.propbank.invalid',NODE_ENV:'test'}});return out;
  }
  return {design:load('src/lib/email-design.ts'),legacy:load('src/lib/email-legacy.ts'),catalog:load('src/lib/email-preview-catalog.ts').emailPreviewCatalog};
 }

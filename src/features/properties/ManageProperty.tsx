@@ -2,7 +2,7 @@
 import {propertyPriceText} from '@/lib/property-presentation';
 import {hasEligibleAgreement} from "@/lib/agreement-eligibility";
 
-import {formatAddress} from "@/lib/address-format";
+import {formatPropertyAddress} from "@/lib/property-address";
 import {leaseTenureLabel} from '@/lib/lease-tenure';
 import {formatDisplayDate, formatDisplayTime} from '@/lib/date-format';
 
@@ -802,7 +802,7 @@ const ManageProperty = () => {
                                               {property.unitNumber ? ` (${property.unitNumber})` : ""}
                                               {property.buildingName && property.buildingName.trim()!==property.title?.trim() && <span className="block text-sm font-normal">{property.buildingName}</span>}
                                               <span className="block text-xs font-normal">Property ID: {property.id}{property.createdAs==="tenant" ? ` - Owner verification ${property.ownershipVerification||"pending"}` : ""}{property.agreementStatus ? ` · ${property.agreementStatus.replaceAll("_"," ")}` : ""}{property.agreementRequest?.status==="pending" ? ` · Pending ${property.agreementRequest.kind}` : ""}</span>
-                                              {formatAddress(property.address)}
+                                              {formatPropertyAddress(property)}
                                             </h3>
                                             <Badge
                                               variant="outline"
@@ -1097,7 +1097,7 @@ const ManageProperty = () => {
                                               {property.unitNumber ? ` (${property.unitNumber})` : ""}
                                               {property.buildingName && property.buildingName.trim()!==property.title?.trim() && <span className="block text-sm font-normal">{property.buildingName}</span>}
                                               <span className="block text-xs font-normal">Property ID: {property.id}{property.agreementStatus ? ` ? ${property.agreementStatus.replaceAll("_"," ")}` : ""}{property.agreementRequest?.status==="pending" ? ` ? Pending ${property.agreementRequest.kind}` : ""}</span>
-                                              {formatAddress(property.address)}
+                                              {formatPropertyAddress(property)}
                                             </h3>
                                             <Badge
                                               variant="outline"

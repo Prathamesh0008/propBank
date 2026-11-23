@@ -1,7 +1,7 @@
 "use client";
 import {propertyPriceText, propertyAreaText, propertyOccupancy} from '@/lib/property-presentation';
 
-import {formatAddress} from "@/lib/address-format";
+import {formatPropertyAddress} from "@/lib/property-address";
 import {formatDisplayDate, formatDisplayTime} from '@/lib/date-format';
 
 import {calendarToday,calendarValue,parseCalendarDate} from "@/lib/calendar-date";
@@ -529,7 +529,7 @@ const PropertyDetails = () => {
 
             <div className="flex items-center text-gray-300 text-lg">
               <MapPin className="h-5 w-5 mr-2 text-blue-400" />
-              {property.location}
+              {formatPropertyAddress(property)}
             </div>
 
             <div className="pt-4 flex flex-wrap gap-4">
@@ -567,7 +567,7 @@ const PropertyDetails = () => {
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-2">
                   <MapPin className="h-5 w-5 text-muted-foreground" />
-                  <span>{formatAddress(property.address || property.location, property.city, [property.state, property.zipCode].filter(value => String(value ?? "").trim()).join(" "))}</span>
+                  <span>{formatPropertyAddress(property)}</span>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -662,7 +662,7 @@ const PropertyDetails = () => {
                     { label: 'Unit Number', value: property.unitNumber || 'N/A' },
                     { label: 'Floor', value: property.floor || 'N/A' },
                     ...(property.buildingName?.trim()&&property.buildingName.trim()!==property.title.trim()?[{ label: 'Building / Society Name', value: property.buildingName }]:[]),
-                    { label: 'Location', value: property.location || property.address || 'N/A', className: 'md:col-span-2' },
+                    { label: 'Location', value: formatPropertyAddress(property) || 'N/A', className: 'md:col-span-2' },
                   ].map((item, idx) => (
                     <DetailItem key={idx} {...item} />
                   ))}

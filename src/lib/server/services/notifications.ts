@@ -1,3 +1,4 @@
+import {formatPropertyAddress} from '@/lib/property-address';
 import {publicListing} from '../../listing-policy';
 import 'server-only';
 import { createHash, randomUUID } from 'node:crypto';
@@ -59,7 +60,7 @@ export async function postNotification(request:Request) {
     const property=await bestEffort(()=>getProperty(s(req.propertyId)));
     if(property) {
       if(property.title)req.propertyTitle=property.title;
-      if(property.address||property.location)req.propertyAddress=property.address||property.location;
+      req.propertyAddress=formatPropertyAddress(property);
       if(property.listingType)req.propertyListingType=property.listingType;
       for(const [target,source] of [['ownerName','ownerName'],['ownerEmail','ownerEmail'],['ownerId','ownerUID']])if(property[source])req[target]=property[source];
       if(!req.ownerPhone&&property.ownerUID) {

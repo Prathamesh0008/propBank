@@ -13,6 +13,7 @@ import { UserMenu } from "./UserMenu";
 import BrandLogo from "@/features/brand/BrandLogo";
 import styles from "./SiteHeader.module.css";
 import { useAuth } from '@/contexts/AuthContext';
+import HomepageHeader from './HomepageHeader';
 
 const navigation = [
   { to: "/manage-property", label: "Manage Property", access: "user" },
@@ -91,6 +92,12 @@ const SiteHeader = () => {
       {label}
     </Link>
   ));
+
+  if (pathname === "/") return <HomepageHeader
+    user={user} profileStatus={profileStatus} userName={userName} userEmail={userEmail}
+    userPhone={userPhone} userRole={userRole} isOpen={isOpen}
+    onOpenChange={setIsOpen} handleLogout={handleLogout}
+  />;
 
   return (
     <header className={styles.header} style={{ background: "#fff", borderBottomColor: "#e2e8f0" }}>

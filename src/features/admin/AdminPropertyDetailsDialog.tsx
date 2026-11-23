@@ -1,7 +1,7 @@
 "use client";
 import {propertyPricing, propertyOccupancy} from '@/lib/property-presentation';
 
-import {formatAddress} from "@/lib/address-format";
+import {formatPropertyAddress,propertyAddressRows} from "@/lib/property-address";
 import {leaseTenureLabel} from '@/lib/lease-tenure';
 import {formatDisplayDate} from '@/lib/date-format';
 
@@ -117,7 +117,7 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
 
     const hasImages = (property.images && property.images.length > 0) || (property.internalImages && property.internalImages.length > 0);
     const propertyName=property.title?.trim()||property.buildingName?.trim()||`Property ${property.id}`;
-    const propertyLocation=formatAddress(property.location||property.address,property.city,property.zipCode)||'Location not provided';
+    const propertyLocation=formatPropertyAddress(property)||'Location not provided';
     const listingLabel=(property.listingType||'manage').replace('_',' and ');
     const area=(value?:string,unit?:string)=>value?[Number.isFinite(Number(value))?Number(value).toLocaleString('en-IN'):value,unit?({sqft:'sq ft',sq_ft:'sq ft',sqm:'sq m',sq_m:'sq m'}[unit]||unit.replaceAll('_',' ')):undefined].filter(Boolean).join(' '):undefined;
     const money=(value?:string|number|null)=>value!==undefined&&value!==null&&value!==''&&Number.isFinite(Number(value))?`₹${Number(value).toLocaleString('en-IN',{maximumFractionDigits:2})}`:undefined;
@@ -145,7 +145,6 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                                 <DataRow label="Residential Layout" value={property.configuration} />
                                 <DataRow label="Unit Status" value={property.unitCondition} icon={CheckCircle2} />
                                 <DataRow label="Project Condition" value={property.projectCondition} />
-                                <DataRow label="Unit Number" value={property.unitNumber} />
                                 <DataRow label="Floor" value={property.floor} />
                                 <DataRow label="Property ID" value={property.id} />
                                 <DataRow label="Record Origin" value={property.createdAs||'owner'} />
@@ -155,6 +154,11 @@ const AdminPropertyDetailsDialog: React.FC<AdminPropertyDetailsDialogProps> = ({
                                     <DataRow label="Possession Date" value={formatDate(property.possessionDate)} icon={Calendar} />
                                 )}
                             </div>
+                        </div>
+                        <div className={styles.addressSection}>
+                          <SectionTitle title="Property Address" icon={MapPin}/>
+                          <p className={styles.fullAddress}>{propertyLocation}</p>
+                          <div className="grid grid-cols-2 gap-4">{propertyAddressRows(property).map(row=><DataRow key={row.label} label={row.label} value={row.value}/>)}</div>
                         </div>{/* Property Photos Section */}
                         {hasImages && (
                             <div className="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm">

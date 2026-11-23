@@ -1,4 +1,6 @@
 "use client";
+import StructuredAddressFields from '@/components/StructuredAddressFields';
+import {propertyAddressSchema,propertyAddressDisplay,propertyAddressDraft} from '@/lib/property-address';
 import PropertyPurposeFields,{purposeFormSchema} from "./PropertyPurposeFields";
 import {uploadSupportingDocument,validateSupportingDocuments} from "@/lib/supporting-documents";
 import {normalizePurpose} from "@/lib/property-purpose";
@@ -53,6 +55,7 @@ const formSchema = z.object({
   unitNumber: z.string().optional(),
   floor: z.string().optional(),
   location: z.string().min(1, "Location is required"),
+  structuredAddress: propertyAddressSchema.optional(),
 
   // Area Details
   carpetArea: z.string().optional(),
@@ -319,6 +322,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
       unitNumber: "",
       floor: "",
       location: "",
+      structuredAddress: ["residential","commercial"].includes(selectedPropertyType) ? {structured:{},legacyText:""} : undefined,
       carpetArea: "",
       plotArea: "",
       constructedArea: "",
@@ -552,7 +556,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
       // Prepare property data for backend API
       const propertyData = {
         ...data,
-        buildingName: data.propertyTitle,
+        buildingName: data.structuredAddress?.structured.buildingName || data.propertyTitle,
         nextAgreementDraft:addNextAgreementManually?nextAgreementDraft:undefined,
         monthlyRent: includesRent&&data.rentalStatus==='rented'?data.monthlyRent:'',
         expectedRent: includesRent&&data.rentalStatus!=='rented'?data.expectedRent:'',
@@ -830,7 +834,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                     <h3 className="text-lg font-semibold ">Unit Details</h3>
                   </div>
 
-                  <FormField
+                  {!['residential','commercial'].includes(selectedPropertyType) && <>                  <FormField
                     control={form.control}
                     name="unitNumber"
                     render={({ field }) => (
@@ -842,7 +846,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                         <FormMessage />
                       </FormItem>
                     )}
-                  />
+                  /></>}
 
                   {!structureUsesPlotArea(selectedStructure) && <FormField
                     control={form.control}
@@ -858,6 +862,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                     )}
                   />}
 
+                  {['residential','commercial'].includes(selectedPropertyType) ? <div className="lg:col-span-3"><StructuredAddressFields value={propertyAddressDraft(form.watch('structuredAddress'))} onChange={value=>{form.setValue('structuredAddress',value,{shouldDirty:true});form.setValue('location',propertyAddressDisplay(value),{shouldDirty:true});form.setValue('unitNumber',value.structured.unitNumber||'',{shouldDirty:true});}} error={form.formState.errors.structuredAddress ? 'Please review the address fields.' : undefined}/></div> : <>
                   <FormField
                     control={form.control}
                     name="location"
@@ -871,6 +876,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                       </FormItem>
                     )}
                   />
+                  </>}
                 </div>
 
                 {/* Area Details */}

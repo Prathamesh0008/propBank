@@ -1,6 +1,6 @@
 "use client";
 
-import {formatAddress} from "@/lib/address-format";
+import {formatPropertyAddress} from "@/lib/property-address";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Button } from "@/ui/button";
@@ -29,7 +29,7 @@ const PropertyCard = ({ property, ctaLabel = "View", onAction }: PropertyCardPro
         {property.image ? (
           <img
             src={property.image}
-            alt={`${property.title} in ${property.location}`}
+            alt={`${property.title} in ${formatPropertyAddress(property)}`}
             className="h-full w-full object-cover"
             loading="lazy"
           />
@@ -37,7 +37,7 @@ const PropertyCard = ({ property, ctaLabel = "View", onAction }: PropertyCardPro
       </div>
       <CardHeader>
         <CardTitle className="text-lg">{property.title}</CardTitle>
-        <p className="text-muted-foreground">{formatAddress(property.location)}</p>
+        <p className="text-muted-foreground">{formatPropertyAddress(property)}</p>
         {/* Furnished Badge */}
         {property.furnishedCount && property.furnishedCount > 0 && (
           <div className="mt-2">

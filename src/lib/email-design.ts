@@ -1,13 +1,14 @@
 import {formatDisplayDate,formatDisplayDateTime} from './date-format';
 import {formatAddress} from './address-format';
+import {formatPropertyAddress} from './property-address';
 
 export type EmailRow={label:string;value:unknown;format?:'text'|'status'|'money'|'date'|'datetime';roles?:string[]};
 export type EmailContext={greeting?:string;preheader?:string;status?:string;rows?:EmailRow[];nextStep?:string;audience?:string};
 export type EmailAction={label:string;path:string};
 /** Use only an already-authorized property snapshot; no lookups or private attachments. */
-export function propertyEmailContext(property:Record<string,any>,rows:EmailRow[]=[],context:Omit<EmailContext,'rows'>={}):EmailContext {
+export function propertyEmailContext(property:Record<string,any>,rows:EmailRow[]=[],context:Omit<EmailContext,'rows'>={},compatibility:{legacyAddressFormat?:boolean}={}):EmailContext {
   const name=[property.buildingName||property.title,property.unitNumber].filter(value=>typeof value==='string'&&value.trim()).join(' - ');
-  return {...context,rows:[{label:'Property',value:name},{label:'Address',value:formatAddress(property.address||property.location,property.city,property.state,property.zipCode)},{label:'Property category',value:property.propertyCategory||property.propertyType,format:'status'},...rows]};
+  return {...context,rows:[{label:'Property',value:name},{label:'Address',value:compatibility.legacyAddressFormat?formatAddress(property.address||property.location,property.city,property.state,property.zipCode):formatPropertyAddress(property)},{label:'Property category',value:property.propertyCategory||property.propertyType,format:'status'},...rows]};
 }
 export const emailEscape=(value:unknown)=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 export function emailTextFromHtml(html:string){return html.replace(/<(head|style|script)\b[^>]*>[\s\S]*?<\/\1>/gi,'').replace(/<(?:br\s*\/?|\/p|\/tr|\/h[1-6])>/gi,'\n').replace(/<[^>]+>/g,' ').replace(/&(?:amp|lt|gt|quot|#39|nbsp);/g,s=>({'&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&#39;':"'",'&nbsp;':' '}[s]!)).replace(/[ \t]+/g,' ').replace(/\n\s*\n\s*/g,'\n\n').trim();}

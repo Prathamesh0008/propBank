@@ -1,3 +1,4 @@
+import {formatPropertyAddress} from '@/lib/property-address';
 import {type EmailContext} from '@/lib/email-design';
 
 import {formatDisplayDate, formatDisplayDateTime} from '@/lib/date-format';
@@ -15,7 +16,7 @@ export function visitMail(user:RecordData,visit:RecordData) {
   queueEmail({to:s(user.email),subject:`✅ Visit Scheduled: ${s(visit.title)}`,html:formatTemplate(templates.VisitConfirmation[0],[s(user.name),s(visit.title),formatIST(new Date(s(visit.visitDate)||String(visit.visitDate))),String(visit.reminderTime),s(visit.reminderType),s(visit.description)])});
 }
 export function tenantMail(property:RecordData,tenant:RecordData) {
-  const details=[s(property.title),s(property.address),s(property.propertyType),s(tenant.monthlyRent),formatDisplayDate(tenant.leaseStartDate),formatDisplayDate(tenant.leaseEndDate)];
+  const details=[s(property.title),formatPropertyAddress(property),s(property.propertyType),s(tenant.monthlyRent),formatDisplayDate(tenant.leaseStartDate),formatDisplayDate(tenant.leaseEndDate)];
   queueEmail({to:s(tenant.email),subject:"🏠 Welcome! You've been added as a Tenant - Propbank",html:formatTemplate(propertyTemplates.TenantAdded,['Welcome to Your New Home!',`${s(tenant.firstName)} ${s(tenant.lastName)}`,'You have been added as a tenant to the following property.',...details])});
   queueEmail({to:s(property.ownerEmail),subject:'🏠 Tenant Added to Your Property - Propbank',html:formatTemplate(propertyTemplates.TenantAdded,['Tenant Added to Your Property',s(property.ownerName),'A new tenant has been added to your property.',...details])});
 }
@@ -32,7 +33,7 @@ export function ownerTerminationMail(property:RecordData,owner:RecordData,tenant
   terminationDate=formatDisplayDate(terminationDate);
   for(const isTenant of [true,false]) {
     const recipient=isTenant?tenant:owner;
-    const details=[s(property.title),s(property.location),s(property.unitNumber),s(property.floor),s(property.propertyType),s(property.configuration),s(property.carpetArea),s(property.monthlyRent)];
+    const details=[s(property.title),formatPropertyAddress(property),s(property.unitNumber),s(property.floor),s(property.propertyType),s(property.configuration),s(property.carpetArea),s(property.monthlyRent)];
     const statement=isTenant?`We have received a notice to terminate the lease agreement for ${s(property.title)}. The agreement will be terminated on ${terminationDate}.`:`You have successfully served a termination notice for ${s(property.title)}. The agreement is scheduled to end on ${terminationDate}.`;
     const html=notice?formatTemplate(templates.AgreementNotice[0],[isTenant?'Termination Notice':'Notice Initiated',s(recipient.name),trustedTemplateHtml(escapeHtml(statement).replace(escapeHtml(s(property.title)),`<strong>${escapeHtml(s(property.title))}</strong>`).replace(escapeHtml(terminationDate),`<strong>${escapeHtml(terminationDate)}</strong>`)),...details,terminationDate,'Owner']):formatTemplate(templates.AgreementTermination[0],[isTenant?'Agreement Termination Notice':'Agreement Terminated',s(recipient.name),isTenant?'The property owner has terminated your rental agreement. Please review the details below.':'The rental agreement has been successfully terminated.',terminationDate,'Agreement terminated by property owner','Owner',...details,formatDisplayDate(property.agreementStartDate),formatDisplayDate(property.agreementEndDate)]);
     queueEmail({to:s(recipient.email),subject:notice?(isTenant?'📅 Agreement Termination Notice Served - Propbank':'✅ Notice Period Initiated - Propbank'):(isTenant?'⚠️ Agreement Termination Notice - Propbank':'✅ Agreement Terminated Successfully - Propbank'),html});

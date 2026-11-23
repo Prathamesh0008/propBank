@@ -21,9 +21,12 @@ import { EMAIL_PATTERN, indiaCalendarDate, validateIndianContact } from '@/lib/f
 interface GeneralInquiryFormProps {
   onSuccess?: () => void;
   hideHeader?: boolean;
+  disableDemoAutofill?: boolean;
+  /** Homepage-only presentation; submission and validation remain shared. */
+  compact?: boolean;
 }
 
-const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) => {
+const GeneralInquiryForm = ({ onSuccess, hideHeader, disableDemoAutofill = false, compact = false }: GeneralInquiryFormProps) => {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors,setErrors]=useState<Record<string,string>>({});
@@ -145,16 +148,17 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
   };
 
   return (
-    <Card className="w-full max-w-md mx-auto shadow-none border-0 bg-transparent">
+    <Card className={`w-full ${compact ? "" : "max-w-md"} mx-auto shadow-none border-0 bg-transparent`}>
       <CardContent className="p-0">
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} data-demo-autofill={disableDemoAutofill ? "off" : undefined} className={compact ? undefined : "space-y-4"} data-compact-inquiry={compact || undefined}>
           {/* Buy / Rent Selection */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">I want to</Label>
-            <div className="flex gap-2">
+            <div className="flex gap-2" role="group" aria-label="I want to">
               <Button
                 type="button"
                 variant={formData.listingType === "buy" ? "default" : "outline"}
+                aria-pressed={formData.listingType === "buy"}
                 size="sm"
                 className="flex-1"
                 onClick={() => handleInputChange("listingType", "buy")}
@@ -164,6 +168,7 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
               <Button
                 type="button"
                 variant={formData.listingType === "rent" ? "default" : "outline"}
+                aria-pressed={formData.listingType === "rent"}
                 size="sm"
                 className="flex-1"
                 onClick={() => handleInputChange("listingType", "rent")}
@@ -173,6 +178,7 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
               <Button
                 type="button"
                 variant={formData.listingType === "sell" ? "default" : "outline"}
+                aria-pressed={formData.listingType === "sell"}
                 size="sm"
                 className="flex-1"
                 onClick={() => handleInputChange("listingType", "sell")}
@@ -186,10 +192,11 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
           {/* Property Type Selection */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Property Type</Label>
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2 flex-wrap" role="group" aria-label="Property type">
               <Button
                 type="button"
                 variant={formData.propertyType === "residential" ? "default" : "outline"}
+                aria-pressed={formData.propertyType === "residential"}
                 size="sm"
                 className="flex-1 min-w-[80px]"
                 onClick={() => handleInputChange("propertyType", "residential")}
@@ -199,6 +206,7 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
               <Button
                 type="button"
                 variant={formData.propertyType === "commercial" ? "default" : "outline"}
+                aria-pressed={formData.propertyType === "commercial"}
                 size="sm"
                 className="flex-1 min-w-[80px]"
                 onClick={() => handleInputChange("propertyType", "commercial")}
@@ -208,6 +216,7 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
               <Button
                 type="button"
                 variant={formData.propertyType === "industrial" ? "default" : "outline"}
+                aria-pressed={formData.propertyType === "industrial"}
                 size="sm"
                 className="flex-1 min-w-[80px]"
                 onClick={() => handleInputChange("propertyType", "industrial")}
@@ -219,7 +228,7 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
           </div>
 
           {/* Name */}
-          <div className="space-y-2">
+          <div className="space-y-2" data-inquiry-field="name">
             <Label htmlFor="name" className="text-sm font-medium">Name</Label>
             <Input
               id="name"
@@ -234,7 +243,7 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
           </div>
 
           {/* Email */}
-          <div className="space-y-2">
+          <div className="space-y-2" data-inquiry-field="email">
             <Label htmlFor="email" className="text-sm font-medium">Email ID</Label>
             <Input
               id="email"
@@ -248,7 +257,7 @@ const GeneralInquiryForm = ({ onSuccess, hideHeader }: GeneralInquiryFormProps) 
           </div>
 
           {/* Mobile */}
-          <div className="space-y-2">
+          <div className="space-y-2" data-inquiry-field="mobile">
             <Label htmlFor="mobile" className="text-sm font-medium">Mobile No.</Label>
             <Input
               id="mobile"

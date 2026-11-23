@@ -1,4 +1,5 @@
 "use client";
+import {formatPropertyAddress} from '@/lib/property-address';
 import {formatDisplayDate, formatDisplayMonth, formatDisplayDateTime} from '@/lib/date-format';
 
 import PendingConnections from "./PendingConnections";
@@ -318,7 +319,7 @@ export default function PropertyHub() {
           Property 360: {p.title}
         </h1>
         <p className="break-words">
-          {p.id} · {p.title || p.buildingName} · {p.unitNumber} · {p.location || p.address}
+          {p.id} · {p.title || p.buildingName}{p.unitNumber ? <> · Unit {p.unitNumber}</> : null} · {formatPropertyAddress(p) || 'Address not recorded'}
         </p>
         <div className="flex flex-wrap gap-2">
           {h.statuses.map((s: string) => (

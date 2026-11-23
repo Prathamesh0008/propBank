@@ -6,6 +6,7 @@ import styles from "./SearchFilterSection.module.css";
 
 interface SearchFilterSectionProps {
   hideIntro?: boolean;
+  advancedOnly?: boolean;
   searchType: string;
   setSearchType: (val: string) => void;
   searchQuery: string;
@@ -23,6 +24,7 @@ interface SearchFilterSectionProps {
 
 export const SearchFilterSection: React.FC<SearchFilterSectionProps> = ({
   hideIntro = false,
+  advancedOnly = false,
   searchType, setSearchType, searchQuery, setSearchQuery, selectedCategories,
   handleCategoryToggle, setSelectedCategories, selectedProjectCondition,
   setSelectedProjectCondition, budgetRange, setBudgetRange, clearFilters, handleSearch,
@@ -38,7 +40,7 @@ export const SearchFilterSection: React.FC<SearchFilterSectionProps> = ({
     : [{ value: 1000000, label: "₹10 lakh" }, { value: 2000000, label: "₹20 lakh" }, { value: 3000000, label: "₹30 lakh" }, { value: 5000000, label: "₹50 lakh" }, { value: 7500000, label: "₹75 lakh" }, { value: 10000000, label: "₹1 crore" }, { value: 20000000, label: "₹2 crore" }, { value: 50000000, label: "₹5 crore" }, { value: 100000000, label: "₹10 crore" }];
   const [showAdvanced, setShowAdvanced] = React.useState(false);
   return (
-    <section id="find-property" className={styles.section} aria-labelledby="property-search-heading">
+    <section id="find-property" className={`${styles.section} ${advancedOnly ? styles.compact : ""}`} aria-labelledby="property-search-heading">
       <div className={styles.shell}>
         {hideIntro ? <h2 id="property-search-heading" className={styles.srOnly}>Search available properties</h2> : <div className={styles.intro}>
           <div><p className={styles.kicker}>Find your place</p><h2 id="property-search-heading">A home that <em>feels right.</em></h2></div>
@@ -51,21 +53,21 @@ export const SearchFilterSection: React.FC<SearchFilterSectionProps> = ({
                 <button key={item.value} type="button" className={searchType === item.value ? styles.activeMode : styles.mode} aria-pressed={searchType === item.value} onClick={() => { setSearchType(item.value); setBudgetRange({min:0,max:0}); }}>{item.label}</button>
               )}
             </div>
-            <div className={styles.searchInputWrap}>
+            {!advancedOnly && <div className={styles.searchInputWrap}>
               <Search aria-hidden="true" size={20}/>
               <label className={styles.srOnly} htmlFor="landing-search-location">Location, project or property</label>
               <input id="landing-search-location" type="search" value={searchQuery} onChange={(e)=>setSearchQuery(e.target.value)} onKeyDown={(e)=> {if(e.key==="Enter")handleSearch();}} placeholder="Search location, project or property" />
-            </div>
-            <button className={styles.searchButton} type="button" onClick={handleSearch}>Explore properties <Search size={18} aria-hidden="true"/></button>
+            </div>}
+            <button className={styles.searchButton} type="button" onClick={handleSearch}>{advancedOnly ? "Apply filters" : "Explore properties"} <Search size={18} aria-hidden="true"/></button>
           </div>
           <div className={styles.filterRow}>
             <div className={styles.categoryControls} aria-label="Property categories" role="group">
               <button type="button" aria-pressed={selectedCategories.length===0} className={selectedCategories.length===0?styles.selectedChip:styles.chip} onClick={()=>setSelectedCategories([])}>All spaces</button>
               {categoryOptions.map(category => <button type="button" key={category.value} aria-pressed={selectedCategories.includes(category.value)} className={selectedCategories.includes(category.value)?styles.selectedChip:styles.chip} onClick={()=>handleCategoryToggle(category.value)}>{category.label}</button>)}
             </div>
-            <button type="button" className={styles.advancedToggle} aria-expanded={showAdvanced} aria-controls="landing-advanced-filters" onClick={()=>setShowAdvanced(x=>!x)}><Filter size={17} aria-hidden="true"/> More filters <span>{showAdvanced ? "−" : "+"}</span></button>
+            {!advancedOnly && <button type="button" className={styles.advancedToggle} aria-expanded={showAdvanced} aria-controls="landing-advanced-filters" onClick={()=>setShowAdvanced(x=>!x)}><Filter size={17} aria-hidden="true"/> More filters <span>{showAdvanced ? "−" : "+"}</span></button>}
           </div>
-          {showAdvanced && <div className={styles.advanced} id="landing-advanced-filters">
+          {(advancedOnly || showAdvanced) && <div className={styles.advanced} id="landing-advanced-filters">
             <div className={styles.field}><label htmlFor="landing-condition">Project status</label><select id="landing-condition" value={selectedProjectCondition} onChange={(e)=>setSelectedProjectCondition(e.target.value)}><option value="">All projects</option><option value="New Project">New project</option><option value="Ready Project">Ready project</option><option value="Preleased">Preleased</option></select></div>
             <div className={styles.field}><label htmlFor="landing-budget-min">Minimum budget</label><select id="landing-budget-min" value={budgetRange.min} onChange={(e)=>setBudgetRange({...budgetRange,min:Number(e.target.value)})}><option value={0}>No minimum</option>{budgets.map(b=><option key={b.value} value={b.value}>{b.label}</option>)}</select></div>
             <div className={styles.field}><label htmlFor="landing-budget-max">Maximum budget</label><select id="landing-budget-max" value={budgetRange.max} onChange={(e)=>setBudgetRange({...budgetRange,max:Number(e.target.value)})}><option value={0}>No maximum</option>{budgets.map(b=><option key={b.value} value={b.value}>{b.label}</option>)}</select></div>

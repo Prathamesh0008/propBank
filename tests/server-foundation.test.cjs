@@ -17,7 +17,7 @@ function load(name, dependencies = {}, env = {}, globals = {}) {
     require: name => {
       if (name === 'server-only') return {};
       if (name === 'node:crypto') return require('node:crypto');
-      if (['@/lib/indian-phone','@/lib/email-address','@/lib/date-format','@/lib/email-design','@/lib/email-legacy','@/lib/property-presentation'].includes(name)) return require('./fixtures/native-server.cjs').isolated().load(name);
+      if (['@/lib/indian-phone','@/lib/email-address','@/lib/date-format','@/lib/email-design','@/lib/email-legacy','@/lib/property-presentation','@/lib/property-address'].includes(name)) return require('./fixtures/native-server.cjs').isolated().load(name);
       if (name === '@/lib/rent-resolution' || name === './transactional-email') return {};
       if (name === './property-purpose') return require('./fixtures/native-server.cjs').isolated().load('@/lib/property-purpose');
       if (name === './resend') return load('services/resend',{},env,globals);

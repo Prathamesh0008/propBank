@@ -1,3 +1,4 @@
+import {createPreviousAddress,resolvePreviousAddress,assertPersonalAddressKeys} from '@/lib/personal-address';
 import {propertyEmailContext} from '@/lib/email-design';
 import {stagePropertyParticipantEvents} from './property-effects';
 import {guardRentFields,reconcileRentTerms,rentProtectedFields} from './rent-terms';
@@ -24,7 +25,7 @@ const inventoryGuard=(value:RecordData)=>{if(Object.keys(value).some(key=>['agre
 const collection=()=>getDatabase().collection(COLLECTIONS.tenants);
 export async function createTenants(request:Request) {
   const user=await identity(request);let req:RecordData;
-  try{const raw=await readObject(request);if(Array.isArray(raw.tenants))for(const tenant of raw.tenants)if(isRecord(tenant)){guardRentFields(tenant);validateTenantRentSchedule(tenant);}req=model('CreateTenantRequest',raw,true);req.expectedPropertyUpdatedAt=raw.expectedPropertyUpdatedAt;if(Array.isArray(raw.tenants)&&Array.isArray(req.tenants))req.tenants=(req.tenants as RecordData[]).map((tenant,index)=>({...tenant,...(isRecord(raw.tenants![index])?(inventoryGuard(raw.tenants[index]),'inventory' in raw.tenants[index]?{inventory:raw.tenants[index].inventory}:{}):{}),...(isRecord(raw.tenants![index])&&raw.tenants[index].nextAgreementDraft!==undefined?{nextAgreementDraft:raw.tenants[index].nextAgreementDraft}:{})}));}catch(error){return plainError(error instanceof Error&&/^(rentSchedule|rentScheduleVersion|monthlyRent|price):/.test(error.message)?error.message:'Invalid JSON',400);}
+  try{const raw=await readObject(request);if(Array.isArray(raw.tenants))for(const tenant of raw.tenants)if(isRecord(tenant)){Object.assign(tenant,createPreviousAddress(tenant));guardRentFields(tenant);validateTenantRentSchedule(tenant);}req=model('CreateTenantRequest',raw,true);req.expectedPropertyUpdatedAt=raw.expectedPropertyUpdatedAt;if(Array.isArray(raw.tenants)&&Array.isArray(req.tenants))req.tenants=(req.tenants as RecordData[]).map((tenant,index)=>({...tenant,...(isRecord(raw.tenants![index])?(inventoryGuard(raw.tenants[index]),'inventory' in raw.tenants[index]?{inventory:raw.tenants[index].inventory}:{}):{}),...(isRecord(raw.tenants![index])&&raw.tenants[index].nextAgreementDraft!==undefined?{nextAgreementDraft:raw.tenants[index].nextAgreementDraft}:{})}));}catch(error){return plainError(error instanceof Error&&/^(Previous address|rentSchedule|rentScheduleVersion|monthlyRent|price):/.test(error.message)?error.message:'Invalid JSON',400);}
   if(!req.propertyId)return plainError('Property ID is required',400);
   if(!req.ownerUID)return plainError('Owner UID is required',400);
   const tenants=Array.isArray(req.tenants)?req.tenants as RecordData[]:[];
@@ -65,7 +66,7 @@ export async function createTenants(request:Request) {
     if(previous.length+added.length>50)throw new AccessError(403,'Property tenant relationship limit reached');
     const lifecycle=await stageAdminLifecycle(tx,propertyLifecycleEvents(s(req.propertyId),fresh.data()!,{...fresh.data(),tenants:[...previous,...added]},user.uid,`assign:${added.map(t=>t.id).join(',')}`));
     const writeLinks=await stageLinks(tx,candidates,intents);invitationEvents=[...writeLinks.events,...lifecycle.events];
-    const intent=await stageUserEvent(tx,{actorUID:user.uid,emailContext:propertyEmailContext(property,[],{nextStep:'Review the tenant information in PropBank. Any required identity confirmation must be completed before access is granted.'}),eventType:'tenancy.tenant_assigned',eventId:`${s(req.propertyId)}:${added.map(t=>s(t.id)).join(',')}:assigned`,recipients:[{uid:s(property.ownerUID),role:'owner',name:s(property.ownerName)},...added.filter(t=>t.userUID).map(t=>({uid:s(t.userUID),role:'tenant',name:[s(t.firstName),s(t.lastName)].filter(Boolean).join(' ')}))],propertyId:s(req.propertyId),recordId:s(req.propertyId),templateId:'tenant-assigned',subject:'Tenant assignment confirmed',title:'Tenant relationship updated',bodyHtml:`<p>A tenant was assigned to <strong>${escapeHtml(s(property.title))}</strong>.</p>`,bodyText:`A tenant was assigned to ${s(property.title)}.`,action:{label:'View rental details',path:`/manage-property/${s(req.propertyId)}`}});intentIds.push(intent.id);
+    const intent=await stageUserEvent(tx,{actorUID:user.uid,emailContext:propertyEmailContext({...fresh.data(),id:s(req.propertyId)},[],{nextStep:'Review the tenant information in PropBank. Any required identity confirmation must be completed before access is granted.'}),eventType:'tenancy.tenant_assigned',eventId:`${s(req.propertyId)}:${added.map(t=>s(t.id)).join(',')}:assigned`,recipients:[{uid:s(property.ownerUID),role:'owner',name:s(property.ownerName)},...added.filter(t=>t.userUID).map(t=>({uid:s(t.userUID),role:'tenant',name:[s(t.firstName),s(t.lastName)].filter(Boolean).join(' ')}))],propertyId:s(req.propertyId),recordId:s(req.propertyId),templateId:'tenant-assigned',subject:'Tenant assignment confirmed',title:'Tenant relationship updated',bodyHtml:`<p>A tenant was assigned to <strong>${escapeHtml(s(property.title))}</strong>.</p>`,bodyText:`A tenant was assigned to ${s(property.title)}.`,action:{label:'View rental details',path:`/manage-property/${s(req.propertyId)}`}});intentIds.push(intent.id);
     intent.write();writeLinks();lifecycle.write();
     for(const tenant of added)tx.create(collection().doc(s(tenant.id)),{...storeModel('Tenant',{...tenant,propertyId:req.propertyId,ownerUID:req.ownerUID}),...(tenant.nextAgreementDraft?{nextAgreementDraft:tenant.nextAgreementDraft}:{})});
     const tenancy:RecordData={};
@@ -109,6 +110,18 @@ export async function updateTenant(request:Request,id:string) {
   const tenantSnapshot=await collection().doc(id).get();if(!tenantSnapshot.exists)return plainError('Tenant not found',404);
   const tenant={...tenantSnapshot.data(),...model('Tenant',tenantSnapshot.data()||{})};
   requireOwnerOrAdmin(user,{ownerUID:s(tenant.ownerUID)});
+  try{assertPersonalAddressKeys(updates);}catch(error){return plainError(error instanceof Error?error.message:'Invalid address',400);}
+  if('previousAddressVersion' in updates)return plainError('Previous address version is server controlled',400);
+  const expectedPreviousAddressVersion=updates.expectedPreviousAddressVersion;delete updates.expectedPreviousAddressVersion;
+  if('previousAddressStructured' in updates&&(!Number.isSafeInteger(expectedPreviousAddressVersion)||Number(expectedPreviousAddressVersion)<0))return plainError('Previous address: supply expectedPreviousAddressVersion',400);
+  let addressExpected:number|undefined;
+  try {
+    if('previousAddressStructured' in updates){Object.assign(updates,resolvePreviousAddress(updates.previousAddressStructured,tenant));addressExpected=Number(expectedPreviousAddressVersion);}
+    else if('previousAddress' in updates){
+      if(!s(updates.previousAddress).trim()&&s(tenant.previousAddress).trim())delete updates.previousAddress;
+      else if(updates.previousAddress!==tenant.previousAddress){if(tenant.previousAddressStructured)return plainError('Edit the structured previous address together',400);addressExpected=Number(tenant.previousAddressVersion||0);}
+    }
+  }catch(error){return plainError(error instanceof Error?error.message:'Invalid previous address',400);}
   guardRentFields(updates,tenant);const expectedRentTermsVersion=updates.expectedRentTermsVersion??Number(tenant.rentTermsVersion||0);delete updates.expectedRentTermsVersion;for(const key of rentProtectedFields)delete updates[key];
   if(!Number.isInteger(expectedRentTermsVersion))return plainError('Invalid rental terms version',400);
   const protectedNames=['ownerUID','propertyId','userUID','id','createdAt','linkConfirmationRequired','phoneE164','linkedAt','linkedByUID'];
@@ -122,7 +135,7 @@ export async function updateTenant(request:Request,id:string) {
   try{validateTenantRentSchedule(updates,tenant);}catch(error){return plainError(error instanceof Error?error.message:'Invalid rent schedule',400);}
   delete updates.id;delete updates.createdAt;updates.updatedAt=new Date();
   try{model('Tenant',{...tenant,...updates},true);}catch{return plainError('Invalid tenant fields',400);}
-  await syncTenant(id,updates,user,expectedPropertyUpdatedAt,hasInventory?{items:inventory,version:expectedInventoryVersion}:undefined,Number(expectedRentTermsVersion));return jsonResponse({success:true,message:'Tenant updated successfully'});
+  await syncTenant(id,updates,user,expectedPropertyUpdatedAt,hasInventory?{items:inventory,version:expectedInventoryVersion}:undefined,Number(expectedRentTermsVersion),addressExpected);return jsonResponse({success:true,message:'Tenant updated successfully'});
 }
 export async function deleteTenant(request:Request,id:string) {
   const user=await identity(request);const tenant=await getRecord(COLLECTIONS.tenants,id,'Tenant');if(!tenant)return plainError('Tenant not found',404);
@@ -141,7 +154,7 @@ export async function manageAdminTenancy(request:Request,propertyId:string) {
   let added:RecordData|null=null;
   if(action!=='remove') {
     if(!isRecord(req.tenant))return plainError('Tenant details are required',400);
-    const value=req.tenant;inventoryGuard(value);guardRentFields(value);
+    const value=req.tenant;try{Object.assign(value,createPreviousAddress(value));}catch(error){return plainError(error instanceof Error?error.message:'Invalid previous address',400);}inventoryGuard(value);guardRentFields(value);
     try{validateTenantRentSchedule(value);}catch(error){return plainError(error instanceof Error?error.message:'Invalid rent schedule',400);}
     if(!value.firstName||!value.lastName||!value.email||!value.phone||!value.userUID)return plainError('A registered tenant with first name, last name, email, and phone is required',400);
     if(value.paymentDueDate&&(!/^\d{1,2}$/.test(s(value.paymentDueDate))||Number(value.paymentDueDate)<1||Number(value.paymentDueDate)>31))return plainError('Payment due day must be between 1 and 31',400);
@@ -216,13 +229,17 @@ export async function manageAdminTenancy(request:Request,propertyId:string) {
   dispatchNotificationIntents(intentIds);
   return jsonResponse({success:true,message:`Tenant ${action} completed`,tenancyRevision:Number(req.expectedRevision)+1,tenant:added?wireValue(added):undefined});
 }
-async function syncTenant(id:string,updates:RecordData,user:Awaited<ReturnType<typeof identity>>,expectedPropertyUpdatedAt='',inventory?:{items:unknown;version:unknown},expectedRentTermsVersion?:number) {
+async function syncTenant(id:string,updates:RecordData,user:Awaited<ReturnType<typeof identity>>,expectedPropertyUpdatedAt='',inventory?:{items:unknown;version:unknown},expectedRentTermsVersion?:number,expectedPreviousAddressVersion?:number) {
   const eventId=randomUUID(),intentIds:string[]=[];let lifecycleEmails:TransactionalEmailEvent[]=[];
   await getDatabase().runTransaction(async tx=>{
     const ref=collection().doc(id),snapshot=await tx.get(ref);
     if(!snapshot.exists)throw new AccessError(403,'Tenant access required');
     const tenant=snapshot.data()!;const propertyRef=getDatabase().collection(COLLECTIONS.properties).doc(s(tenant.propertyId));
     if('userUID' in updates&&updates.userUID!==tenant.userUID)throw new ApiError(409,'Tenant identity changed; refresh before editing');
+    if(expectedPreviousAddressVersion!==undefined){
+      if(Number(tenant.previousAddressVersion||0)!==expectedPreviousAddressVersion)throw new ApiError(409,'Previous address changed; reload before saving');
+      if(['previousAddress','previousAddressStructured'].some(key=>key in updates&&JSON.stringify(updates[key])!==JSON.stringify(tenant[key])))updates.previousAddressVersion=expectedPreviousAddressVersion+1;
+    }
     const property=await tx.get(propertyRef);
     if(!property.exists)throw new AccessError(403,'Property access required');
     const propertyUpdatedAt=property.data()?.updatedAt;

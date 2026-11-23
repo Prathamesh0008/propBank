@@ -1,4 +1,8 @@
 "use client";
+import StructuredAddressFields from '@/components/StructuredAddressFields';
+import {readPreviousAddress,personalAddressSchema} from '@/lib/personal-address';
+import {propertyAddressDisplay} from '@/lib/property-address';
+import type {AddressValue} from '@/lib/structured-address';
 import {formatDisplayDate} from '@/lib/date-format';
 
 import AgreementInventoryPanel from './AgreementInventoryPanel';
@@ -65,6 +69,10 @@ interface TenantData {
   monthlyRent: string;
   securityDeposit: string;
   previousAddress: string;
+  previousAddressStructured?:AddressValue;
+  previousAddressVersion?:number;
+  addressTouched?:boolean;
+  addressError?:string;
   employmentStatus: string;
   employer: string;
   monthlyIncome: string;
@@ -189,6 +197,9 @@ const AddTenant = () => {
               monthlyRent: tenant.monthlyRent || property.monthlyRent || '',
               securityDeposit: tenant.securityDeposit || property.securityDeposit || '',
               previousAddress: tenant.previousAddress,
+              previousAddressStructured: readPreviousAddress(tenant),
+              previousAddressVersion:Number(tenant.previousAddressVersion||0),
+              addressTouched:false,
               employmentStatus: tenant.employmentStatus,
               employer: tenant.employer || '',
               monthlyIncome: tenant.monthlyIncome || '',
@@ -450,6 +461,8 @@ const AddTenant = () => {
       return;
     }
 
+    for(const tenant of tenants)if(tenant.addressTouched){const validation=personalAddressSchema.safeParse(tenant.previousAddressStructured);if(!validation.success){setTenants(previous=>previous.map(row=>row.id===tenant.id?{...row,addressError:validation.error.issues[0]?.message||'Review the address fields.'}:row));toast({title:'Previous address needs attention',description:validation.error.issues[0]?.message||'Review the address fields.',variant:'destructive'});return;}}
+
     const tenantsWithMissingSpouseInfo = tenants.filter(tenant => {
       if (tenant.isMarried && tenant.spouse) {
         return !tenant.spouse.firstName || !tenant.spouse.lastName || !tenant.spouse.phone;
@@ -495,6 +508,7 @@ const AddTenant = () => {
         monthlyRent: tenant.monthlyRent,
         securityDeposit: tenant.securityDeposit,
         previousAddress: tenant.previousAddress,
+        ...(tenant.addressTouched?{previousAddressStructured:tenant.previousAddressStructured,...(editingTenantId&&!adminMode?{expectedPreviousAddressVersion:tenant.previousAddressVersion||0}:{})}:{}),
         employmentStatus: tenant.employmentStatus,
         employer: tenant.employer,
         monthlyIncome: tenant.monthlyIncome,
@@ -1202,16 +1216,7 @@ const AddTenant = () => {
                       Background Information
                     </h4>
                     <div className="space-y-4">
-                      <div>
-                        <Label htmlFor={`previousAddress - ${tenant.id} `}>Previous Address</Label>
-                        <Textarea
-                          id={`previousAddress - ${tenant.id} `}
-                          value={tenant.previousAddress}
-                          onChange={(e) => handleInputChange(tenant.id, 'previousAddress', e.target.value)}
-                          placeholder="Enter previous address"
-                          rows={2}
-                        />
-                      </div>
+                      <StructuredAddressFields legend="Previous residential address (optional)" optional error={tenant.addressError} value={tenant.previousAddressStructured||readPreviousAddress(tenant as unknown as Record<string,unknown>)} onChange={value=>setTenants(previous=>previous.map(row=>row.id===tenant.id?{...row,previousAddressStructured:value,previousAddress:propertyAddressDisplay(value),addressTouched:true,addressError:''}:row))} disabled={isSubmitting}/>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <Label htmlFor={`employmentStatus - ${tenant.id} `}>Employment Status</Label>

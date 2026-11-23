@@ -1,7 +1,7 @@
 "use client";
 import {propertyPriceText, propertyPricing} from '@/lib/property-presentation';
 
-import {formatAddress} from "@/lib/address-format";
+import {formatPropertyAddress} from "@/lib/property-address";
 
 import PropertyPurposeSummary from "@/features/properties/PropertyPurposeSummary";
 import {purposeLabel} from "@/lib/property-purpose";
@@ -277,7 +277,7 @@ const SearchResults = () => {
             <div className={styles.propertyBody}>
               <div className={styles.propertyTop}><span>{property.propertyType || 'Property'}{property.configuration ? ` · ${property.configuration}` : ''}</span><span className={styles.price}>{formatPrice(property)}</span></div>
               <h3><Link to={`/property/${property.id}`}>{property.title || 'Explore property'}</Link></h3>
-              <p className={styles.address}><MapPin size={15} />{formatAddress(property.address) || formatAddress(property.city) || 'Location available on enquiry'}</p>
+              <p className={styles.address}><MapPin size={15} />{formatPropertyAddress(property) || 'Location available on enquiry'}</p>
               <div className={styles.features}>
                 {property.bedrooms > 0 && <span><BedDouble size={15}/>{property.bedrooms} beds</span>}
                 {property.bathrooms > 0 && <span><Bath size={15}/>{property.bathrooms} baths</span>}

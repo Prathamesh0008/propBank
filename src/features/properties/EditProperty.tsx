@@ -1,4 +1,6 @@
 "use client";
+import StructuredAddressFields from '@/components/StructuredAddressFields';
+import {propertyAddressSchema,propertyAddressDisplay,readPropertyAddress,propertyAddressDraft} from '@/lib/property-address';
 import {propertyEditPayload} from '@/lib/property-edit-payload';
 import {formatDisplayDateTime} from '@/lib/date-format';
 
@@ -50,6 +52,7 @@ const formSchema = z.object({
   unitNumber: z.string().optional(),
   floor: z.string().optional(),
   location: z.string().min(1, "Location is required"),
+  structuredAddress: propertyAddressSchema.optional(),
   carpetArea: z.string().optional(),
   plotArea: z.string().optional(),
   constructedArea: z.string().optional(),
@@ -254,6 +257,7 @@ const EditProperty = () => {
         unitNumber: propertyData.unitNumber || "",
         floor: propertyData.floor || "",
         location: propertyData.location || propertyData.address || "",
+        structuredAddress: ["residential","commercial"].includes(propertyData.propertyType) ? readPropertyAddress(propertyData) : undefined,
         carpetArea: propertyData.carpetArea || "",
         plotArea: propertyData.plotArea || "",
         constructedArea: propertyData.constructedArea || "",
@@ -680,9 +684,11 @@ const EditProperty = () => {
                 toast({ title: "Please review the highlighted fields", description: firstMessage || `${invalidFields.length} field(s) need attention.`, variant: "destructive" });
               })} className={`${styles.formBody} space-y-8`}>
                 <ClientPropertyFields form={form} disabled={!isPropertyEditable()}/>
+                {['residential','commercial'].includes(editCategory||'') && <StructuredAddressFields disabled={!isPropertyEditable()} value={propertyAddressDraft(form.watch('structuredAddress'))} onChange={value=>{form.setValue('structuredAddress',value,{shouldDirty:true});form.setValue('location',propertyAddressDisplay(value),{shouldDirty:true});form.setValue('unitNumber',value.structured.unitNumber||'',{shouldDirty:true});}} error={form.formState.errors.structuredAddress ? 'Please review the address fields.' : undefined}/>}
+
                 <fieldset className="grid gap-4 sm:grid-cols-2">
                   <legend className="font-semibold mb-3">Unit and area details</legend>
-                  <FormField control={form.control} name="unitNumber" render={({field})=><FormItem><FormLabel>{getUnitLabel()}</FormLabel><FormControl><Input disabled={!isPropertyEditable()} {...field} value={field.value||''}/></FormControl><FormMessage/></FormItem>}/>
+                  {!['residential','commercial'].includes(editCategory||'') && <>                  <FormField control={form.control} name="unitNumber" render={({field})=><FormItem><FormLabel>{getUnitLabel()}</FormLabel><FormControl><Input disabled={!isPropertyEditable()} {...field} value={field.value||''}/></FormControl><FormMessage/></FormItem>}/></>}
                   {!editPlotStructure&&<FormField control={form.control} name="floor" render={({field})=><FormItem><FormLabel>Floor</FormLabel><FormControl><Input disabled={!isPropertyEditable()} {...field} value={field.value||''}/></FormControl><FormMessage/></FormItem>}/>}
                   {!editPlotStructure&&<FormField control={form.control} name="carpetArea" render={({field})=><FormItem><FormLabel>Carpet area</FormLabel><FormControl><Input type="number" min="0" disabled={!isPropertyEditable()} {...field} value={field.value||''}/></FormControl><FormMessage/></FormItem>}/>}
                   {!editPlotStructure&&<FormField control={form.control} name="constructedArea" render={({field})=><FormItem><FormLabel>Built-up / Constructed area</FormLabel><FormControl><Input type="number" min="0" disabled={!isPropertyEditable()} {...field} value={field.value||''}/></FormControl><FormMessage/></FormItem>}/>}

@@ -1,3 +1,5 @@
+import {formatPropertyAddress} from '@/lib/property-address';
+import {redactPersonalAddresses} from '@/lib/personal-address';
 import {propertyPricing,readStoredPropertyMoney} from '@/lib/property-presentation';
 import {validPropertyMoney} from '@/lib/property-money';
 import {rentForBillingPeriod,localRentDate} from '@/lib/rent-resolution';
@@ -15,7 +17,7 @@ const tenantLinkFields = {linkConfirmationRequired: 'bool', phoneE164: 'string'}
 function tenantLinkValues(name: string, input: RecordData): RecordData {
   if(name==='RentScheduleItem')return 'months' in input?{months:typedValue('string',input.months,true,'RentScheduleItem.months')}:{};
   if (!['Tenant', 'TenantInfo'].includes(name)) return {};
-  const inventory=Object.fromEntries(['agreementInventory','inventoryHistory','rentAgreementSnapshots','rentEffectiveFrom','rentTermsVersion'].filter(key=>key in input).map(key=>[key,input[key]]));
+  const inventory=Object.fromEntries(['agreementInventory','inventoryHistory','rentAgreementSnapshots','rentEffectiveFrom','rentTermsVersion','previousAddressStructured','previousAddressVersion'].filter(key=>key in input).map(key=>[key,input[key]]));
   return {...inventory,...('rentSchedule'in input?{rentSchedule:typedValue('[]RentScheduleItem',input.rentSchedule,true,'Tenant.rentSchedule')}:{}),...Object.fromEntries(Object.entries(tenantLinkFields).filter(([key]) => key in input)
     .map(([key, type]) => [key, typedValue(type, input[key], true, key)]))};
 }
@@ -142,6 +144,7 @@ export function propertyResponse(property: RecordData, projection = 'normal', us
   }
   if (userRole) result.userRole = userRole;
   const response=wireModel('PropertyResponse',result);
+  if(userRole)for(const key of ['structuredAddress','addressVersion'])if(key in property)response[key]=wireValue(property[key]);
   if(userRole)for(const field of schemas.Property)if(field.name!=='price')response[field.name]=nestedModel(field.type,property[field.name],false);
   if(userRole)for(const key of ['createdAs','submittedByUID','ownershipVerification','reportedOwner'])if(key in property)response[key]=wireValue(property[key]);
   if(userRole==='owner'||userRole==='admin')for(const key of ownerReviewFields)if(key in property)response[key]=wireValue(property[key]);
@@ -154,7 +157,8 @@ export function propertyResponse(property: RecordData, projection = 'normal', us
   if(userRole)for(const key of purposeFields)if(key in property)response[key]=wireValue(property[key]);
   if(isRecord(response.preLeased)&&!['owner','admin'].includes(userRole||'')){const {existingTenant:privateTenant,...lease}=response.preLeased;response.preLeased=lease;}
   if(property.listingType==='pre_leased'){response.investment=leaseSummary(property);response.leaseReviewRequired=leaseExpired(property);}
-  return response;
+  if(property.structuredAddress){response.address=formatPropertyAddress(property);response.location=response.address;}
+  return userRole==='owner'||userRole==='admin'?response:redactPersonalAddresses(response);
 }
 
 export function publicPropertyResponse(property:RecordData) {

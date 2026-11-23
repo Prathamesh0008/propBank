@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import { CalendarDays, MessageSquare } from "lucide-react";
 import GeneralInquiryForm from "@/features/landing-page/GeneralInquiryForm";
 import styles from "./QuickInquirySection.module.css";
 
@@ -9,12 +8,17 @@ export const QuickInquirySection = () => (
   <section id="quick-inquiry" className={styles.section} aria-labelledby="quick-inquiry-title">
     <div className={styles.shell}>
       <div className={styles.story}>
-        <MessageSquare size={24} strokeWidth={1.4} aria-hidden="true" className={styles.icon}/>
-        <h2 id="quick-inquiry-title">Let’s talk<br/><em>property.</em></h2>
-        <p>Share what you’re looking for or request a visit. Our team will review your enquiry.</p>
-        <figure className={styles.photo}><Image src="/images/portfolio/planning.jpg" alt="People reviewing plans and documents together at a table" width={1400} height={934} sizes="(max-width: 850px) 100vw, 40vw"/><figcaption><CalendarDays size={15} aria-hidden="true"/> A conversation is a good place to start.</figcaption></figure>
+        <Image className={styles.photo} src="/images/about-residences.webp" alt="Modern residences with illuminated windows at dusk" fill sizes="(max-width: 700px) 100vw, 45vw"/>
+        <div className={styles.storyContent}>
+          <span className={styles.eyebrow}>A PROPERTY CONVERSATION</span>
+          <h2 id="quick-inquiry-title">Let's Find Your<br/><em>Next Property</em></h2>
+          <p>Buying, renting or selling? Tell us what you have in mind. Our team will help you explore the next step.</p>
+        </div>
       </div>
-      <div className={styles.form}><GeneralInquiryForm hideHeader/></div>
+      <div className={styles.form}>
+        <div className={styles.formHeading}><span>YOUR NEXT MOVE</span><h3>How can we help?</h3></div>
+        <GeneralInquiryForm hideHeader disableDemoAutofill compact/>
+      </div>
     </div>
   </section>
 );
