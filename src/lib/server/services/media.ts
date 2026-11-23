@@ -1,3 +1,4 @@
+import sharp from 'sharp';
 import {PRE_LEASED_EVIDENCE,privateLeaseEvidence,requireDocumentAccess} from './document-access';
 import {publicListing} from '../../listing-policy';
 import 'server-only';
@@ -176,7 +177,13 @@ async function bytesFromBody(body:unknown) {
   for await(const chunk of body as AsyncIterable<Uint8Array>){const bytes=Buffer.from(chunk);size+=bytes.length;if(size>maxBytes)throw new ApiError(413,'Stored file exceeds download limit');chunks.push(bytes);}
   return Buffer.concat(chunks);
 }
-function download(bytes:Buffer,type:string,filename:string) {
+async function download(bytes:Buffer,type:string,filename:string,publicImage=false) {
+  if(publicImage){
+    // Decode/re-encode without keepMetadata/withMetadata. Never fall back to
+    // original EXIF/GPS/XMP-bearing bytes when decoding fails.
+    try{bytes=await sharp(bytes,{limitInputPixels:40000000}).rotate().webp().toBuffer();type='image/webp';filename='property-image.webp';}
+    catch{throw new ApiError(422,'Public property image is unavailable');}
+  }
   const inline=['image/jpeg','image/png','image/gif','image/webp','application/pdf'].includes(type);
   return new Response(new Uint8Array(bytes),{headers:{'Content-Type':inline?type:'application/octet-stream','Content-Length':String(bytes.length),'Content-Disposition':`${inline?'inline':'attachment'}; filename="${filename.replace(/[^a-zA-Z0-9_. -]/g,'_')}"`,'Cache-Control':'private, no-store','Vary':'Cookie, Authorization','X-Content-Type-Options':'nosniff','Cross-Origin-Resource-Policy':'same-origin','Content-Security-Policy':"sandbox; default-src 'none'"}});
 }
@@ -208,18 +215,22 @@ export async function deliverMedia(request:Request,id:string) {
   if(data.bucket!==privateBucket()||data.key!==`managed/${id}`)throw new ApiError(409,'Invalid managed file location');
   let object;try{object=await getR2Client().send(new GetObjectCommand({Bucket:data.bucket,Key:data.key}),{abortSignal:AbortSignal.timeout(30000)});}catch{throw new ApiError(502,'Stored file could not be downloaded');}
   if(Number(object.ContentLength)>maxBytes)throw new ApiError(413,'Stored file exceeds download limit');
-  return download(await bytesFromBody(object.Body),data.contentType,data.filename);
+  return download(await bytesFromBody(object.Body),data.contentType,data.filename,publicFile&&bindings.some(item=>item.binding.collection==='properties'));
 }
 export async function deliverLegacy(request:Request) {
-  const user=await mediaUser(request),params=new URL(request.url).searchParams;
+  const params=new URL(request.url).searchParams;
   const collection=params.get('resource')||'',id=params.get('id')||'',field=params.get('field')||'',index=params.get('index');
   if(!fileFields[collection]?.includes(field)||!id||id.includes('/')||index!==null&&!/^\d{1,3}$/.test(index))throw new ApiError(400,'Invalid file reference');
   const doc=await getDatabase().collection(collection).doc(id).get();if(!doc.exists)throw new ApiError(404,'File record not found');
   const data=doc.data()!,propertyId=collection==='properties'?id:String(data.propertyId||'');
-  await canReadBinding(user,{collection,id,field,propertyId},data);
+  // Only the already publishable cover is anonymous; never broaden access to
+  // internal images, evidence, private managed aliases, or unapproved listings.
+  const cover=data.images?.[0];
+  const publicCover=collection==='properties'&&field==='images'&&index==='0'&&published(data)&&typeof cover==='string'&&!mediaId(cover)&&!(data.internalImages||[]).includes(cover);
+  if(!publicCover){const user=await mediaUser(request);await canReadBinding(user,{collection,id,field,propertyId},data);}
   const value=index===null?data[field]:data[field]?.[Number(index)];
   if(typeof value!=='string'||!value)throw new ApiError(404,'File not found');
-  if(value.startsWith('data:')){const parsed=parseBase64(value);if(parsed.bytes.length>maxBytes)throw new ApiError(413,'File too large');return download(parsed.bytes,parsed.contentType,'legacy-file'+parsed.extension);}
+  if(value.startsWith('data:')){const parsed=parseBase64(value);if(parsed.bytes.length>maxBytes)throw new ApiError(413,'File too large');return download(parsed.bytes,parsed.contentType,'legacy-file'+parsed.extension,publicCover);}
   let key='',bucket='',gcs=false;
   try{key=extractR2Key(value);bucket=getR2Configuration().bucketName;}catch{
     let url;try{url=new URL(value);}catch{throw new ApiError(400,'Legacy file needs migration');}
@@ -234,8 +245,8 @@ export async function deliverLegacy(request:Request) {
     if(uploader!==expected){const profile=field==='adminImage'?await getDatabase().collection('users').doc(uploader).get():null;if(!profile?.exists||profile.data()?.role!=='admin'||profile.data()?.isActive===false)throw new AccessError(403,'Historical uploader scope does not match this record; migration review required');}
   }else if(!/^(?:documents|properties)\//.test(key))throw new AccessError(403,'Historical object has no trusted property scope; migration review required');
   try{
-    if(gcs){const object=getFirebaseAdminStorage().bucket(bucket).file(key),[metadata]=await object.getMetadata();if(Number(metadata.size)>maxBytes)throw new ApiError(413,'File too large');const bytes=await bytesFromBody(object.createReadStream());return download(bytes,String(metadata.contentType||''),'legacy-file');}
-    const object=await getR2Client().send(new GetObjectCommand({Bucket:bucket,Key:key}),{abortSignal:AbortSignal.timeout(30000)});if(Number(object.ContentLength)>maxBytes)throw new ApiError(413,'File too large');return download(await bytesFromBody(object.Body),String(object.ContentType||''),'legacy-file');
+    if(gcs){const object=getFirebaseAdminStorage().bucket(bucket).file(key),[metadata]=await object.getMetadata();if(Number(metadata.size)>maxBytes)throw new ApiError(413,'File too large');const bytes=await bytesFromBody(object.createReadStream());return download(bytes,String(metadata.contentType||''),'legacy-file',publicCover);}
+    const object=await getR2Client().send(new GetObjectCommand({Bucket:bucket,Key:key}),{abortSignal:AbortSignal.timeout(30000)});if(Number(object.ContentLength)>maxBytes)throw new ApiError(413,'File too large');return download(await bytesFromBody(object.Body),String(object.ContentType||''),'legacy-file',publicCover);
   }catch(error){if(error instanceof ApiError)throw error;throw new ApiError(502,'Legacy file could not be downloaded');}
 }
 

@@ -83,7 +83,7 @@ export async function propertyHub(request:Request){
  if(!id&&user.role!=='admin'){
   for(const field of ['brokerUID','customerUID']){
    const page=await documentPage(getDatabase().collection(COLLECTIONS.negotiations).where(field,'==',user.uid),50,negotiationRole===field?negotiationCursor:'');const snapshot={docs:page.docs};negotiationPages[field]=page.nextCursor;if(page.nextCursor||negotiationCursor)truncated=true;
-   for(const doc of snapshot.docs){const n=doc.data();if(hubs.some(h=>h.property.id===n.propertyId))continue;const actionable=field==='brokerUID'&&['offered','proposed','countered'].includes(n.status)||field==='customerUID'&&['owner_approved','countered'].includes(n.status);if(actionable)actions.push({propertyId:n.propertyId,propertyTitle:n.propertyTitle,label:field==='brokerUID'?'Assigned negotiation awaiting broker proposal':'Owner-approved offer awaiting your acceptance',path:'/manage-property#assigned-offers',role:field==='brokerUID'?'broker':'customer'});}
+   for(const doc of snapshot.docs){const n=doc.data();if(hubs.some(h=>h.property.id===n.propertyId))continue;const actionable=field==='brokerUID'&&['offered','proposed','countered'].includes(n.status)||field==='customerUID'&&['owner_approved','countered'].includes(n.status);if(actionable)actions.push({propertyId:n.propertyId,propertyTitle:field==='customerUID'?'Property':n.propertyTitle,label:field==='brokerUID'?'Assigned negotiation awaiting broker proposal':'Owner-approved offer awaiting your acceptance',path:'/manage-property#assigned-offers',role:field==='brokerUID'?'broker':'customer'});}
   }
  }
  let pipeline:RecordData[]=[];

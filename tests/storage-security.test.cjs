@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {isolated,users,properties,request,route,context}=require('./fixtures/native-server.cjs');
-const image='data:image/png;base64,AQID',pdf='data:application/pdf;base64,JVBERi0xLjQK';
+const image='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADklEQVQImWP4DwYMEAoAU7oL9W/sIDEAAAAASUVORK5CYII=',pdf='data:application/pdf;base64,JVBERi0xLjQK';
 const setup=()=>isolated({users,properties:{P:properties.P,Q:{...properties.P,id:'Q',ownerUID:'other',tenants:[]}}});
 async function upload(app,uid='owner',extra={}){const response=await route(app,'upload/image').POST(request('/upload/image',uid,'POST',{image,...extra}));assert.equal(response.status,200,await response.clone().text());return (await response.json()).url;}
 async function document(app,uid='tenant',fileUrl=pdf,propertyId='P') {const response=await route(app,'documents').POST(request('/documents',uid,'POST',{propertyId,documentName:'Private evidence',documentType:'Agreement',fileUrl}));assert.equal(response.status,201,await response.clone().text());return (await response.json()).document;}

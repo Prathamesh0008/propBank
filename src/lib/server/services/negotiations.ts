@@ -51,7 +51,13 @@ function canRead(
   );
 }
 
-function negotiationEvent(n:Negotiation,actorUID:string):UserEvent {return {emailContext:{status:n.status,rows:[{label:'Property',value:n.propertyTitle}],nextStep:'Review the offer, counteroffer and decision history in your authorized workspace.'},actorUID,eventType:`negotiation.${n.status}`,eventId:`${n.id}:${n.version||0}:${n.status}`,recipients:Array.from(new Set([n.ownerUID,n.customerUID,n.brokerUID].filter(Boolean))).map(uid=>({uid,role:uid===n.ownerUID?'owner':uid===n.customerUID?'customer':'broker'})),propertyId:n.propertyId,recordId:n.id,templateId:'negotiation-activity',subject:`Negotiation update: ${n.propertyTitle}`,title:'Negotiation updated',bodyHtml:`<p><strong>${escapeHtml(n.propertyTitle)}</strong>: ${escapeHtml(n.status.replaceAll('_',' '))}</p><p>Open the property to review the offer and its history.</p>`,bodyText:`${n.propertyTitle}: ${n.status.replaceAll('_',' ')}. Open the property to review the offer and its history.`,action:{label:'Review negotiation',path:`/manage-property/${n.propertyId}`}};}
+/** Customer participation does not authorize building identity or exact location. */
+function negotiationResponse(n:Negotiation,user:AuthenticatedUser) {
+  if(user.role==='admin'||user.uid===n.ownerUID||user.uid===n.brokerUID)return n;
+  const fields=['id','propertyId','ownerUID','customerUID','brokerUID','originalAskingPrice','customerOffer','brokerProposedAmount','ownerCounterAmount','ownerApprovedAmount','finalAgreedAmount','status','version','createdAt','updatedAt'] as const;
+  return {...Object.fromEntries(fields.map(key=>[key,n[key]])),propertyTitle:'Property',history:(n.history||[]).map(({action,actorUID,amount,at})=>({action,actorUID,amount,at}))};
+}
+function negotiationEvent(n:Negotiation,actorUID:string):UserEvent {n={...n,propertyTitle:'Property'};return {emailContext:{status:n.status,rows:[{label:'Property',value:n.propertyTitle}],nextStep:'Review the offer, counteroffer and decision history in your authorized workspace.'},actorUID,eventType:`negotiation.${n.status}`,eventId:`${n.id}:${n.version||0}:${n.status}`,recipients:Array.from(new Set([n.ownerUID,n.customerUID,n.brokerUID].filter(Boolean))).map(uid=>({uid,role:uid===n.ownerUID?'owner':uid===n.customerUID?'customer':'broker'})),propertyId:n.propertyId,recordId:n.id,templateId:'negotiation-activity',subject:`Negotiation update: ${n.propertyTitle}`,title:'Negotiation updated',bodyHtml:`<p><strong>${escapeHtml(n.propertyTitle)}</strong>: ${escapeHtml(n.status.replaceAll('_',' '))}</p><p>Open the property to review the offer and its history.</p>`,bodyText:`${n.propertyTitle}: ${n.status.replaceAll('_',' ')}. Open the property to review the offer and its history.`,action:{label:'Review negotiation',path:`/manage-property/${n.propertyId}`}};}
 
 export async function createNegotiation(
   request: Request
@@ -143,7 +149,7 @@ export async function createNegotiation(
   return jsonResponse(
     {
       success: true,
-      negotiation: n,
+      negotiation: negotiationResponse(n,user),
     },
     201
   );
@@ -212,7 +218,7 @@ export async function listNegotiations(
 
   return jsonResponse({
     success: true,
-    negotiations,
+    negotiations:negotiations.map(n=>negotiationResponse(n,user)),
     limited: negotiations.length >= 100,
   });
 }
@@ -631,6 +637,6 @@ export async function updateNegotiation(
 
   return jsonResponse({
     success: true,
-    negotiation: result,
+    negotiation: negotiationResponse(result,user),
   });
 }

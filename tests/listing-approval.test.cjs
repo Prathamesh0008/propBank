@@ -19,7 +19,7 @@ test('new owner listings remain pending and private until administrator approval
  const app=setup(),p=await submit(app);assert.equal(p.moderationStatus,'pending_review');assert.equal(app.state.properties[p.id].moderationRevision,1);await hidden(app,p.id);
  const mine=await(await route(app,'properties').GET(request('/properties?ownerUID=owner','owner'))).json();assert.equal(mine.properties.find(v=>v.id===p.id).moderationStatus,'pending_review');
  assert.equal((await read(app,p.id,'admin')).status,200);assert.equal((await decision(app,p.id,'approve')).status,200);
- assert.equal((await read(app,p.id)).status,200);const listing=await(await route(app,'properties/search').GET(request('/properties/search?q=Review'))).json();assert.equal(listing.count,1);
+ assert.equal((await read(app,p.id)).status,200);const listing=await(await route(app,'properties/search').GET(request('/properties/search?q=residential'))).json();assert.equal(listing.count,1);
  const stored=app.state.properties[p.id];assert.equal(stored.moderationReviewerUID,'admin');assert.ok(stored.moderationReviewedAt instanceof Date);assert.equal(stored.moderationHistory.length,2);assert.equal(stored.moderationHistory[1].action,'approve');
  const publicBody=await(await read(app,p.id)).json();assert.ok(!('moderationHistory' in publicBody.property));
 });
@@ -76,7 +76,7 @@ test('tenant supplied records remain private and also support admin review',asyn
 });
 
 test('pending listing photos cannot be downloaded anonymously and approval publishes only the cover',async()=>{
- const app=setup(),p=await submit(app,{images:['data:image/png;base64,AQID']});const id=p.images[0].split('/').at(-1),api=route(app,'media/[id]');
+ const app=setup(),p=await submit(app,{images:['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADklEQVQImWP4DwYMEAoAU7oL9W/sIDEAAAAASUVORK5CYII=']});const id=p.images[0].split('/').at(-1),api=route(app,'media/[id]');
  assert.equal((await api.GET(request('/media/'+id),context(id))).status,401);
  assert.equal((await api.GET(request('/media/'+id,'other'),context(id))).status,403);
  await decision(app,p.id,'approve');assert.equal((await api.GET(request('/media/'+id),context(id))).status,200);

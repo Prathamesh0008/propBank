@@ -87,6 +87,9 @@ export async function postNotification(request:Request) {
     notification=await createNotification(req,actor);
   }
   const visible=wireModel('AdminNotification',notification);
+  // Enquiry submission grants no additional property-location access. Keep the
+  // authoritative full address in the admin record/email, never in its receipt.
+  if(req.type==='property_enquiry'){visible.propertyAddress='Location available on request';visible.propertyTitle='Property';}
   for(const key of ['ownerEmail','ownerPhone','tenantEmail','tenantPhone','buyers'])visible[key]='';
   return jsonResponse({success:true,message:duplicate?'Enquiry already received':'Admin notification created successfully',duplicate,notification:visible,...(req.type==='property_enquiry'?{emailNotification:{queued:!duplicate,status:duplicate?'existing':'pending'}}:{})},duplicate?200:201);
 }

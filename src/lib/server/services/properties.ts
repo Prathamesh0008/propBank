@@ -1,3 +1,4 @@
+import {publicPropertyLocation,publicPropertyTitle} from '@/lib/public-property-location';
 import {assertPersonalAddressKeys} from '@/lib/personal-address';
 import {resolvePropertyAddress} from '@/lib/property-address';
 import {stagePropertyActivity} from './property-activity';
@@ -115,8 +116,8 @@ export async function searchProperties(request:Request) {
     if(projectCondition==='Preleased'&&property.listingType!=='pre_leased'&&property.projectCondition!=='Preleased')return false;
     if (!available(property,raw)||listingType==='rent'&&property.rentalStatus==='rented'||listingType&&property.listingType!==listingType&&!(listingType==='sell'&&property.listingType==='pre_leased')&&!(property.listingType==='sell_rent'&&['rent','sell'].includes(listingType))) return false;
     if (!term) return true;
-    const fields=['location','address','city','state','title','propertyType','configuration','unitNumber','floor'];
-    return fields.some(key=>!!s(property[key])&&s(property[key]).toLowerCase().includes(search)) || ['bhk','rk'].some(tag=>search.includes(tag)&&s(property.configuration).toLowerCase().includes(tag));
+    const publicSearch={...publicPropertyLocation(property),title:publicPropertyTitle(property),propertyType:property.propertyType,configuration:property.configuration};
+    return Object.values(publicSearch).some(value=>!!s(value)&&s(value).toLowerCase().includes(search)) || ['bhk','rk'].some(tag=>search.includes(tag)&&s(property.configuration).toLowerCase().includes(tag));
   }).map(row=>publicPropertyResponse(listingType&&row.property.listingType==='sell_rent'?{...row.property,listingType}:row.property));
   return listResponse(filtered,{query:term,...(listingType?{listingType}:{}),nextCursor:page.nextCursor,coverageComplete:!page.nextCursor,candidatesInspected:page.examined,searchMode:'bounded-substring'});
 }
