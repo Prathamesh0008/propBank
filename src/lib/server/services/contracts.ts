@@ -1,3 +1,6 @@
+import {publicPropertyText} from '@/lib/public-unit-privacy';
+import {publicPropertyLocation,publicPropertyTitle} from '@/lib/public-property-location';
+import {legacyFileUrl,mediaId} from '../file-projection';
 import {formatPropertyAddress} from '@/lib/property-address';
 import {redactPersonalAddresses} from '@/lib/personal-address';
 import {propertyPricing,readStoredPropertyMoney} from '@/lib/property-presentation';
@@ -158,17 +161,26 @@ export function propertyResponse(property: RecordData, projection = 'normal', us
   if(isRecord(response.preLeased)&&!['owner','admin'].includes(userRole||'')){const {existingTenant:privateTenant,...lease}=response.preLeased;response.preLeased=lease;}
   if(property.listingType==='pre_leased'){response.investment=leaseSummary(property);response.leaseReviewRequired=leaseExpired(property);}
   if(property.structuredAddress){response.address=formatPropertyAddress(property);response.location=response.address;}
+  if(!['owner','admin','agent','tenant'].includes(userRole||''))return projectPublicProperty(response,property);
   return userRole==='owner'||userRole==='admin'?response:redactPersonalAddresses(response);
 }
 
-export function publicPropertyResponse(property:RecordData) {
-  const full=propertyResponse(property);
-  const allowed=['id','title','description','price','address','city','state','zipCode','propertyType','propertyCategory','listingType','configuration','unitNumber','floor','location','carpetArea','constructedArea','plotArea','areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit','squareFeet','buildingName','structure','bedrooms','bathrooms','monthlyRent','expectedRent','sellingPrice','rentalStatus','status','isActive','isSold','projectCondition','createdAt','updatedAt'];
+export function publicPropertyResponse(property:RecordData) {return propertyResponse(property);}
+
+function projectPublicProperty(full:RecordData,property:RecordData) {
+  const allowed=['id','price','city','state','propertyType','propertyCategory','listingType','configuration','carpetArea','constructedArea','plotArea','areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit','squareFeet','structure','bedrooms','bathrooms','monthlyRent','expectedRent','sellingPrice','rentalStatus','status','isActive','isSold','projectCondition','createdAt','updatedAt'];
   const result:RecordData=Object.fromEntries(allowed.filter(key=>key in full).map(key=>[key,full[key]]));
   // Retain empty legacy keys so existing screens can safely render their defaults.
   for(const key of ['ownerEmail','ownerPhone','tenantName','personName','mobileNumber','primaryNo','ultNo','tenantDetails','specificComments','agreementStartDate','agreementEndDate','agreementPeriod','securityDeposit','paymentDueDate'])result[key]='';
   for(const key of ['tenants','buyers','internalImages','rentSchedule'])result[key]=null;
-  if(property.listingType==='pre_leased')result.investment=leaseSummary(property);
-  result.images=Array.isArray(full.images)?full.images.slice(0,1):[];
+  if(property.listingType==='pre_leased'){
+    const summary=leaseSummary(property);
+    result.investment={...Object.fromEntries(['monthlyRentalIncome','annualRentalIncome','grossYield'].filter(key=>Number.isFinite(summary[key])).map(key=>[key,summary[key]])),leaseReviewRequired:summary.leaseReviewRequired,verificationStatus:summary.verificationStatus,...(typeof summary.leaseEndDate==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(summary.leaseEndDate)?{leaseEndDate:summary.leaseEndDate}:{})};
+  }
+  // Do not disclose historical object names/URLs or embedded image metadata.
+  const cover=Array.isArray(full.images)?full.images[0]:undefined;
+  result.images=typeof cover==='string'&&cover ? [mediaId(cover)?cover:legacyFileUrl('properties',String(property.id),'images',0)] : [];
+  for(const key of ['configuration','propertyType','propertyCategory','listingType','structure','projectCondition','rentalStatus','status'])if(typeof result[key]==='string')result[key]=publicPropertyText(result[key],property);
+  Object.assign(result,publicPropertyLocation(property),{title:publicPropertyTitle(property),description:publicPropertyText(property.description,property)});
   return result;
 }

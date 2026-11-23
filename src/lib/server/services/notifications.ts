@@ -1,3 +1,5 @@
+import {publicPropertyTitle,formatPublicPropertyLocation} from '@/lib/public-property-location';
+import {publicPropertyText} from '@/lib/public-unit-privacy';
 import {formatPropertyAddress} from '@/lib/property-address';
 import {publicListing} from '../../listing-policy';
 import 'server-only';
@@ -34,7 +36,7 @@ export async function createNotificationOnce(input:RecordData,idempotencyKey:str
 }
 export async function postNotification(request:Request) {
   let req:RecordData;try{req=await readModel(request,'CreateAdminNotificationRequest',64<<10);}catch{return plainError('Invalid request body',400);}
-  let actor:AuthenticatedUser|undefined;
+  let actor:AuthenticatedUser|undefined;let publicEnquiryTitle='Property',publicEnquiryAddress='Location available on request';let publicEnquiryProperty:RecordData={};
   const publicInquiry=req.type==='general_inquiry'&&!req.userId&&!request.headers.get('Authorization');
   const allowed=['general_inquiry','property_enquiry','service_request','other_service_request','legal_service_request','want_to_sell','want_to_sell_cancelled'];
   if(!publicInquiry) {
@@ -59,6 +61,7 @@ export async function postNotification(request:Request) {
   if(req.propertyId) {
     const property=await bestEffort(()=>getProperty(s(req.propertyId)));
     if(property) {
+      publicEnquiryTitle=publicPropertyTitle(property);publicEnquiryAddress=formatPublicPropertyLocation(property);publicEnquiryProperty=property;
       if(property.title)req.propertyTitle=property.title;
       req.propertyAddress=formatPropertyAddress(property);
       if(property.listingType)req.propertyListingType=property.listingType;
@@ -87,6 +90,9 @@ export async function postNotification(request:Request) {
     notification=await createNotification(req,actor);
   }
   const visible=wireModel('AdminNotification',notification);
+  // Enquiry submission grants no additional property-location access. Keep the
+  // authoritative full address in the admin record/email, never in its receipt.
+  if(req.type==='property_enquiry'){visible.propertyAddress=publicEnquiryAddress;visible.propertyTitle=publicEnquiryTitle;for(const key of ['title','message','description','adminRemarks'])if(key in visible)visible[key]=publicPropertyText(visible[key],publicEnquiryProperty,'notice');}
   for(const key of ['ownerEmail','ownerPhone','tenantEmail','tenantPhone','buyers'])visible[key]='';
   return jsonResponse({success:true,message:duplicate?'Enquiry already received':'Admin notification created successfully',duplicate,notification:visible,...(req.type==='property_enquiry'?{emailNotification:{queued:!duplicate,status:duplicate?'existing':'pending'}}:{})},duplicate?200:201);
 }

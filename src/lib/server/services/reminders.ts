@@ -1,3 +1,4 @@
+import {publicPropertyText} from '@/lib/public-unit-privacy';
 import {propertyEmailContext,emailMoney} from '@/lib/email-design';
 
 import {formatDisplayDate, formatDisplayMonth} from '@/lib/date-format';
@@ -69,12 +70,15 @@ export async function runVisitReminders(now=new Date(),cursorToken='') {
         }
         const uid=stringValue(visit.userId),profile=await tx.get(db.collection(COLLECTIONS.users).doc(uid));
         if(!profile.exists||profile.data()?.isActive===false||profile.data()?.emailVerified===false||!profile.data()?.email)return null;
-        const title=stringValue(visit.title),when=formatIST(new Date(epoch(visit.visitDate))),details=stringValue(visit.description);
+        const title=publicPropertyText(visit.title,{},'notice')||'Property visit',when=formatIST(new Date(epoch(visit.visitDate))),details=publicPropertyText(visit.description,{},'notice');
         const bodyHtml=`<p><strong>${escapeHtml(title)}</strong></p><p>Scheduled: ${escapeHtml(when)}</p>${details?`<p>${escapeHtml(details)}</p>`:''}`;
         const bodyText=`${title}. Scheduled: ${when}.${details?` Details: ${details}`:''}`;
+        const adminTitle=stringValue(visit.title),adminDetails=stringValue(visit.description);
+        const adminBodyHtml=`<p><strong>${escapeHtml(adminTitle)}</strong></p><p>Scheduled: ${escapeHtml(when)}</p>${adminDetails?`<p>${escapeHtml(adminDetails)}</p>`:''}`;
+        const adminBodyText=`${adminTitle}. Scheduled: ${when}.${adminDetails?` Details: ${adminDetails}`:''}`;
         const events:TransactionalEmailEvent[]=delivery.generation===key&&Array.isArray(delivery.events)?delivery.events as TransactionalEmailEvent[]:[
           {eventType:'visit.reminder',eventId:`${doc.id}:${key}:requester`,recipientUID:uid,recipientRole:'requester',recordId:doc.id,templateId:'visit-reminder-requester',templateVersion:1,subject:`Visit reminder: ${title}`,...brandedEmail('Your visit is in 30 minutes',bodyHtml,bodyText,{label:'Open Visit Planner',path:'/visit-planner'}),idempotencyKey:`visit.reminder:${doc.id}:${key}:requester`,scheduledFor:new Date(epoch(visit.visitDate)-30*60000).toISOString(),reminderOffset:30},
-          ...(stringValue(profile.data()!.email).toLowerCase()===stringValue(process.env.ADMIN_EMAIL).toLowerCase()?[]:[{eventType:'visit.reminder',eventId:`${doc.id}:${key}:admin`,recipientRole:'admin',recipientEmail:process.env.ADMIN_EMAIL,recordId:doc.id,templateId:'visit-reminder-admin',templateVersion:1,subject:`Visit reminder: ${title}`,...brandedEmail('A visit starts in 30 minutes',`<p>Requester: ${escapeHtml(stringValue(profile.data()!.name)||'Registered user')}<br>Verified email: ${escapeHtml(stringValue(profile.data()!.email))}</p>${bodyHtml}`,`Requester: ${stringValue(profile.data()!.name)||'Registered user'} (${stringValue(profile.data()!.email)}). ${bodyText}`,{label:'Open admin visits',path:'/admin?tab=visits'}),idempotencyKey:`visit.reminder:${doc.id}:${key}:admin`,scheduledFor:new Date(epoch(visit.visitDate)-30*60000).toISOString(),reminderOffset:30} as TransactionalEmailEvent]),
+          ...(stringValue(profile.data()!.email).toLowerCase()===stringValue(process.env.ADMIN_EMAIL).toLowerCase()?[]:[{eventType:'visit.reminder',eventId:`${doc.id}:${key}:admin`,recipientRole:'admin',recipientEmail:process.env.ADMIN_EMAIL,recordId:doc.id,templateId:'visit-reminder-admin',templateVersion:1,subject:`Visit reminder: ${adminTitle}`,...brandedEmail('A visit starts in 30 minutes',`<p>Requester: ${escapeHtml(stringValue(profile.data()!.name)||'Registered user')}<br>Verified email: ${escapeHtml(stringValue(profile.data()!.email))}</p>${adminBodyHtml}`,`Requester: ${stringValue(profile.data()!.name)||'Registered user'} (${stringValue(profile.data()!.email)}). ${adminBodyText}`,{label:'Open admin visits',path:'/admin?tab=visits'}),idempotencyKey:`visit.reminder:${doc.id}:${key}:admin`,scheduledFor:new Date(epoch(visit.visitDate)-30*60000).toISOString(),reminderOffset:30} as TransactionalEmailEvent]),
         ];
         tx.update(ref,{reminderDelivery:{generation:key,status:'sending',lease,leaseUntil:new Date(now.getTime()+120000),firstAttemptAt:delivery.generation===key?delivery.firstAttemptAt:now,events}});
         return {key,events};
