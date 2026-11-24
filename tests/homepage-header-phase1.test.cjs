@@ -14,7 +14,7 @@ function header(overrides={},options={}){
   Overlay:()=>null,Content:({children,...rest})=>React.createElement('section',{...rest,role:'dialog'},children),
   Title:({children,...rest})=>React.createElement('h2',rest,children),Description:({children,...rest})=>React.createElement('p',rest,children),
  };
- const dropdown={Root:plain,Trigger:plain,Item:plain,Portal:({children})=>options.workspaceOpen?React.createElement(React.Fragment,null,children):null,Content:({children})=>React.createElement('div',{role:'menu'},children)};
+ const dropdown={Root:plain,Trigger:plain,Item:plain,Label:plain,Separator:()=>null,Portal:({children})=>options.workspaceOpen?React.createElement(React.Fragment,null,children):null,Content:({children})=>React.createElement('div',{role:'menu'},children)};
  const loaded={};
  function load(file){
   if(loaded[file])return loaded[file];
@@ -25,7 +25,7 @@ function header(overrides={},options={}){
    if(name.endsWith('.module.css'))return new Proxy({},{get:(_,key)=>key==='__esModule'?false:String(key)});
    if(name==='@radix-ui/react-dialog')return dialog;
    if(name==='@radix-ui/react-dropdown-menu')return dropdown;
-   if(name==='./UserMenu')return {UserMenu:p=>{userMenuProps=p;return React.createElement('button',{'aria-label':'Profile'},'Account');}};
+   if(name==='./UserMenu')return {UserMenu:p=>{userMenuProps=p;return load('src/features/navbar/UserMenu.tsx').UserMenu(p);}};
    return require(name);
   };
   new Function('exports','require',code)(output,scoped);loaded[file]=output;return output;
@@ -36,21 +36,17 @@ function header(overrides={},options={}){
  return {html,props,changes,dialogProps,userMenuProps,find:predicate=>find(element,predicate)};
 }
 
-test('homepage desktop has the five requested links in order, using existing route/filter contracts',()=>{
+test('shared desktop navigation uses the requested existing routes in order',()=>{
  const {html}=header();const nav=html.match(/<nav aria-label="Main navigation"[^>]*>([\s\S]*?)<\/nav>/)[1];
- const links=[...nav.matchAll(/href="([^"]+)"/g)].map(m=>m[1]);
- assert.deepEqual(links,['/buy','/rent','/properties?projectCondition=New%20Project','/manage-property','/services']);
- const search=new URL(links[2],'http://local');assert.equal(search.searchParams.get('projectCondition'),'New Project');
- assert.match(fs.readFileSync('src/features/search/PropertySearchForm.tsx','utf8'),/value="New Project"/);
- for(const route of ['buy','rent','properties','services','search','auth'])assert.ok(fs.existsSync(`src/app/${route}/page.tsx`));
- for(const route of ['manage-property','select-property-type','visit-planner','my-account'])assert.ok(fs.existsSync(`src/app/(protected)/${route}/page.tsx`));
+ assert.deepEqual([...nav.matchAll(/href="([^"]+)"/g)].map(m=>m[1]),['/visit-planner','/properties','/contact']);
+ for(const route of ['properties','contact','auth'])assert.ok(fs.existsSync(`src/app/${route}/page.tsx`));
+ for(const route of ['manage-property','visit-planner','my-account'])assert.ok(fs.existsSync(`src/app/(protected)/${route}/page.tsx`));
 });
 
-test('original brand mark, search, list property and combined sign-in action are preserved',()=>{
+test('original brand mark, manage CTA and anonymous sign-in remain available',()=>{
  const {html}=header();assert.match(html,/PropBank/);assert.match(html,/M4 4h26v8H12v32H4V4/);
- assert.match(html,/href="\/search"[^>]*aria-label="Search properties"|aria-label="Search properties"[^>]*href="\/search"/);
- assert.match(html,/href="\/select-property-type"/);assert.match(html,/Login \/ Sign Up/);assert.match(html,/href="\/auth"/);
- assert.doesNotMatch(html,/href="\/(projects|property-360)"/);
+ assert.match(html,/href="\/manage-property"/);assert.match(html,/Login \/ Sign Up/);assert.match(html,/href="\/auth"/);
+ assert.doesNotMatch(html,/Search properties|List Property|Workspace|href="\/(buy|rent|services)"/);
 });
 
 test('signed-in identity and logout are passed to the existing UserMenu without new auth operations',async()=>{
@@ -60,12 +56,19 @@ test('signed-in identity and logout are passed to the existing UserMenu without 
  assert.doesNotMatch(result.html,/Login \/ Sign Up/);await result.userMenuProps.handleLogout();assert.equal(signedOut,1);
 });
 
-test('admin and visit navigation remain role-gated, including during profile initialization',()=>{
+test('admin entry is restricted to verified admin profile dropdowns',()=>{
  const user={uid:'owner',email:'owner@test.invalid'};
- const guest=header({userRole:'admin'}, {workspaceOpen:true});assert.doesNotMatch(guest.html,/Admin Portal|Visit Planner/);
- const pending=header({user,userRole:''},{workspaceOpen:true});assert.match(pending.html,/Visit Planner/);assert.doesNotMatch(pending.html,/Admin Portal/);
- const owner=header({user,userRole:'individual'},{workspaceOpen:true});assert.doesNotMatch(owner.html,/Admin Portal/);
- const admin=header({user,userRole:'admin'},{workspaceOpen:true});assert.match(admin.html,/href="\/admin"/);assert.match(admin.html,/Admin Portal/);
+ for(const props of [{userRole:'admin'},{user,userRole:''},{user,userRole:'individual'},{user,userRole:'tenant'}]){
+  const r=header(props,{workspaceOpen:true});assert.doesNotMatch(r.html,/Admin Panel/);assert.match(r.html,/Visit Planner/);
+ }
+ const admin=header({user,userRole:'admin'},{workspaceOpen:true});assert.match(admin.html,/href="\/admin"/);assert.match(admin.html,/Admin Panel/);
+});
+
+test('all applicable routes retain identical navigation and correct active link',()=>{
+ for(const pathname of ['/','/properties','/properties/example','/manage-property','/visit-planner','/contact','/admin']){
+  const r=header({pathname});assert.match(r.html,/All Properties/);assert.match(r.html,/Visit Planner/);assert.match(r.html,/Contact Us/);assert.match(r.html,/Manage Property/);
+  if(pathname.startsWith('/properties'))assert.match(r.html,/aria-current="page"[^>]*href="\/properties"/);
+ }
 });
 
 test('mobile drawer retains controlled Radix open/close contract and closes links on selection',()=>{
@@ -73,7 +76,7 @@ test('mobile drawer retains controlled Radix open/close contract and closes link
  assert.match(result.html,/role="dialog"/);assert.match(result.html,/Explore PropBank/);assert.match(result.html,/aria-label="Close navigation"/);
  const mobileNav=result.find(n=>n.props?.['aria-label']==='Mobile navigation');
  const first=React.Children.toArray(mobileNav.props.children)[0];first.props.onClick();assert.deepEqual(result.changes,[false]);
- const list=result.find(n=>n.props?.to==='/select-property-type'&&typeof n.props.onClick==='function');list.props.onClick();assert.deepEqual(result.changes,[false,false]);
+ const list=result.find(n=>n.props?.to==='/manage-property'&&typeof n.props.onClick==='function');list.props.onClick();assert.deepEqual(result.changes,[false,false]);
  assert.doesNotMatch(header().html,/role="dialog"/);
 });
 
@@ -89,14 +92,14 @@ test('incomplete profile retains completion label rather than bypassing onboardi
 
 test('homepage layout has scoped palette, responsive controls, touch targets and reduced-motion support',()=>{
  const source=fs.readFileSync('src/features/navbar/HomepageHeader.tsx','utf8');
- for(const token of ['bg-[#faf7f1]','text-[#0b1d39]','border-[#c89432]','hidden items-center gap-5 xl:flex','xl:hidden','h-11 w-11','focus-visible:outline','motion-reduce:transition-none'])assert.ok(source.includes(token),token);
+ for(const token of ['bg-[#faf7f1]','text-[#0b1d39]','border-[#c89432]','hidden items-center gap-5 lg:flex','lg:hidden','h-11 w-11','focus-visible:outline','motion-reduce:transition-none'])assert.ok(source.includes(token),token);
  assert.match(source,/Dialog\.Root open=\{isOpen\} onOpenChange=\{onOpenChange\}/);assert.match(source,/Dialog\.Title/);assert.match(source,/Dialog\.Description/);assert.match(source,/Dialog\.Close asChild/);
  assert.doesNotMatch(source,/\bfetch\s*\(|axios|useEffect|useAuth|setTimeout|setInterval/);
 });
 
-test('homepage-only integration leaves legacy navigation, identity loading and other sections in place',()=>{
+test('all routes use one header while account loading and sign-out stay centralized',()=>{
  const source=fs.readFileSync('src/features/navbar/SiteHeader.tsx','utf8');
- assert.match(source,/if \(pathname === "\/"\) return <HomepageHeader/);
+ assert.match(source,/return <HomepageHeader/);assert.doesNotMatch(source,/if \(pathname|<header/);
  assert.match(source,/\[uid\]/);assert.match(source,/auth\.currentUser\?\.uid!==uid/);assert.match(source,/await signOut\(\)/);
- assert.match(source,/const visibleLinks = navigation\.filter/);assert.match(source,/className=\{styles.header\}/);
+ const shell=fs.readFileSync('src/components/ApplicationShell.tsx','utf8');assert.match(shell,/if\(authRoute\)/);
 });

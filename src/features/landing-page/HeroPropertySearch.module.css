@@ -1,10 +1,10 @@
-.section { position:relative; z-index:2; margin-top:-58px; padding:0 32px 4px; color:#0b1d39; font-family:var(--pb-ui); }
+.section { position:relative; z-index:2; margin-top:0; padding:0 32px 4px; color:#0b1d39; font-family:var(--pb-ui); }
 .shell { max-width:1180px; margin-inline:auto; }
-.tabs { display:flex; gap:4px; padding-left:22px; }
+.tabs { display:flex; gap:0; padding-left:0; }
 .tab,.activeTab { min-width:100px; min-height:44px; padding:11px 23px; border:1px solid #d9c9a6; border-bottom:0; border-radius:8px 8px 0 0; background:#faf7f1; color:#0b1d39; font-size:14px; font-weight:600; cursor:pointer; }
 .activeTab { background:#0b1d39; color:#fff; border-color:#0b1d39; }
 .tab:hover { background:#f0e7d5; }
-.panel { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) auto; align-items:center; gap:0; padding:12px 22px; border:1px solid #e5dccb; border-radius:12px; background:#ffffff; box-shadow:0 12px 32px #0b1d390d,0 2px 6px #0b1d3905; }
+.panel { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) auto; align-items:center; gap:0; padding:12px 22px; border:1px solid #e5dccb; border-radius:0 12px 12px 12px; background:#ffffff; box-shadow:0 12px 32px #0b1d390d,0 2px 6px #0b1d3905; }
 .field { display:flex; align-items:center; gap:12px; min-width:0; padding:0 22px; border-right:1px solid #e6e1d6; }
 .field:first-child { padding-left:4px; }
 .field:nth-child(3) { border-right:0; }
@@ -24,10 +24,10 @@
  .submit { padding-inline:14px; gap:7px; font-size:13px; }
 }
 @media (max-width:767px) {
- .section { margin-top:-26px; padding:0 20px 4px; }
- .tabs { padding-left:10px; gap:3px; }
- .tab,.activeTab { min-width:0; padding:10px 22px; flex:1; max-width:115px; }
- .panel { grid-template-columns:minmax(0,1fr); padding:8px 20px 20px; border-radius:10px; }
+ .section { margin-top:0; padding:0 20px 4px; }
+ .tabs { padding-left:0; gap:0; }
+ .tab,.activeTab { min-width:0; padding:10px 22px; flex:1; max-width:none; }
+ .panel { grid-template-columns:minmax(0,1fr); padding:8px 20px 20px; border-radius:0 0 10px 10px; }
  .field,.field:first-child { padding:15px 0; border-right:0; border-bottom:1px solid #e6e1d6; }
  .field input,.field select { min-height:36px; font-size:16px; }
  .submit { width:100%; margin-top:20px; }

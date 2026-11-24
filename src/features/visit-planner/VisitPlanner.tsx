@@ -11,7 +11,7 @@ import { Label } from "@/ui/label";
 import { Textarea } from "@/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/ui/tabs";
-import { Calendar, Clock, Bell, Plus, MapPin, CheckCircle, Loader2, RefreshCw, Pencil, XCircle } from "lucide-react";
+import { Building2, Calendar, Clock, Bell, Plus, MapPin, CheckCircle, Loader2, RefreshCw, Pencil, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { visitService, Visit, CreateVisitRequest } from "@/services/visitService";
 import { propertyService, type Property } from "@/services/propertyService";
@@ -187,6 +187,13 @@ const VisitPlanner = () => {
     }finally{setChangingVisit('');}
   };
 
+  const beginNewVisit=()=>{
+    setFormData({title:'',description:'',date:'',time:'',propertyId:editingVisit?'':linkedPropertyId});
+    setEditingVisit(null);
+    setPropertySearch('');
+    setIsAddingVisit(true);
+  };
+
   const beginReschedule=(visit:Visit)=>{
     const local=indiaDateTimeParts(visit.visitDate);
     setEditingVisit(visit);setFormData({title:visit.title,description:visit.description||'',date:local.date,time:local.time,propertyId:visit.propertyId||''});setIsAddingVisit(true);
@@ -222,41 +229,38 @@ const VisitPlanner = () => {
   };
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <>
-        <title>Visit Planner — Propbank</title>
+        <title>Visit Planner | PropBank</title>
         <meta name="description" content="Schedule property visits, set reminders, and track your visit progress with Propbank Visit Planner." />
         <link rel="canonical" href="/visit-planner" />
       </>
 
-      <div className={styles.shell}>
-        <div className={styles.intro}>
-          <div className="flex items-center justify-center gap-2 sm:gap-3">
-            <div className="flex h-8 w-8 sm:h-12 sm:w-12 items-center justify-center rounded-full bg-gradient-primary">
-              <Calendar className="h-4 w-4 sm:h-6 sm:w-6 text-primary-foreground" />
-            </div>
-            <h1 className="text-xl sm:text-3xl font-bold">Visit Planner</h1>
-          </div>
-          <p className="text-sm sm:text-base text-muted-foreground">Schedule property visits, set reminders, and track your progress</p>
+      <header className={styles.banner}>
+        <div className={styles.bannerInner}>
+          <div className={styles.headingIcon}><Calendar aria-hidden="true" /></div>
+          <div><p className={styles.eyebrow}>PROPERTY VISITS</p><h1>Visit Planner</h1>
+          <p>Schedule property visits, set reminders, and track your progress.</p></div>
         </div>
-
+      </header>
+      <div className={styles.shell}>
         <div className={styles.workspace}>
           <div className={styles.results}>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid grid-cols-3 w-full">
+              <TabsList className={styles.tabs}>
                 <TabsTrigger value="active" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm">
                   <Clock className="h-3 w-3 sm:h-4 sm:w-4" />
-                  <span className="hidden sm:inline">Active Visit Planning</span>
+                  <span className="hidden sm:inline">Active Visits</span>
                   <span className="sm:hidden">Active</span>
                   ({activeVisits.length})
                 </TabsTrigger>
                 <TabsTrigger value="visited" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm">
                   <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4" />
-                  <span className="hidden sm:inline">Visited Planning</span>
+                  <span className="hidden sm:inline">Visited</span>
                   <span className="sm:hidden">Visited</span>
                   ({completedVisits.length})
                 </TabsTrigger>
-                <TabsTrigger value="cancelled">Cancelled ({visits.filter(v=>v.status==="cancelled").length})</TabsTrigger>
+                <TabsTrigger value="cancelled"><XCircle aria-hidden="true" /> Cancelled ({visits.filter(v=>v.status==="cancelled").length})</TabsTrigger>
               </TabsList>
             </Tabs>
 
@@ -287,7 +291,7 @@ const VisitPlanner = () => {
                     <>
                       <CheckCircle className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-muted-foreground mb-3 sm:mb-4" />
                       <h3 className="text-base sm:text-lg font-semibold mb-1 sm:mb-2">No visits in this section</h3>
-                      <p className="text-sm sm:text-base text-muted-foreground px-4">Completed visits will appear here once their status is updated.</p>
+                      <p className="text-sm sm:text-base text-muted-foreground px-4">{activeTab === 'cancelled' ? 'Cancelled visits will appear here.' : 'Visits appear here after you mark them complete.'}</p>
                     </>
                   )}
                 </div>
@@ -300,62 +304,25 @@ const VisitPlanner = () => {
                         : new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime()
                     ).map((visit) => (
                       <Card key={visit.id} className={styles.visitRecord}>
-                        <CardContent className="p-3 sm:p-6">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 space-y-2">
-                              <div className="flex items-start sm:items-center gap-2 sm:gap-3 flex-wrap">
-                                <div className={`flex h-4 w-4 items-center justify-center rounded-full shadow-sm flex-shrink-0 mt-0.5 sm:mt-0 ${
-                                  activeTab === 'visited' ? 'bg-blue-600' : 'bg-primary-600'}`}>
-                                  {activeTab === 'visited' ? 
-                                  (
-                                    <CheckCircle className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-white" />
-                                  ) : 
-                                  (
-                                    <MapPin className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-primary-foreground" />
-                                  )}
-                                </div>
-                                <h3 className="text-sm sm:text-lg font-semibold leading-tight flex-1">{visit.title}</h3>
-                                <div className="flex items-center gap-1 text-muted-foreground flex-shrink-0">
-                                  {activeTab === 'visited' ? 
-                                  (
-                                    <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4" />
-                                  ) : 
-                                  (
-                                    <Clock className="h-3 w-3 sm:h-4 sm:w-4" />
-                                  )}
-                                  <span className="text-xs sm:text-sm font-medium">
-                                    {activeTab === 'visited' ? 'Completed' : activeTab==='cancelled'?'Cancelled':'Scheduled'}
-                                  </span>
-                                </div>
-                              </div>
-                              {visit.description && (
-                                <p className="ml-6 sm:ml-7 text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                                  {visit.description}
-                                </p>
-                              )}
-                              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 ml-6 sm:ml-7 text-xs sm:text-sm text-muted-foreground">
-                                <div className="flex items-center gap-1">
-                                  <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
-                                  <span className="text-xs sm:text-sm">{formatDate(visit.visitDate)}</span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <Clock className="h-3 w-3 sm:h-4 sm:w-4" />
-                                  <span className="text-xs sm:text-sm">{formatTime(visit.visitDate)}</span>
-                                </div>
-                                {activeTab === 'active' && (
-                                  <div className="flex items-center gap-1">
-                                    <Bell className="h-3 w-3 sm:h-4 sm:w-4" />
-                                    <span className="text-xs sm:text-sm">30 min before via email</span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            {activeTab === 'active' && <div className={styles.recordActions}>
-                              <Button variant="outline" size="sm" disabled={changingVisit===visit.id} onClick={()=>beginReschedule(visit)}><Pencil aria-hidden="true" /> Reschedule</Button>
-                              <Button variant="outline" size="sm" disabled={changingVisit===visit.id} onClick={()=>void changeStatus(visit,'completed')}><CheckCircle aria-hidden="true" /> Visited</Button>
-                              <Button variant="ghost" size="sm" disabled={changingVisit===visit.id} onClick={()=>void changeStatus(visit,'cancelled')} className="text-destructive hover:text-destructive"><XCircle aria-hidden="true" /> Cancel</Button>
-                            </div>}
+                        <CardContent className={styles.recordContent}>
+                          <div className={styles.recordIcon} aria-hidden="true">{visit.propertyId ? <Building2 /> : <Bell />}</div>
+                          <div className={styles.recordInfo}>
+                            <span className={styles.typeLabel}>{visit.propertyId ? <Building2 aria-hidden="true" /> : <Bell aria-hidden="true" />}{visit.propertyId ? 'Property Visit' : 'General Reminder'}</span>
+                            <h3>{visit.title}</h3>
+                            {visit.propertyId && <p className={styles.propertyName}><MapPin aria-hidden="true" />{properties.find(property=>property.id===visit.propertyId)?.title || 'Linked property'}</p>}
+                            {visit.description && <p className={styles.notes}>{visit.description}</p>}
                           </div>
+                          <div className={styles.recordSchedule}>
+                            <span><Calendar aria-hidden="true" />{formatDate(visit.visitDate)}</span>
+                            <span><Clock aria-hidden="true" />{formatTime(visit.visitDate)}</span>
+                            <span className={styles.status} data-status={activeTab}>{activeTab === 'visited' ? 'Completed' : activeTab === 'cancelled' ? 'Cancelled' : 'Scheduled'}</span>
+                          </div>
+                          {activeTab === 'active' && <div className={styles.recordActions}>
+                            <Button variant="outline" size="sm" disabled={changingVisit===visit.id} onClick={()=>beginReschedule(visit)}><Pencil aria-hidden="true" /> Reschedule</Button>
+                            <Button variant="outline" size="sm" disabled={changingVisit===visit.id} onClick={()=>void changeStatus(visit,'completed')}><CheckCircle aria-hidden="true" /> Visited</Button>
+                            <Button variant="ghost" size="sm" disabled={changingVisit===visit.id} onClick={()=>void changeStatus(visit,'cancelled')}><XCircle aria-hidden="true" /> Cancel</Button>
+                          </div>}
+                          {activeTab === 'active' && <p className={styles.recordReminder}><Bell aria-hidden="true" />Email reminder - 30 minutes before</p>}
                         </CardContent>
                       </Card>
                     ))}
@@ -364,24 +331,25 @@ const VisitPlanner = () => {
             </div>
           </div>
 
-          <aside className={styles.scheduler}>
-            <Button onClick={() => {setEditingVisit(null);setIsAddingVisit(true);}}  size="lg" className="gap-2 w-full text-sm sm:text-base">
+          <aside className={styles.scheduler} aria-label="Visit scheduling">
+            <Button onClick={beginNewVisit}  size="lg" className="gap-2 w-full text-sm sm:text-base">
               <Plus className="h-3 w-3 sm:h-4 sm:w-4" /> Schedule New Visit
             </Button>
 
+            {!isAddingVisit && <div className={styles.schedulerWelcome}><Calendar aria-hidden="true" /><h2>Your next visit starts here</h2><p>Plan a property viewing or set a general reminder. All times are in India Standard Time.</p></div>}
             {isAddingVisit && (
               <Card>
-                <CardHeader className="pb-3 sm:pb-6">
+                <CardHeader className={styles.formHeader}>
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                     <MapPin className="h-4 w-4 sm:h-5 sm:w-5" />
-                    {editingVisit?'Reschedule Visit':'Plan a Visit or Reminder'}
+                    {editingVisit?'Reschedule Visit':'Schedule New Visit'}
                   </CardTitle>
-                  <CardDescription className="text-xs sm:text-sm">
+                  <CardDescription className={styles.formIntro}>
                     Link a listed property for a viewing, or leave it unselected for a general reminder.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="pt-0">
-                  <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
+                  <form data-demo-autofill="off" onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
                     <div className="space-y-1 sm:space-y-2">
                       <Label htmlFor="title" className="text-xs sm:text-sm">Visit Title *</Label>
                       <Input id="title" value={formData.title} className="text-sm" required maxLength={120}
@@ -405,6 +373,7 @@ const VisitPlanner = () => {
                       {editingVisit&&<p className={styles.fieldHelp}>To prevent a schedule update being applied to the wrong listing, create a new visit if the property changes.</p>}
                     </div>
 
+                    <div className={styles.dateTimeRow}>
                     <div className="space-y-1 sm:space-y-2">
                       <Label htmlFor="date" className="text-xs sm:text-sm">Visit Date *</Label>
                       <DatePicker id="date" required value={formData.date} className="text-sm"
@@ -413,12 +382,13 @@ const VisitPlanner = () => {
                     </div>
 
                     <TimePicker value={formData.time} onChange={(time) => handleInputChange('time', time)} required />
+                    </div>
 
                     <div className="space-y-1 sm:space-y-2">
-                      <Label htmlFor="description" className="text-xs sm:text-sm">Visit Details</Label>
+                      <Label htmlFor="description" className="text-xs sm:text-sm">Notes (optional)</Label>
                       <Textarea id="description" value={formData.description} rows={3} className="resize-none text-sm" maxLength={1000}
                         onChange={(e) => handleInputChange('description', e.target.value)} 
-                        placeholder="Property address, contact person, special notes..."/>
+                        placeholder="Add any notes or details about the visit..."/>
                     </div>
 
                     <p className={styles.reminderHelp}><Bell aria-hidden="true" /> Confirmation: an email reminder is scheduled 30 minutes beforehand. A property selection represents a property visit; no selection creates a general visit reminder.</p>
@@ -447,7 +417,7 @@ const VisitPlanner = () => {
         </div>
 
       </div>
-    </main>
+    </div>
   );
 };
 

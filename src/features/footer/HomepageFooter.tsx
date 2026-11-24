@@ -24,10 +24,10 @@ const companyLinks = [
   ["/contact", "Contact us"], ["/support", "Support"],
 ] as const;
 
-export default function HomepageFooter() {
+export default function HomepageFooter({ showTrust = true }: { showTrust?: boolean } = {}) {
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   return <>
-    <section id="homepage-trust" className={styles.trust} aria-labelledby="homepage-trust-heading">
+    {showTrust && <section id="homepage-trust" className={styles.trust} aria-labelledby="homepage-trust-heading">
       <h2 id="homepage-trust-heading" className={styles.srOnly}>Built around your property</h2>
       <ul className={styles.benefits}>
         {benefits.map(({ icon: Icon, title, description }) => <li key={title}>
@@ -35,8 +35,8 @@ export default function HomepageFooter() {
           <div><h3>{title}</h3><p>{description}</p></div>
         </li>)}
       </ul>
-    </section>
-    <footer id="homepage-footer" className={styles.footer}>
+    </section>}
+    <footer id={showTrust ? "homepage-footer" : "site-footer"} className={styles.footer}>
       <div className={styles.inner}>
         <div className={styles.directory}>
           <div className={styles.brandColumn}>

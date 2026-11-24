@@ -202,17 +202,6 @@ export const useLandingProperties = () => {
   }, [hasMore, loading, loadingMore, loadMoreProperties]);
 
   useEffect(() => {
-    const bannerImages = siteSettings.bannerImages || [];
-    if (bannerImages.length <= 1) return;
-
-    const interval = setInterval(() => {
-      setCurrentBannerIndex((prev) => (prev + 1) % bannerImages.length);
-    }, 10000);
-
-    return () => clearInterval(interval);
-  }, [siteSettings.bannerImages]);
-
-  useEffect(() => {
     handleSearch();
   }, [searchQuery, searchType, selectedCategories, selectedProjectCondition, budgetRange, handleSearch]);
 

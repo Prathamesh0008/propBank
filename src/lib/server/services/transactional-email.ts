@@ -66,9 +66,27 @@ async function resolveRecipient(event:TransactionalEmailEvent) {
   return event.recipientRole==='admin'&&configured&&(!event.recipientEmail||event.recipientEmail.toLowerCase()===configured)&&emailPattern.test(configured)?configured:'';
 }
 
+// Timed visit mail must still refer to the current schedule, including legacy
+// outbox records. Read inside the lease transaction and again before provider I/O.
+async function visitReminderIsCurrent(value:RecordData,now:Date,tx?:Transaction) {
+  const id=s(value.recordId);if(!id||id.includes('/'))return false;
+  const ref=getDatabase().collection(COLLECTIONS.visits).doc(id);
+  const snapshot=tx?await tx.get(ref):await ref.get();if(!snapshot.exists)return false;
+  const visit=snapshot.data()!,at=new Date(wireValue(visit.visitDate) as string).getTime(),minutes=visit.reminderTime;
+  if(visit.isCompleted===true||visit.status&&visit.status!=='scheduled'||visit.reminderType!=='email'
+    ||typeof minutes!=='number'||!Number.isInteger(minutes)||minutes<0||minutes>10080
+    ||!Number.isFinite(at)||at<now.getTime())return false;
+  const generation=createHash('sha256').update(`${at}:${minutes}:${visit.userId}`).digest('hex');
+  if(s(value.eventId)!==`${id}:${generation}:${s(value.recipientRole)}`)return false;
+  if(value.recipientRole==='requester'&&value.recipientUID!==visit.userId)return false;
+  if(!['requester','admin'].includes(s(value.recipientRole)))return false;
+  const offset=Number(value.reminderOffset);
+  return Number.isInteger(offset)&&offset>=0&&Date.parse(s(value.scheduledFor))===at-offset*60000;
+}
+
 async function deliver(id:string) {
   const ref=deliveries().doc(id),now=new Date(),lease=randomUUID();let value:RecordData|null=null;
-  await getDatabase().runTransaction(async tx=>{value=null;const snapshot=await tx.get(ref);if(!snapshot.exists)return;const current=snapshot.data()!,status=s(current.status);if(['pending','failed','sending'].includes(status)&&Number(current.retryCount||0)>=5){tx.update(ref,{status:'exhausted',updatedAt:now});return;}if(!(['pending','failed'].includes(status)||status==='sending'&&Number(current.deliveryLeaseUntil?.toMillis?.()||new Date(current.deliveryLeaseUntil||0).getTime())<=now.getTime())||Number(current.retryCount||0)>=5||status==='failed'&&Number(current.nextRetryAt?.toMillis?.()||new Date(current.nextRetryAt||0).getTime())>now.getTime())return;value=current;tx.update(ref,{status:'sending',deliveryLease:lease,deliveryLeaseUntil:new Date(now.getTime()+120000),recoveryAt:new Date(now.getTime()+120000),lastAttemptAt:now,updatedAt:now});});
+  await getDatabase().runTransaction(async tx=>{value=null;const snapshot=await tx.get(ref);if(!snapshot.exists)return;const current=snapshot.data()!,status=s(current.status);if(['pending','failed','sending'].includes(status)&&Number(current.retryCount||0)>=5){tx.update(ref,{status:'exhausted',updatedAt:now});return;}if(!(['pending','failed'].includes(status)||status==='sending'&&Number(current.deliveryLeaseUntil?.toMillis?.()||new Date(current.deliveryLeaseUntil||0).getTime())<=now.getTime())||Number(current.retryCount||0)>=5||status==='failed'&&Number(current.nextRetryAt?.toMillis?.()||new Date(current.nextRetryAt||0).getTime())>now.getTime())return;if(current.eventType==='visit.reminder'&&!await visitReminderIsCurrent(current,now,tx)){tx.update(ref,{status:'cancelled',errorSummary:'Visit reminder is no longer applicable',updatedAt:now,deliveryLease:'',deliveryLeaseUntil:now});return;}value=current;tx.update(ref,{status:'sending',deliveryLease:lease,deliveryLeaseUntil:new Date(now.getTime()+120000),recoveryAt:new Date(now.getTime()+120000),lastAttemptAt:now,updatedAt:now});});
   if(!value)return 'skipped';
   const finish=async(update:RecordData)=>getDatabase().runTransaction(async tx=>{const fresh=await tx.get(ref);if(fresh.data()?.deliveryLease===lease)tx.update(ref,update);});
   try{
@@ -78,6 +96,7 @@ async function deliver(id:string) {
     if(!value.firstAttemptAt)await finish({firstAttemptAt:now});
     const recipient=s(value.recipientEmail)||(value.recipientRole==='admin'?process.env.ADMIN_EMAIL||'':'');
     if(value.recipientRole==='admin'&&!emailPattern.test(recipient))throw new EmailConfigurationError('ADMIN_EMAIL must be a valid recipient address');
+    if(value.eventType==='visit.reminder'&&!await visitReminderIsCurrent(value,new Date())){await finish({status:'cancelled',errorSummary:'Visit reminder is no longer applicable',updatedAt:new Date(),deliveryLease:'',deliveryLeaseUntil:now});return 'skipped';}
     const provider=await sendEmail({to:recipient,subject:s(value.subject),html:s(value.html),text:s(value.text)},s(value.idempotencyKey));
     await finish({status:'sent',sentAt:now,lastAttemptAt:now,updatedAt:now,retryCount:Number(value.retryCount||0)+1,errorSummary:'',failureCategory:'',providerMessageId:provider.id||'',deliveryLease:'',deliveryLeaseUntil:now});return 'sent';
   }catch(error){

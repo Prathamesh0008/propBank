@@ -96,7 +96,8 @@ export async function getVisit(request:Request,id:string) {
 function updateFields(req:RecordData) {
   const updates:RecordData={updatedAt:new Date()};
   if('isCompleted' in req)updates.isCompleted=req.isCompleted;
-  for(const key of ['title','description','reminderType','status'])if(req[key])updates[key]=req[key];
+  if('description' in req)updates.description=req.description;
+  for(const key of ['title','reminderType','status'])if(req[key])updates[key]=req[key];
   const date=firestoreTime(req.visitDate);if(date)Object.assign(updates,{visitDate:date,notifiedAt:null,reminderDelivery:null});
   if(typeof req.reminderTime==='number')updates.reminderTime=req.reminderTime;
   if(req.status==='completed'||req.isCompleted===true)Object.assign(updates,{status:'completed',isCompleted:true});
