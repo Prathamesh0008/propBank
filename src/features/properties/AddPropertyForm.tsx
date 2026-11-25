@@ -1,4 +1,6 @@
 "use client";
+import {PropertyIntakeHeader,FurnishingReview,PropertyFormProgress,PropertyStepPanel,PropertyStepActions,PropertyFormReview,nativeStepError,focusStepError} from './PropertyFormSteps';
+import {ownerFieldStep,OWNER_STEPS} from './property-form-navigation';
 import StructuredAddressFields from '@/components/StructuredAddressFields';
 import {propertyAddressSchema,propertyAddressDisplay,propertyAddressDraft} from '@/lib/property-address';
 import PropertyPurposeFields,{purposeFormSchema} from "./PropertyPurposeFields";
@@ -311,7 +313,8 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
   };
 
   const form = useForm<FormData>({
-    resolver: zodResolver(formSchema),
+    resolver: (values,context,options)=>zodResolver(formSchema)({...values,...(!['rent','sell_rent'].includes(values.listingType)||values.rentalStatus!=='rented'?{tenantEmail:''}:{}),...(values.listingType!=='pre_leased'?{preLeased:undefined}:{}),...(accountRole!=='agent'?{agentOwnerEmail:''}:{})},context,options),
+    shouldFocusError:false,
     defaultValues: {
       propertyTitle: "",
       propertyType: selectedPropertyType,
@@ -392,151 +395,187 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
     form.setValue('agreementEndDate',agreementEndDate);
   }, [agreementStartDate, agreementPeriod, form]);
 
-  const onSubmit = async (data: FormData) => {
-    try {
-      if(!data.structure?.trim()){
+  const [wizardStep,setWizardStep]=useState(1),[furthest,setFurthest]=useState(1),[wizardError,setWizardError]=useState('');
+  const wizardForm=useRef<HTMLFormElement>(null),submitLock=useRef(false);
+  const goStep=(step:number)=>{setWizardError('');setWizardStep(step);setFurthest(previous=>Math.max(previous,step));};
+  const validateSchemaStep=(step:number)=>{
+    const data=form.getValues(),result=formSchema.safeParse(data);form.clearErrors();
+    if(result.success)return true;
+    const issues=result.error.issues.filter(issue=>ownerFieldStep(String(issue.path[0]))===step&&!(issue.path[0]==='tenantEmail'&&(!['rent','sell_rent'].includes(data.listingType)||data.rentalStatus!=='rented'))&&!(issue.path[0]==='preLeased'&&data.listingType!=='pre_leased')&&!(issue.path[0]==='agentOwnerEmail'&&accountRole!=='agent'));
+    for(const issue of issues)form.setError(issue.path.join('.') as Parameters<typeof form.setError>[0],{type:'manual',message:issue.message});
+    if(issues.length){setWizardError(issues[0].message);return false;}return true;
+  };
+  const checkStep=(step:number)=>{
+    const native=wizardForm.current&&nativeStepError(wizardForm.current,step);
+    if(native){setWizardError(native.message);return false;}
+    if(!validateSchemaStep(step))return false;
+    if(!validateOwnerStep(form.getValues(),step))return false;return true;
+  };
+  const nextStep=()=>{if(checkStep(wizardStep))goStep(wizardStep+1);else if(wizardForm.current)focusStepError(wizardForm.current,wizardStep);};
+  const submitWizard=async(event:React.FormEvent<HTMLFormElement>)=>{event.preventDefault();if(submitLock.current||isUploading||isInternalUploading)return;if(wizardStep!==6){nextStep();return;}for(let step=1;step<=5;step++){if(!checkStep(step)){setWizardStep(step);if(wizardForm.current)focusStepError(wizardForm.current,step);return;}}submitLock.current=true;try{await form.handleSubmit(onSubmit,errors=>{const name=Object.keys(errors)[0]||'propertyTitle',step=ownerFieldStep(name);goStep(step);setWizardError('Please review the highlighted fields before submitting.');if(wizardForm.current)focusStepError(wizardForm.current,step,name);})(event);}finally{submitLock.current=false;}};
+  const validationToast=(message:Parameters<typeof toast>[0])=>{setWizardError(String(message.description||message.title||'Check this section.'));toast(message);};
+  const validateOwnerStep=(data:FormData,onlyStep?:number)=>{
+      if((!onlyStep||onlyStep===1)&&!data.structure?.trim()){
         form.setError('structure',{type:'manual',message:'Select the property type.'});
-        toast({title:'Missing property type',description:'Select the physical property type before continuing.',variant:'destructive'});
-        return;
+        validationToast({title:'Missing property type',description:'Select the physical property type before continuing.',variant:'destructive'});
+        return false;
       }
-      if(selectedPropertyType==='residential'&&!structureUsesPlotArea(data.structure)&&!data.configuration?.trim()){
+      if((!onlyStep||onlyStep===1)&&selectedPropertyType==='residential'&&!structureUsesPlotArea(data.structure)&&!data.configuration?.trim()){
         form.setError('configuration',{type:'manual',message:'Select the residential layout.'});
-        toast({title:'Missing residential layout',description:'Select the applicable BHK layout.',variant:'destructive'});
-        return;
+        validationToast({title:'Missing residential layout',description:'Select the applicable BHK layout.',variant:'destructive'});
+        return false;
       }
-      if(['rent','sell_rent'].includes(data.listingType)&&addNextAgreementManually){const draftError=validateNextAgreementDraft(nextAgreementDraft,data.agreementEndDate||'');if(draftError){toast({title:'Check next agreement details',description:draftError,variant:'destructive'});return;}}
+      if((!onlyStep||onlyStep===4)&&['rent','sell_rent'].includes(data.listingType)&&addNextAgreementManually){const draftError=validateNextAgreementDraft(nextAgreementDraft,data.agreementEndDate||'');if(draftError){validationToast({title:'Check next agreement details',description:draftError,variant:'destructive'});return false;}}
       // Validate pricing based on listing type
-      let purposeData;try{purposeData=normalizePurpose(data);}catch(error){toast({title:'Check property purpose',description:error instanceof Error?error.message:'Invalid purpose details',variant:'destructive'});return;}
+      let purposeData;try{if(!onlyStep||onlyStep===2)purposeData=normalizePurpose(data);}catch(error){validationToast({title:'Check property purpose',description:error instanceof Error?error.message:'Invalid purpose details',variant:'destructive'});return false;}
       const includesRent=['rent','sell_rent'].includes(data.listingType),includesSale=['sell','sell_rent'].includes(data.listingType);
       const occupiedRental=includesRent && data.rentalStatus === "rented";
       const rentValue=occupiedRental?data.monthlyRent:data.expectedRent;
-      if (includesRent && (!rentValue || rentValue.trim() === "" || !Number.isFinite(Number(rentValue)) || Number(rentValue)<=0)) {
+      if ((!onlyStep||onlyStep===2) && includesRent && (!rentValue || rentValue.trim() === "" || !Number.isFinite(Number(rentValue)) || Number(rentValue)<=0)) {
         const field=occupiedRental?'monthlyRent':'expectedRent';
         form.setError(field,{type:'manual',message:occupiedRental?'Enter the finalized monthly rent.':'Enter the asking monthly rent.'});
-        toast({
+        validationToast({
           title: occupiedRental?"Missing Finalized Rent":"Missing Asking Rent",
           description: occupiedRental?"Enter the finalized rent for the current tenancy.":"Enter the asking rent for this available property.",
           variant: "destructive",
         });
-        return;
+        return false;
       }
-      if (includesRent && (!data.securityDeposit || data.securityDeposit.trim() === "" || !Number.isFinite(Number(data.securityDeposit)) || Number(data.securityDeposit)<0)) {
+      if ((!onlyStep||onlyStep===2) && includesRent && (!data.securityDeposit || data.securityDeposit.trim() === "" || !Number.isFinite(Number(data.securityDeposit)) || Number(data.securityDeposit)<0)) {
         form.setError('securityDeposit',{type:'manual',message:occupiedRental?'Enter the finalized security deposit.':'Enter the expected security deposit.'});
-        toast({title:'Missing Security Deposit',description:occupiedRental?'Enter the deposit agreed for the current tenancy.':'Enter the expected deposit for this rental listing.',variant:'destructive'});
-        return;
+        validationToast({title:'Missing Security Deposit',description:occupiedRental?'Enter the deposit agreed for the current tenancy.':'Enter the expected deposit for this rental listing.',variant:'destructive'});
+        return false;
       }
 
-      if (includesSale && (!data.sellingPrice || data.sellingPrice.trim() === "" || !Number.isFinite(Number(data.sellingPrice)) || Number(data.sellingPrice)<=0)) {
+      if ((!onlyStep||onlyStep===2) && includesSale && (!data.sellingPrice || data.sellingPrice.trim() === "" || !Number.isFinite(Number(data.sellingPrice)) || Number(data.sellingPrice)<=0)) {
         form.setError('sellingPrice',{type:'manual',message:'Enter a valid expected selling price.'});
-        toast({
+        validationToast({
           title: "Missing Selling Price",
           description: "Please enter the selling price for sale properties.",
           variant: "destructive",
         });
-        return;
+        return false;
       }
 
       // Validate buyer details for sold properties
-      if (includesSale && data.saleStatus === "sold") {
+      if ((!onlyStep||onlyStep===2) && includesSale && data.saleStatus === "sold") {
         if (!data.buyerFirstName || data.buyerFirstName.trim() === "") {
-          toast({
+          form.setError('buyerFirstName',{type:'manual',message:'Complete this required field.'});
+          validationToast({
             title: "Missing Buyer Information",
             description: "Please enter the buyer's first name for sold properties.",
             variant: "destructive",
           });
-          return;
+          return false;
         }
 
         if (!data.buyerLastName || data.buyerLastName.trim() === "") {
-          toast({
+form.setError('buyerLastName',{type:'manual',message:'Complete this required field.'});
+          validationToast({
             title: "Missing Buyer Information",
             description: "Please enter the buyer's last name for sold properties.",
             variant: "destructive",
           });
-          return;
+          return false;
         }
 
         if (!data.buyerPhone || data.buyerPhone.trim() === "") {
-          toast({
+form.setError('buyerPhone',{type:'manual',message:'Complete this required field.'});
+          validationToast({
             title: "Missing Buyer Contact",
             description: "Please enter the buyer's phone number for sold properties.",
             variant: "destructive",
           });
-          return;
+          return false;
         }
       }
 
       // Validate tenant details for rented properties
-      if (includesRent && data.rentalStatus === "rented") {
+      if ((!onlyStep||onlyStep===4) && includesRent && data.rentalStatus === "rented") {
         if (!data.tenantFirstName || data.tenantFirstName.trim() === "") {
-          toast({
+form.setError('tenantFirstName',{type:'manual',message:'Complete this required field.'});
+          validationToast({
             title: "Missing Tenant Information",
             description: "Please enter the tenant's first name for rented properties.",
             variant: "destructive",
           });
-          return;
+          return false;
         }
 
         if (!data.tenantLastName || data.tenantLastName.trim() === "") {
-          toast({
+form.setError('tenantLastName',{type:'manual',message:'Complete this required field.'});
+          validationToast({
             title: "Missing Tenant Information",
             description: "Please enter the tenant's last name for rented properties.",
             variant: "destructive",
           });
-          return;
+          return false;
         }
 
         if (!data.mobileNumber || data.mobileNumber.trim() === "") {
-          toast({
+form.setError('mobileNumber',{type:'manual',message:'Complete this required field.'});
+          validationToast({
             title: "Missing Tenant Contact",
             description: "Please enter the tenant's mobile number for rented properties.",
             variant: "destructive",
           });
-          return;
+          return false;
         }
         if (!data.tenantEmail || !/^\S+@\S+\.\S+$/.test(data.tenantEmail)) {
-          form.setError('tenantEmail',{type:'manual',message:'Enter the tenant email used for the invitation.'});
-          return;
+          form.setError('tenantEmail',{type:'manual',message:'Enter the tenant email used for the invitation.'});setWizardError('Enter the tenant email used for the invitation.');
+          return false;
         }
 
         // Validate agreement details for rented properties
         if (!data.agreementPeriod || data.agreementPeriod.trim() === "") {
-          toast({
+form.setError('agreementPeriod',{type:'manual',message:'Complete this required field.'});
+          validationToast({
             title: "Missing Agreement Information",
             description: "Please enter the agreement period for rented properties.",
             variant: "destructive",
           });
-          return;
+          return false;
         }
 
         if (!data.agreementStartDate || data.agreementStartDate.trim() === "") {
-          toast({
+form.setError('agreementStartDate',{type:'manual',message:'Complete this required field.'});
+          validationToast({
             title: "Missing Agreement Start Date",
             description: "Please enter the agreement start date for rented properties.",
             variant: "destructive",
           });
-          return;
+          return false;
         }
 
         if (!data.agreementEndDate || data.agreementEndDate.trim() === "") {
-          toast({
+form.setError('agreementEndDate',{type:'manual',message:'Complete this required field.'});
+          validationToast({
             title: "Missing Agreement End Date",
             description: "Please enter the agreement end date for rented properties.",
             variant: "destructive",
           });
-          return;
+          return false;
         }
 
         if (!data.paymentDueDate || data.paymentDueDate.trim() === "") {
-          toast({
+form.setError('paymentDueDate',{type:'manual',message:'Complete this required field.'});
+          validationToast({
             title: "Missing Payment Due Date",
             description: "Please enter the payment due date for rented properties.",
             variant: "destructive",
           });
-          return;
+          return false;
         }
       }
 
+
+return true;
+};
+  const onSubmit = async (data: FormData) => {
+    try {
+      for(const step of [1,2,4]){if(!validateOwnerStep(data,step)){goStep(step);setWizardError('Please review the highlighted fields and validation message.');return;}}
+      const purposeData=normalizePurpose(data);
+      const includesRent=['rent','sell_rent'].includes(data.listingType),includesSale=['sell','sell_rent'].includes(data.listingType);
       // Get current user
       const currentUser = auth.currentUser;
       if (!currentUser) {
@@ -624,7 +663,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
         });
       }
     } catch (error) {
-      if(error instanceof PropertySubmissionError&&error.fieldErrors.tenantEmail)form.setError('tenantEmail',{type:'server',message:error.fieldErrors.tenantEmail});
+      if(error instanceof PropertySubmissionError&&error.fieldErrors.tenantEmail){goStep(4);form.setError('tenantEmail',{type:'server',message:error.fieldErrors.tenantEmail});if(wizardForm.current)focusStepError(wizardForm.current,4,'tenantEmail');}setWizardError(error instanceof Error?error.message:'Could not save property.');
       toast({
         title: "Error",
         description: error instanceof Error?error.message:"Failed to connect to server. Please try again.",
@@ -651,7 +690,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
   };
 
   return (
-    <main className={styles.page}>
+    <main className={`${styles.page} ${styles.compactPage}`}>
       <>
         <title>Add Property â€” Comprehensive Property Details</title>
         <meta name="description" content="Add comprehensive property details including rental terms, tenant information, and agreement details." />
@@ -659,57 +698,16 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
       </>
 
       <div className={styles.shell}>
-        {/* Header */}
-        <div className={styles.pageIntro}>
-          <Button variant="ghost" onClick={() => navigate(`/select-property-type?as=${selectedRole}${adminOwnerUID?`&adminOwnerUID=${encodeURIComponent(adminOwnerUID)}`:''}`)} className="mb-4">
+<PropertyIntakeHeader category={selectedPropertyType} context={selectedRole==='tenant'?'As a Tenant':'As an Owner'}>          <Button variant="ghost" onClick={() => navigate(`/select-property-type?as=${selectedRole}${adminOwnerUID?`&adminOwnerUID=${encodeURIComponent(adminOwnerUID)}`:''}`)} >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Property Type Selection
-          </Button>
-
-          <div className="flex items-center gap-4 mb-4">
-            <div className={styles.introIcon}>
-              <Building2 className="h-8 w-8 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className={styles.title}>List your {selectedPropertyType.charAt(0).toUpperCase() + selectedPropertyType.slice(1)} property</h1>
-              <p className="text-lg text-muted-foreground">Property details, thoughtfully organized</p>
-            </div>
-          </div>
-        </div>
-
-        <Card className={styles.formPanel}>
-          <CardHeader>
-            <CardTitle>Tell us about the space</CardTitle>
-            <CardDescription>
-              Complete the property details below. Sale and rental listings are reviewed before appearing in public search; private-management properties remain private.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+          </Button></PropertyIntakeHeader>
+<Card className={styles.formPanel}>
+          <CardContent className="p-0">
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
-                const invalidFields = Object.keys(errors);
-                const firstError = errors[invalidFields[0] as keyof typeof errors];
-                const firstMessage = firstError && typeof firstError === "object" && "message" in firstError
-                  ? String(firstError.message || "") : "";
-                toast({
-                  title: "Please review the highlighted fields",
-                  description: firstMessage || `${invalidFields.length} field(s) need attention before submission.`,
-                  variant: "destructive",
-                });
-                // React Hook Form focuses the first registered invalid control when possible.
-                // Keep the message useful even for conditional fields without a focusable input.
-              })} className={`${styles.formBody} space-y-8`}>
-                <ClientPropertyFields form={form} fixedCategory={selectedPropertyType} creation/>
-
-                {/* Basic Property Information */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 border rounded-lg">
-                  <div className="lg:col-span-2">
-                    <h3 className="text-lg font-semibold mb-4">Property Details</h3>
-                  </div>
-
-                  {accountRole==='agent'&&<FormField control={form.control} name="agentOwnerEmail" render={({field})=><FormItem><FormLabel>Registered legal owner email</FormLabel><FormControl><Input type="email" placeholder="owner@example.com" {...field}/></FormControl><FormDescription>The owner remains legally separate and must have an active, verified PropBank account.</FormDescription><FormMessage/></FormItem>}/>}
-
-                  {selectedPropertyType === 'residential' && !structureUsesPlotArea(selectedStructure) && <FormField
+              <form data-demo-autofill="off" ref={wizardForm} noValidate onSubmit={submitWizard} className={`${styles.formBody} space-y-4`}><PropertyFormProgress titles={OWNER_STEPS} step={wizardStep} furthest={furthest} busy={form.formState.isSubmitting||isUploading||isInternalUploading} onStep={goStep}/><PropertyStepPanel number={1} step={wizardStep}><ClientPropertyFields form={form} fixedCategory={selectedPropertyType} creation/><div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 border rounded-lg">
+{accountRole==='agent'&&<FormField control={form.control} name="agentOwnerEmail" render={({field})=><FormItem><FormLabel>Registered legal owner email</FormLabel><FormControl><Input type="email" placeholder="owner@example.com" {...field}/></FormControl><FormDescription>The owner remains legally separate and must have an active, verified PropBank account.</FormDescription><FormMessage/></FormItem>}/>}
+{selectedPropertyType === 'residential' && !structureUsesPlotArea(selectedStructure) && <FormField
                     control={form.control}
                     name="configuration"
                     render={({ field }) => (
@@ -732,9 +730,8 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                         <FormMessage />
                       </FormItem>
                     )}
-                  />}
-
-                  <FormField
+                  />}</div></PropertyStepPanel>
+<PropertyStepPanel number={2} step={wizardStep}><div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 border rounded-lg"><FormField
                     control={form.control}
                     name="listingType"
                     render={({ field }) => (
@@ -757,9 +754,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                       </FormItem>
                     )}
                   />
-
-                  {/* Rental Status - Only show for rental properties */}
-                  {['rent','sell_rent'].includes(listingType||'') && (
+{['rent','sell_rent'].includes(listingType||'') && (
                     <FormField
                       control={form.control}
                       name="rentalStatus"
@@ -782,10 +777,8 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                       )}
                     />
                   )}
-
-                  <PropertyPurposeFields form={form} onEvidence={(kind,file)=>{if(file){const error=validateSupportingDocuments([file]);if(error){setLeaseFiles(previous=>({...previous,[kind]:undefined}));toast({title:"Invalid evidence",description:error,variant:"destructive"});return;}}setLeaseFiles(previous=>({...previous,[kind]:file||undefined}));}}/>
-                  {/* Sale Status - Only show for sale properties */}
-                  {['sell','sell_rent'].includes(listingType||'') && (
+<PropertyPurposeFields form={form} onEvidence={(kind,file)=>{if(file){const error=validateSupportingDocuments([file]);if(error){setLeaseFiles(previous=>({...previous,[kind]:undefined}));toast({title:"Invalid evidence",description:error,variant:"destructive"});return;}}setLeaseFiles(previous=>({...previous,[kind]:file||undefined}));}}/>
+{['sell','sell_rent'].includes(listingType||'') && (
                     <FormField
                       control={form.control}
                       name="saleStatus"
@@ -807,12 +800,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                         </FormItem>
                       )}
                     />
-                  )}
-                </div>
-
-                {/* Keep asking prices beside the listing purpose so they remain
-                    distinct from finalized agreement terms collected below. */}
-                {['rent','sell','sell_rent'].includes(listingType||'') && <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 border rounded-lg">
+                  )}</div>{['rent','sell','sell_rent'].includes(listingType||'') && <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 border rounded-lg">
                   <div className="lg:col-span-2">
                     <h3 className="text-lg font-semibold">Rental & Sale Pricing</h3>
                     <p className="text-sm text-muted-foreground">{['rent','sell_rent'].includes(listingType||'')&&form.watch('rentalStatus')==='rented'?'Record the finalized rental amounts and the separate sale asking price.':'Enter the asking price shown with this listing.'}</p>
@@ -826,118 +814,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                     name="sellingPrice"
                     render={({field})=><FormItem><FormLabel>Expected Selling Price (â‚¹) *</FormLabel><FormControl><Input placeholder="e.g., 5000000" type="number" min="0" step="0.01" {...field}/></FormControl><AmountInWords amount={field.value}/><FormMessage/></FormItem>}
                   />}
-                </div>}
-
-                {/* Unit Details */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-4 border rounded-lg">
-                  <div className="lg:col-span-3">
-                    <h3 className="text-lg font-semibold ">Unit Details</h3>
-                  </div>
-
-                  {!['residential','commercial'].includes(selectedPropertyType) && <>                  <FormField
-                    control={form.control}
-                    name="unitNumber"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{getUnitLabel()}</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter unit number" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  /></>}
-
-                  {!structureUsesPlotArea(selectedStructure) && <FormField
-                    control={form.control}
-                    name="floor"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Floor</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter floor" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />}
-
-                  {['residential','commercial'].includes(selectedPropertyType) ? <div className="lg:col-span-3"><StructuredAddressFields value={propertyAddressDraft(form.watch('structuredAddress'))} onChange={value=>{form.setValue('structuredAddress',value,{shouldDirty:true});form.setValue('location',propertyAddressDisplay(value),{shouldDirty:true});form.setValue('unitNumber',value.structured.unitNumber||'',{shouldDirty:true});}} error={form.formState.errors.structuredAddress ? 'Please review the address fields.' : undefined}/></div> : <>
-                  <FormField
-                    control={form.control}
-                    name="location"
-                    render={({ field }) => (
-                      <FormItem className="lg:col-span-3">
-                        <FormLabel>Address</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Where is your property located? (Enter full address)" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  </>}
-                </div>
-
-                {/* Area Details */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 border rounded-lg">
-                  <div className="lg:col-span-2">
-                    <h3 className="text-lg font-semibold">Area measurements</h3>
-                  </div>
-                  {!structureUsesPlotArea(selectedStructure) && <FormField
-                    control={form.control}
-                    name="carpetArea"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Carpet area</FormLabel>
-                        <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-2">
-                          <FormControl><Input type="number" min="0" placeholder="Enter carpet area" {...field} /></FormControl>
-                          <select aria-label="Carpet area unit" className="h-10 rounded-md border bg-background px-3" {...form.register('carpetAreaUnit')}>
-                            {['sq ft','sq m','sq yd'].map(unit=><option key={unit} value={unit}>{unit}</option>)}
-                          </select>
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />}
-                  {!structureUsesPlotArea(selectedStructure) && <FormField
-                    control={form.control}
-                    name="constructedArea"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Built-up / Constructed area</FormLabel>
-                        <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-2">
-                          <FormControl><Input type="number" min="0" placeholder="Enter built-up area" {...field} /></FormControl>
-                          <select aria-label="Built-up / Constructed area unit" className="h-10 rounded-md border bg-background px-3" {...form.register('constructedAreaUnit')}>
-                            {['sq ft','sq m','sq yd'].map(unit=><option key={unit} value={unit}>{unit}</option>)}
-                          </select>
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />}
-                  {structureUsesPlotArea(selectedStructure) && (
-                    <FormField
-                      control={form.control}
-                      name="plotArea"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Plot area</FormLabel>
-                          <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-2">
-                            <FormControl><Input type="number" min="0" placeholder="Enter plot area" {...field} /></FormControl>
-                            <select aria-label="Plot area unit" className="h-10 rounded-md border bg-background px-3" {...form.register('plotAreaUnit')}>
-                              {['sq ft','sq m','sq yd','acre','hectare'].map(unit=><option key={unit} value={unit}>{unit}</option>)}
-                            </select>
-                          </div>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  )}
-                </div>
-
-                {/* Buyer Information - Only show when property is already sold */}
-                {['sell','sell_rent'].includes(listingType||'') && form.watch("saleStatus") === "sold" && (
+                </div>}{['sell','sell_rent'].includes(listingType||'') && form.watch("saleStatus") === "sold" && (
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-4 border rounded-lg">
                     <div className="lg:col-span-3">
                       <h3 className="text-lg font-semibold mb-4">Buyer Information</h3>
@@ -994,10 +871,111 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                       />
                     </div>
                   </div>
-                )}
+                )}</PropertyStepPanel>
+<PropertyStepPanel number={3} step={wizardStep}><div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-4 border rounded-lg">
+                  <div className="lg:col-span-3">
+                    <h3 className="text-lg font-semibold ">Unit Details</h3>
+                  </div>
 
-                {/* Tenant Information - Only show when property is already rented */}
-                {['rent','sell_rent'].includes(listingType||'') && form.watch("rentalStatus") === "rented" && (
+                  {!['residential','commercial'].includes(selectedPropertyType) && <>                  <FormField
+                    control={form.control}
+                    name="unitNumber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{getUnitLabel()}</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Enter unit number" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  /></>}
+
+                  {!structureUsesPlotArea(selectedStructure) && <FormField
+                    control={form.control}
+                    name="floor"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Floor</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Enter floor" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />}
+
+                  {['residential','commercial'].includes(selectedPropertyType) ? <div className="lg:col-span-3"><StructuredAddressFields value={propertyAddressDraft(form.watch('structuredAddress'))} onChange={value=>{form.setValue('structuredAddress',value,{shouldDirty:true});form.setValue('location',propertyAddressDisplay(value),{shouldDirty:true});form.setValue('unitNumber',value.structured.unitNumber||'',{shouldDirty:true});}} error={form.formState.errors.structuredAddress ? 'Please review the address fields.' : undefined}/></div> : <>
+                  <FormField
+                    control={form.control}
+                    name="location"
+                    render={({ field }) => (
+                      <FormItem className="lg:col-span-3">
+                        <FormLabel>Address</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Where is your property located? (Enter full address)" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  </>}
+                </div><div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 border rounded-lg">
+                  <div className="lg:col-span-2">
+                    <h3 className="text-lg font-semibold">Area measurements</h3>
+                  </div>
+                  {!structureUsesPlotArea(selectedStructure) && <FormField
+                    control={form.control}
+                    name="carpetArea"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Carpet area</FormLabel>
+                        <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-2">
+                          <FormControl><Input type="number" min="0" placeholder="Enter carpet area" {...field} /></FormControl>
+                          <select aria-label="Carpet area unit" className="h-10 rounded-md border bg-background px-3" {...form.register('carpetAreaUnit')}>
+                            {['sq ft','sq m','sq yd'].map(unit=><option key={unit} value={unit}>{unit}</option>)}
+                          </select>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />}
+                  {!structureUsesPlotArea(selectedStructure) && <FormField
+                    control={form.control}
+                    name="constructedArea"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Built-up / Constructed area</FormLabel>
+                        <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-2">
+                          <FormControl><Input type="number" min="0" placeholder="Enter built-up area" {...field} /></FormControl>
+                          <select aria-label="Built-up / Constructed area unit" className="h-10 rounded-md border bg-background px-3" {...form.register('constructedAreaUnit')}>
+                            {['sq ft','sq m','sq yd'].map(unit=><option key={unit} value={unit}>{unit}</option>)}
+                          </select>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />}
+                  {structureUsesPlotArea(selectedStructure) && (
+                    <FormField
+                      control={form.control}
+                      name="plotArea"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Plot area</FormLabel>
+                          <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-2">
+                            <FormControl><Input type="number" min="0" placeholder="Enter plot area" {...field} /></FormControl>
+                            <select aria-label="Plot area unit" className="h-10 rounded-md border bg-background px-3" {...form.register('plotAreaUnit')}>
+                              {['sq ft','sq m','sq yd','acre','hectare'].map(unit=><option key={unit} value={unit}>{unit}</option>)}
+                            </select>
+                          </div>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+                </div></PropertyStepPanel>
+<PropertyStepPanel number={4} step={wizardStep}>{['rent','sell_rent'].includes(listingType||'') && form.watch("rentalStatus") === "rented" && (
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-4 border rounded-lg">
                     <div className="lg:col-span-3">
                       <h3 className="text-lg font-semibold mb-4">Current Tenant Information</h3>
@@ -1176,9 +1154,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                     <FormField control={form.control} name="lockInPeriod" render={({field})=><FormItem><FormLabel>Lock-in Period (months)</FormLabel><FormControl><Input type="number" min="0" max="120" {...field}/></FormControl><FormMessage/></FormItem>}/>
                     <NextAgreementFields idPrefix="owner-next-agreement" enabled={addNextAgreementManually} currentAgreementEndDate={form.watch('agreementEndDate')||''} value={nextAgreementDraft} onEnabledChange={setAddNextAgreementManually} onChange={setNextAgreementDraft}/>
                   </div>
-                )}
-                {/* Unit Condition & Maintenance */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-4 border rounded-lg">
+                )}<div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-4 border rounded-lg">
                   <div className="lg:col-span-3">
                     <h3 className="text-lg font-semibold mb-4">Unit Condition & Maintenance</h3>
                   </div>
@@ -1299,10 +1275,8 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                       )}
                     />
                   )}
-                </div>
-
-                {/* Images & Comments */}
-                <div className="grid grid-cols-1 gap-6 p-4 border rounded-lg">
+                </div></PropertyStepPanel>
+<PropertyStepPanel number={5} step={wizardStep}><div className="grid grid-cols-1 gap-6 p-4 border rounded-lg">
                   <h3 className="text-lg font-semibold">Additional Information</h3>
 
                   <FormField
@@ -1453,23 +1427,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
                     )}
                   />}
 
-                </div>
-
-                {/* Form Actions */}
-                <div className="flex justify-center gap-4 pt-6 pb-20">
-                  <Button type="button" variant="outline" className="px-8"
-                    onClick={() => navigate("/manage-property")}>
-                    CANCEL
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="px-8 bg-primary hover:bg-primary/90"
-                    disabled={form.formState.isSubmitting || isUploading || isInternalUploading}
-                  >
-                    {form.formState.isSubmitting ? 'SAVING...' : isUploading || isInternalUploading ? 'UPLOADING...' : 'SUBMIT'}
-                  </Button>
-                </div>
-              </form>
+                </div></PropertyStepPanel><PropertyStepPanel number={6} step={wizardStep}>{wizardStep===6&&<PropertyFormReview titles={OWNER_STEPS} onEdit={goStep} media={<><p>{uploadedImages.length} exterior and {uploadedInternalImages.length} internal image(s) prepared. {Object.values(leaseFiles).filter(Boolean).length} supporting file(s) selected locally; evidence uploads occur after creation. {activeFurnishedItems(furnishedChecklist,form.watch('unitCondition'),form.watch('structure')).length} furnishing item(s).</p><FurnishingReview items={furnishedChecklist.filter(item=>item.checked)}/><ul>{Object.entries(leaseFiles).flatMap(([kind,file])=>file?[<li key={kind}>{kind==='lease'?'Lease evidence':'Income evidence'}: {file.name} - selected locally</li>]:[])}</ul></>}/>}</PropertyStepPanel>{wizardError&&<p role="alert" className="text-destructive">{wizardError}</p>}<PropertyStepActions step={wizardStep} count={6} busy={form.formState.isSubmitting||isUploading||isInternalUploading} onBack={()=>goStep(wizardStep-1)} onNext={nextStep} submitLabel={form.formState.isSubmitting?'Saving...':'Submit Property'}/><Button type="button" variant="ghost" onClick={()=>navigate('/manage-property')}>Cancel</Button></form>
             </Form>
           </CardContent>
         </Card>

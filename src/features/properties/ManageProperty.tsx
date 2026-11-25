@@ -1,5 +1,5 @@
 "use client";
-import {propertyPriceText} from '@/lib/property-presentation';
+import {propertyPricing} from '@/lib/property-presentation';
 import {hasEligibleAgreement} from "@/lib/agreement-eligibility";
 
 import {formatPropertyAddress} from "@/lib/property-address";
@@ -179,9 +179,10 @@ const ManageProperty = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+
   const [user, setUser] = useState<User | null>(null);
-  const { data: propertiesData, isLoading: loading, error: propertyError ,hasNextPage,fetchNextPage,isFetchingNextPage } = useUserProperties(user);
+  const [authReady,setAuthReady]=useState(false);
+  const { data: propertiesData, isLoading: loading, error: propertyError,refetch,isRefetchError ,hasNextPage,fetchNextPage,isFetchingNextPage } = useUserProperties(user);
 
   const ownedProperties = useMemo(() => propertiesData?.owned || [], [propertiesData?.owned]);
   const tenantProperties = useMemo(() => propertiesData?.tenant || [], [propertiesData?.tenant]);
@@ -195,15 +196,17 @@ const ManageProperty = () => {
   const [selectedListingType, setSelectedListingType] = useState<string>("");
 
   // View toggle state - 'owned' or 'tenant'
-  const [params]=useSearchParams();
+  const [params,setParams]=useSearchParams();
   const [activeView, setActiveView] = useState<'owned' | 'tenant'>(params.get('tab')==='tenant'?'tenant':'owned');
+
+  useEffect(()=>{setActiveView(params.get('tab')==='tenant'?'tenant':'owned');},[params.get('tab')]);
 
   // Toggle states for "Want to Sell" - default false for all properties
   const [wantToSellToggles, setWantToSellToggles] = useState<{ [key: string]: boolean }>({});
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
+      setUser(currentUser);setAuthReady(true);
     });
 
     return () => unsubscribe();
@@ -229,7 +232,7 @@ const ManageProperty = () => {
 
       // Filter by search query
       if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
+        const query = searchQuery.trim().toLowerCase();
         filtered = filtered.filter(property =>
           property.id?.toLowerCase().includes(query) ||
           property.title?.toLowerCase().includes(query) ||
@@ -293,10 +296,11 @@ const ManageProperty = () => {
     });
   }, [filteredTenantProperties]);
 
-  const formatPrice = (property: Property) => propertyPriceText(property);
+  const formatPrice=(property:Property)=>{const price=propertyPricing(property);return price.amount===null?price.label+': Not recorded':new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:0}).format(price.amount)+(price.monthly?' / month':'')+' - '+price.label;};
 
   const getListingTypeBadge = (listingType: string) => {
-    if(listingType==='manage')return <Badge variant="outline">To Manage ? Private</Badge>;
+    if(listingType==='sell_rent')return <Badge variant="outline">For Sale / Rent</Badge>;
+    if(listingType==='manage')return <Badge variant="outline">To Manage / Private</Badge>;
     if(listingType==='pre_leased')return <Badge variant="outline">Pre-Leased</Badge>;
     if (listingType === 'rent') {
       return <Badge variant="secondary" className="bg-blue-100 text-blue-800">For Rent</Badge>;
@@ -316,108 +320,26 @@ const ManageProperty = () => {
     navigate(`/property/${propertyId}`);
   };
 
-  const hidePropertyOptimistically=(propertyId:string)=>{
-    if(!user)return()=>{};const key=['userProperties',user.uid] as const,previous=queryClient.getQueryData(key);
-    queryClient.setQueryData(key,(current:any)=>current?{...current,owned:(current.owned||[]).filter((property:any)=>property.id!==propertyId),tenant:(current.tenant||[]).filter((property:any)=>property.id!==propertyId)}:current);
-    return()=>queryClient.setQueryData(key,previous);
+  const mutationLocks=useRef(new Set<string>());
+  const [busyProperties,setBusyProperties]=useState<Record<string,boolean>>({});
+  async function updateManagedProperty(propertyId:string,updates:Record<string,unknown>,message:string){
+    if(!user||mutationLocks.current.has(propertyId))return;
+    mutationLocks.current.add(propertyId);setBusyProperties(previous=>({...previous,[propertyId]:true}));
+    try{
+      const response=await apiFetch(`${API_BASE_URL}/properties/${propertyId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({ownerUID:user.uid,...updates})});
+      const data=await response.json();
+      if(!response.ok||!data.success){if(response.status===409){void queryClient.invalidateQueries({queryKey:['userProperties']});throw Error(data.message||'This property changed. Refresh and review its latest details before retrying.');}throw Error(data.message||'Could not update property. Please try again.');}
+      if(typeof updates.wantToSell==='boolean')setWantToSellToggles(previous=>({...previous,[propertyId]:updates.wantToSell as boolean}));
+      toast({title:'Property updated',description:message});
+      await Promise.allSettled(['userProperties','property','productHub','publicProperties','allProperties'].map(key=>queryClient.invalidateQueries({queryKey:[key]})));
+    }catch(error){toast({title:'Update not completed',description:error instanceof Error?error.message:'Could not update property. Please try again.',variant:'destructive'});}
+    finally{mutationLocks.current.delete(propertyId);setBusyProperties(previous=>({...previous,[propertyId]:false}));}
+  }
+  const handleToggleStatus=(propertyId:string,isInactive:boolean)=>{
+    if(isInactive&&!window.confirm('Archive this property? It will move to Archived Properties.'))return;
+    return updateManagedProperty(propertyId,{status:isInactive?'inactive':'active',isActive:!isInactive},isInactive?'Property archived. Existing records are preserved.':'Property restored.');
   };
-
-  const handleToggleStatus = async (propertyId: string, isInactive: boolean) => {
-    if (!user) return;
-    const rollback=isInactive?hidePropertyOptimistically(propertyId):()=>{};
-
-    try {
-
-      const updateData = {
-        ownerUID: user.uid,
-        status: isInactive ? 'inactive' : 'active', // Set status to 'inactive' or 'active'
-        isActive: !isInactive
-      };
-
-
-      const response = await apiFetch(`${API_BASE_URL}/properties/${propertyId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updateData),
-      });
-
-      const data = await response.json();
-
-
-      if (data.success) {
-        toast({
-          title: "Success",
-          description: isInactive
-            ? "Property set to inactive and archived"
-            : "Property set to active and unarchived"
-        });
-        // Refresh properties list (this will filter out inactive properties)
-        queryClient.invalidateQueries({ queryKey: ['userProperties'] });
-      } else {
-        rollback();
-        toast({
-          title: "Error",
-          description: data.message || "Failed to update property status",
-          variant: "destructive"
-        });
-      }
-    } catch (error) {
-      rollback();
-
-      toast({
-        title: "Error",
-        description: "Failed to update property status. Please try again.",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const handleArchive = async (propertyId: string) => {
-    if (!user) return;
-    const rollback=hidePropertyOptimistically(propertyId);
-
-    try {
-      const response = await apiFetch(`${API_BASE_URL}/properties/${propertyId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ownerUID: user.uid,
-          status: 'inactive', // Set status to 'inactive'
-          isActive: false
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        toast({
-          title: "Success",
-          description: "Property archived successfully"
-        });
-        // Refresh properties list
-        queryClient.invalidateQueries({ queryKey: ['userProperties'] });
-      } else {
-        rollback();
-        toast({
-          title: "Error",
-          description: data.message || "Failed to archive property",
-          variant: "destructive"
-        });
-      }
-    } catch (error) {
-      rollback();
-
-      toast({
-        title: "Error",
-        description: "Failed to archive property. Please try again.",
-        variant: "destructive"
-      });
-    }
-  };
+  const handleArchive=(propertyId:string)=>handleToggleStatus(propertyId,true);
 
   const handleAddTenant = (propertyId: string, readOnly = false) => {
     // Navigate to add tenant page, passing view mode if readOnly is true
@@ -438,65 +360,7 @@ const ManageProperty = () => {
     navigate(`/request-services/${propertyId}`);
   };
 
-  const handleToggleWantToSell = async (propertyId: string, propertyTitle: string, newValue: boolean) => {
-    if (!user) return;
-
-    try {
-      const response = await apiFetch(`${API_BASE_URL}/properties/${propertyId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ownerUID: user.uid,
-          wantToSell: newValue
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        toast({
-          title: "Success",
-          description: newValue
-            ? "Admin has been notified that you want to sell this property"
-            : "Admin has been notified that you cancelled the sell request"
-        });
-
-        // Update local toggle state
-        setWantToSellToggles(prev => ({
-          ...prev,
-          [propertyId]: newValue
-        }));
-
-        // Refresh properties list
-        queryClient.invalidateQueries({ queryKey: ['userProperties'] });
-      } else {
-        toast({
-          title: "Error",
-          description: data.message || "Failed to update property",
-          variant: "destructive"
-        });
-        // Revert toggle state on error
-        setWantToSellToggles(prev => ({
-          ...prev,
-          [propertyId]: !newValue
-        }));
-      }
-    } catch (error) {
-
-      toast({
-        title: "Error",
-        description: "Failed to update property. Please try again.",
-        variant: "destructive"
-      });
-      // Revert toggle state on error
-      setWantToSellToggles(prev => ({
-        ...prev,
-        [propertyId]: !newValue
-      }));
-    }
-  };
+  const handleToggleWantToSell=(propertyId:string,_propertyTitle:string,newValue:boolean)=>updateManagedProperty(propertyId,{wantToSell:newValue},newValue?'Your sale request was saved. Notification delivery is processed separately.':'Your sale request was cancelled. Notification delivery is processed separately.');
 
   const handleToggleToSell = async (propertyId: string, propertyTitle: string) => {
     try {
@@ -579,9 +443,9 @@ const ManageProperty = () => {
 
 
   return (
-    <main className={workspaceStyles.workspace}>{hasNextPage&&<p role="status">Showing loaded properties. Load more to view older records. <Button variant="outline" disabled={isFetchingNextPage} onClick={()=>void fetchNextPage()}>Load more properties</Button></p>}
+    <div className={workspaceStyles.workspace}>
       <>
-        <title>Manage Property — PropBank</title>
+        <title>Manage Properties | PropBank</title>
         <meta name="description" content="Manage your property listings, update property details, unit numbers, and building information." />
         <link rel="canonical" href="/manage-property" />
       </>
@@ -590,18 +454,18 @@ const ManageProperty = () => {
         {/* Header */}
         <header className={workspaceStyles.pageHeading}>
           <div className={workspaceStyles.headerRow}>
-            <h1>Manage Properties</h1>
-            
+            <div><p className={workspaceStyles.eyebrow}>YOUR PORTFOLIO</p><h1>Manage Properties</h1><p className={workspaceStyles.subtitle}>Manage your property portfolio, listings and tenancy activity in one place.</p></div>
+
             <div className={workspaceStyles.headerActions}>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button className={workspaceStyles.primaryAction}>
                     <Plus className="h-4 w-4 mr-2" />
                     Add Property
-                    <span aria-hidden="true" className="ml-2 text-xs">▾</span>
+                    <span aria-hidden="true" className="ml-2 text-xs">&#9662;</span>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuContent align="end" className={workspaceStyles.propertyMenu}>
                   <DropdownMenuItem onSelect={() => navigate("/select-property-type?as=owner")}>
                     <Home className="mr-2 h-4 w-4" />As an Owner
                   </DropdownMenuItem>
@@ -622,41 +486,41 @@ const ManageProperty = () => {
           </div>
         </header>
 
-        <ProductDashboard/>
+        <div className={workspaceStyles.activity}><ProductDashboard/></div>
         <section className={workspaceStyles.portfolioSection} aria-labelledby="your-properties-heading">
           <h2 id="your-properties-heading" className="sr-only">Your Properties</h2>
         <Card className={workspaceStyles.filters}>
           <CardContent className={workspaceStyles.filterContent}>
             <div className="flex flex-col lg:flex-row gap-6 lg:items-center justify-between">
-              
+
               {/* View Toggle */}
-              <div className="flex bg-muted/50 p-1 rounded-lg self-start sm:self-auto w-full sm:w-auto">
+              <div className={workspaceStyles.tabs} role="group" aria-label="Property relationship">
                 <button
                   className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                    activeView === 'owned' 
-                      ? 'bg-background shadow-sm text-foreground' 
+                    activeView === 'owned'
+                      ? 'bg-background shadow-sm text-foreground'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
-                  onClick={() => setActiveView('owned')}
+                  aria-pressed={activeView==='owned'} onClick={() => {setActiveView('owned');const next=new URLSearchParams(params.toString());next.set('tab','owned');setParams(next);}}
                 >
                   <Building2 className="h-4 w-4 mr-2 hidden sm:block" />
                   Owned
                   <Badge variant="secondary" className={`ml-2 border-none ${activeView === 'owned' ? 'bg-primary/10 text-primary' : ''}`}>
-                    {filteredOwnedProperties.length}
+                    {ownedProperties.length}
                   </Badge>
                 </button>
                 <button
                   className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                    activeView === 'tenant' 
-                      ? 'bg-background shadow-sm text-foreground' 
+                    activeView === 'tenant'
+                      ? 'bg-background shadow-sm text-foreground'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
-                  onClick={() => setActiveView('tenant')}
+                  aria-pressed={activeView==='tenant'} onClick={() => {setActiveView('tenant');const next=new URLSearchParams(params.toString());next.set('tab','tenant');setParams(next);}}
                 >
                   <Key className="h-4 w-4 mr-2 hidden sm:block" />
                   Tenant
                   <Badge variant="secondary" className={`ml-2 border-none ${activeView === 'tenant' ? 'bg-primary/10 text-primary' : ''}`}>
-                    {filteredTenantProperties.length}
+                    {tenantProperties.length}
                   </Badge>
                 </button>
               </div>
@@ -670,7 +534,7 @@ const ManageProperty = () => {
                  <div className="flex items-center gap-3 w-full sm:w-auto">
                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap hidden sm:block">Property Type</span>
                    <Select value={selectedPropertyType || "all"} onValueChange={(v) => setSelectedPropertyType(v === "all" ? "" : v)}>
-                     <SelectTrigger className="w-full sm:w-[150px] bg-background">
+                     <SelectTrigger aria-label="Property type" className="w-full sm:w-[150px] bg-background">
                        <SelectValue placeholder="All Types" />
                      </SelectTrigger>
                      <SelectContent>
@@ -681,20 +545,20 @@ const ManageProperty = () => {
                      </SelectContent>
                    </Select>
                  </div>
-                 
+
                  <div className="flex items-center gap-3 w-full sm:w-auto">
                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap hidden sm:block">Listing</span>
                    <Select value={selectedListingType || "all"} onValueChange={(v) => setSelectedListingType(v === "all" ? "" : v)}>
-                     <SelectTrigger className="w-full sm:w-[150px] bg-background">
+                     <SelectTrigger aria-label="Listing filter" className="w-full sm:w-[150px] bg-background">
                        <SelectValue placeholder="All Listings" />
                      </SelectTrigger>
                      <SelectContent>
                        <SelectItem value="all">All Listings</SelectItem>
-                       <SelectItem value="rent">For Rent ? All</SelectItem>
+                       <SelectItem value="rent">For Rent / All</SelectItem>
                        <SelectItem value="available">Available For Rent</SelectItem>
                        <SelectItem value="rented">Already Rented Out</SelectItem>
                        <SelectItem value="manage">To Manage</SelectItem>
-                       <SelectItem value="sell">For Sale</SelectItem><SelectItem value="pre_leased">Pre-Leased Sale</SelectItem><SelectItem value="manage">To Manage</SelectItem>
+                       <SelectItem value="sell">For Sale</SelectItem><SelectItem value="pre_leased">Pre-Leased Sale</SelectItem>
                      </SelectContent>
                    </Select>
                  </div>
@@ -737,16 +601,18 @@ const ManageProperty = () => {
               </div>
               <div className="mt-2">
                 <p className="text-xs sm:text-sm text-muted-foreground">
-                  {propertyError && <span role="alert" className="text-destructive">{propertyError.message}</span>}
+
                   Showing {activeView === 'owned' ? filteredOwnedProperties.length : filteredTenantProperties.length} of {activeView === 'owned' ? ownedProperties.length : tenantProperties.length} properties
                 </p>
               </div>
             </div>
           )}
 
+          <p className={workspaceStyles.coverage}>Counts and filters cover loaded properties.</p>
+          {propertyError&&<div role="alert" className={workspaceStyles.error}><p>{isRefetchError?'The latest update could not be loaded. Showing previously loaded properties.':'Properties could not be loaded.'} {propertyError.message}</p><Button variant="outline" onClick={()=>void refetch()}>Retry</Button></div>}
           {/* Properties List */}
-          <div className="space-y-3 pb-12">
-            {!user ? (
+          <div className="space-y-3">
+            {!authReady ? <p role="status">Loading your portfolio...</p> : !user ? (
               <div className="text-center py-12">
                 <Building2 className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
                 <h3 className="text-xl font-semibold mb-2">Please Sign In</h3>
@@ -764,19 +630,19 @@ const ManageProperty = () => {
                   <p>Loading properties...</p>
                 </div>
               )
-                : (
+                : propertyError && propertiesData===undefined ? null : (
                   <>
                      {/* Show section based on active view */}
                     {activeView === 'owned' ? (
                       /* Owned Properties Section */
-                      <div className="space-y-4">
+                      <div className={workspaceStyles.portfolioGrid}>
 
                         {sortedOwnedProperties.length > 0 ? (
                           sortedOwnedProperties.map((property, index) => (
                             <Card key={property.id} className={`${workspaceStyles.propertyRow} transition-shadow overflow-hidden`}>
-                              <div className="flex flex-col sm:flex-row">
+                              <div className={workspaceStyles.cardLayout}>
                                 {/* Property Image Thumbnail - Always show with fallback */}
-                                <div className="w-full sm:w-40 h-32 sm:h-auto flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 relative overflow-hidden flex items-center justify-center">
+                                <div className={workspaceStyles.cover}>
                                   {property.images && property.images.length > 0 && property.images[0] ? (
                                     <SessionMediaImage
                                       src={property.images[0]}
@@ -790,7 +656,7 @@ const ManageProperty = () => {
                                   ) : null}
                                   <Building2 className="h-12 w-12 text-gray-400" />
                                 </div>
-                                <CardContent className="p-3 sm:p-6 flex-1">
+                                <CardContent className={workspaceStyles.cardBody}><div className={workspaceStyles.rowInformation}>
                                   <div className="flex flex-col space-y-3 sm:space-y-4">
                                     {/* Header with number and action menu */}
                                     <div className="flex items-start justify-between">
@@ -802,7 +668,7 @@ const ManageProperty = () => {
                                               {property.unitNumber ? ` (${property.unitNumber})` : ""}
                                               {property.buildingName && property.buildingName.trim()!==property.title?.trim() && <span className="block text-sm font-normal">{property.buildingName}</span>}
                                               <span className="block text-xs font-normal">Property ID: {property.id}{property.createdAs==="tenant" ? ` - Owner verification ${property.ownershipVerification||"pending"}` : ""}{property.agreementStatus ? ` · ${property.agreementStatus.replaceAll("_"," ")}` : ""}{property.agreementRequest?.status==="pending" ? ` · Pending ${property.agreementRequest.kind}` : ""}</span>
-                                              {formatPropertyAddress(property)}
+                                              <span className={workspaceStyles.address}>{formatPropertyAddress(property)}</span><span className={workspaceStyles.stateLabel}>{property.status==='inactive'||property.isActive===false?'Inactive':property.status==='active'||property.isActive===true?'Active':'Status not recorded'}</span>
                                             </h3>
                                             <Badge
                                               variant="outline"
@@ -811,7 +677,8 @@ const ManageProperty = () => {
                                               Owner
                                             </Badge>
                                           </div>
-                                          <button type="button" className={workspaceStyles.viewLink} onClick={() => handleView(property.id)}>View details <span aria-hidden="true">→</span></button>
+
+                                          <p className={workspaceStyles.price}>{formatPrice(property)}</p>
                                           {property.listingType==='pre_leased'&&<p className="text-sm text-muted-foreground">Lease tenure: {leaseTenureLabel(property.preLeased)}</p>}
                                           <ListingModeration key={`${property.id}:${property.moderationRevision||0}`} property={property}/>
                                           {/* Show active tenants on a separate line if property is rented out */}
@@ -836,13 +703,84 @@ const ManageProperty = () => {
                                         </div>
                                       </div>
                                       {/* Action Menu for Owners */}
-                                      <DropdownMenu>
+
+                                    </div>
+
+                                    {/* Property Details */}
+                                    <div className="ml-5 sm:ml-8 space-y-2">
+                                      <div className="flex flex-wrap gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground items-center">
+                                        <span className="flex items-center gap-1 whitespace-nowrap">
+                                           {property.propertyType?.toUpperCase() || 'CATEGORY NOT RECORDED'}
+                                        </span>
+                                        {property.squareFeet > 0 && (
+                                          <span className="flex items-center gap-1 whitespace-nowrap">
+                                             {property.squareFeet} sqft
+                                          </span>
+                                        )}
+                                        {property.updatedAt && (
+                                          <span className="hidden sm:flex items-center gap-1 whitespace-nowrap">
+                                             Last modified: {formatDisplayDate(property.updatedAt)} at {formatDisplayTime(property.updatedAt)}
+                                          </span>
+                                        )}
+                                        {property.listingType === 'rent' && (
+                                          <div className="flex items-center gap-2">
+
+                                            {property.status && property.status !== 'inactive' && (() => {
+                                              const validTenants = property.tenants ? property.tenants.filter((t: any) => t.isActive && (t.firstName || t.lastName || t.phone || t.email)) : [];
+                                              const hasValidTenants = validTenants.length > 0 || property.rentalStatus==='rented';
+                                              return (
+                                              <Badge variant="outline" className={
+                                                hasValidTenants
+                                                  ? 'bg-orange-50 text-orange-700 border-orange-200 text-xs whitespace-nowrap'
+                                                  : 'bg-green-50 text-green-700 border-green-200 text-xs whitespace-nowrap'
+                                              }>
+                                                {hasValidTenants
+                                                  ? 'Currently Rented'
+                                                  : property.rentalStatus==='available'?'Available for Rent':'Occupancy not recorded'}
+                                              </Badge>
+                                              );
+                                            })()}
+                                            {property.status === 'inactive' && (
+                                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-xs whitespace-nowrap">
+                                                Inactive (Archived)
+                                              </Badge>
+                                            )}
+                                          </div>
+                                        )}
+                                        {property.listingType === 'sell' && (
+                                          <div className="flex items-center gap-2">
+                                            <Badge variant="outline" className={
+                                              property.isSold
+                                                ? 'bg-red-50 text-red-700 border-red-200 text-xs whitespace-nowrap'
+                                                : 'bg-green-50 text-green-700 border-green-200 text-xs whitespace-nowrap'
+                                            }>
+                                              {property.isSold ? 'Sold' : 'Available for Sale'}
+                                            </Badge>
+                                          </div>
+                                        )}
+                                        {property.listingType && (
+                                          <Badge className="bg-blue-600 text-white hover:bg-blue-700 text-xs whitespace-nowrap">
+                                            {purposeLabel(property.listingType)}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                      {property.updatedAt && (
+                                        <div className="sm:hidden text-xs text-muted-foreground">
+                                           Last modified: {formatDisplayDate(property.updatedAt)}
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Want to Sell Toggle - Only for rent properties owned by user */}
+
+                                  </div>
+                                </div><aside className={workspaceStyles.rowActions} aria-label={`Actions for property ${property.title}`}><div className={workspaceStyles.actionTop}><button type="button" className={workspaceStyles.viewLink} onClick={() => handleView(property.id)}>View details <span aria-hidden="true">&rarr;</span></button><DropdownMenu>
                                         <DropdownMenuTrigger asChild>
-                                          <Button variant="ghost" size="sm" className="h-8 w-8 sm:h-9 sm:w-9 p-0 hover:bg-gray-100 flex-shrink-0">
+                                          <Button variant="ghost" size="sm" aria-label={`Actions for ${property.title}`} disabled={!!busyProperties[property.id]} className="h-9 w-9 p-0 flex-shrink-0">
                                             <MoreVertical className="h-4 w-4 sm:h-5 sm:w-5" />
                                           </Button>
                                         </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end" className="w-48">
+                                        <DropdownMenuContent align="end" className={workspaceStyles.propertyMenu}>
 <DropdownMenuItem onClick={()=>navigate(`/manage-property/${property.id}`)}>Property 360</DropdownMenuItem>
                                           <DropdownMenuItem onClick={() => handleView(property.id)}>
                                             <Eye className="h-4 w-4 mr-2" />
@@ -855,7 +793,7 @@ const ManageProperty = () => {
                                           <DropdownMenuSeparator />
                                           {property.listingType === 'rent' && (() => {
                                             const validTenants = property.tenants ? property.tenants.filter((t: any) => t.isActive && (t.firstName || t.lastName || t.phone || t.email)) : [];
-                                            const hasValidTenants = validTenants.length > 0;
+                                            const hasValidTenants = validTenants.length > 0 || property.rentalStatus==='rented';
                                             return (
                                             <DropdownMenuItem onClick={() => handleAddTenant(property.id, hasValidTenants)}>
                                               {hasValidTenants ? (
@@ -911,7 +849,7 @@ const ManageProperty = () => {
                                             <XCircle className="h-4 w-4 mr-2" />
                                             Terminate Agreement
                                           </DropdownMenuItem>
-                                          {property.rentalStatus === 'inactive' && (
+                                          {property.status !== 'inactive' && property.isActive !== false && (
                                             <>
                                               <DropdownMenuSeparator />
                                               <DropdownMenuItem
@@ -924,32 +862,12 @@ const ManageProperty = () => {
                                             </>
                                           )}
                                         </DropdownMenuContent>
-                                      </DropdownMenu>
-                                    </div>
-
-                                    {/* Property Details */}
-                                    <div className="ml-5 sm:ml-8 space-y-2">
-                                      <div className="flex flex-wrap gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground items-center">
-                                        <span className="flex items-center gap-1 whitespace-nowrap">
-                                          🏠 {property.propertyType.toUpperCase()}
-                                        </span>
-                                        {property.squareFeet > 0 && (
-                                          <span className="flex items-center gap-1 whitespace-nowrap">
-                                            📐 {property.squareFeet} sqft
-                                          </span>
-                                        )}
-                                        {property.updatedAt && (
-                                          <span className="hidden sm:flex items-center gap-1 whitespace-nowrap">
-                                            📅 Last modified: {formatDisplayDate(property.updatedAt)} at {formatDisplayTime(property.updatedAt)}
-                                          </span>
-                                        )}
-                                        {property.listingType === 'rent' && (
-                                          <div className="flex items-center gap-2">
-                                            <div className="flex items-center gap-2">
+                                      </DropdownMenu></div>{property.listingType==='rent'&&<div className={workspaceStyles.activeControl}><div className="flex items-center gap-2">
                                               <Switch
                                                 id={`status-${property.id}`}
-                                                checked={property.status === 'inactive'}
-                                                onCheckedChange={(checked) => handleToggleStatus(property.id, checked)}
+                                                checked={property.status !== 'inactive' && property.isActive!==false}
+                                                disabled={!!busyProperties[property.id]}
+                                                onCheckedChange={(checked) => handleToggleStatus(property.id, !checked)}
                                               />
                                               <Label
                                                 htmlFor={`status-${property.id}`}
@@ -957,62 +875,15 @@ const ManageProperty = () => {
                                               >
                                                 {property.status === 'inactive' ? 'Inactive' : 'Active'}
                                               </Label>
-                                            </div>
-                                            {property.status && property.status !== 'inactive' && (() => {
-                                              const validTenants = property.tenants ? property.tenants.filter((t: any) => t.isActive && (t.firstName || t.lastName || t.phone || t.email)) : [];
-                                              const hasValidTenants = validTenants.length > 0;
-                                              return (
-                                              <Badge variant="outline" className={
-                                                hasValidTenants
-                                                  ? 'bg-orange-50 text-orange-700 border-orange-200 text-xs whitespace-nowrap'
-                                                  : 'bg-green-50 text-green-700 border-green-200 text-xs whitespace-nowrap'
-                                              }>
-                                                {hasValidTenants
-                                                  ? 'Currently Rented'
-                                                  : 'Available for Rent'}
-                                              </Badge>
-                                              );
-                                            })()}
-                                            {property.status === 'inactive' && (
-                                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-xs whitespace-nowrap">
-                                                Inactive (Archived)
-                                              </Badge>
-                                            )}
-                                          </div>
-                                        )}
-                                        {property.listingType === 'sell' && (
-                                          <div className="flex items-center gap-2">
-                                            <Badge variant="outline" className={
-                                              property.isSold
-                                                ? 'bg-red-50 text-red-700 border-red-200 text-xs whitespace-nowrap'
-                                                : 'bg-green-50 text-green-700 border-green-200 text-xs whitespace-nowrap'
-                                            }>
-                                              {property.isSold ? 'Sold' : 'Available for Sale'}
-                                            </Badge>
-                                          </div>
-                                        )}
-                                        {property.listingType && (
-                                          <Badge className="bg-blue-600 text-white hover:bg-blue-700 text-xs whitespace-nowrap">
-                                            {property.listingType === 'rent' ? 'Rent' : property.listingType === 'sell' ? 'Sell' : property.listingType}
-                                          </Badge>
-                                        )}
-                                      </div>
-                                      {property.updatedAt && (
-                                        <div className="sm:hidden text-xs text-muted-foreground">
-                                          📅 Last modified: {formatDisplayDate(property.updatedAt)}
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    {/* Want to Sell Toggle - Only for rent properties owned by user */}
-                                    {property.listingType === 'rent' && (
+                                            </div></div>}{property.listingType === 'rent' && (
                                       <div className="ml-5 sm:ml-8 pt-2 border-t border-gray-100">
                                         <div className="flex items-center justify-between">
-                                          <span className="text-xs sm:text-sm font-medium text-foreground whitespace-nowrap">Want to Sell?</span>
+                                          <span className="text-sm font-medium">Want to Sell?<small className={workspaceStyles.toggleHelp}>Request a sale review; your listing purpose stays unchanged.</small></span>
                                           <button
-                                            className={`relative inline-flex h-5 w-9 sm:h-6 sm:w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${wantToSellToggles[property.id] ? 'bg-slate-800' : 'bg-gray-300'
+                                            type="button" role="switch" aria-label={`Want to sell ${property.title}`} aria-checked={!!wantToSellToggles[property.id]} disabled={!!busyProperties[property.id]} className={`relative inline-flex h-5 w-9 sm:h-6 sm:w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${wantToSellToggles[property.id] ? 'bg-slate-800' : 'bg-gray-300'
                                               }`}
                                             onClick={() => {
+                                              if(mutationLocks.current.has(property.id))return;
                                               const currentState = wantToSellToggles[property.id] || false;
                                               const newValue = !currentState;
 
@@ -1021,7 +892,7 @@ const ManageProperty = () => {
                                                   `Are you sure you want to mark "${property.title}" as "Want to Sell"?\n\nThis will notify the admin with your property and contact details.`
                                                 );
                                                 if (confirmed) {
-                                                  setWantToSellToggles(prev => ({ ...prev, [property.id]: true }));
+
                                                   handleToggleWantToSell(property.id, property.title, true);
                                                 }
                                               } else {
@@ -1029,7 +900,7 @@ const ManageProperty = () => {
                                                   `Are you sure you want to cancel the sell request for "${property.title}"?\n\nThe admin will be notified of this cancellation.`
                                                 );
                                                 if (confirmed) {
-                                                  setWantToSellToggles(prev => ({ ...prev, [property.id]: false }));
+
                                                   handleToggleWantToSell(property.id, property.title, false);
                                                 }
                                               }
@@ -1042,9 +913,7 @@ const ManageProperty = () => {
                                           </button>
                                         </div>
                                       </div>
-                                    )}
-                                  </div>
-                                </CardContent>
+                                    )}</aside></CardContent>
                               </div>
                             </Card>
                           ))
@@ -1064,14 +933,14 @@ const ManageProperty = () => {
 
                     ) : (
                       /* Tenant Properties Section */
-                      <div className="space-y-4">
+                      <div className={workspaceStyles.portfolioGrid}>
 
                         {sortedTenantProperties.length > 0 ? (
                           sortedTenantProperties.map((property, index) => (
                             <Card key={property.id} className={`${workspaceStyles.propertyRow} transition-shadow overflow-hidden`}>
-                              <div className="flex flex-col sm:flex-row">
+                              <div className={workspaceStyles.cardLayout}>
                                 {/* Property Image Thumbnail - Always show with fallback */}
-                                <div className="w-full sm:w-40 h-32 sm:h-auto flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 relative overflow-hidden flex items-center justify-center">
+                                <div className={workspaceStyles.cover}>
                                   {property.images && property.images.length > 0 && property.images[0] ? (
                                     <SessionMediaImage
                                       src={property.images[0]}
@@ -1085,7 +954,7 @@ const ManageProperty = () => {
                                   ) : null}
                                   <Building2 className="h-12 w-12 text-gray-400" />
                                 </div>
-                                <CardContent className="p-3 sm:p-6 flex-1">
+                                <CardContent className={workspaceStyles.cardBody}><div className={workspaceStyles.rowInformation}>
                                   <div className="flex flex-col space-y-3 sm:space-y-4">
                                     {/* Header with number and action menu */}
                                     <div className="flex items-start justify-between">
@@ -1097,7 +966,7 @@ const ManageProperty = () => {
                                               {property.unitNumber ? ` (${property.unitNumber})` : ""}
                                               {property.buildingName && property.buildingName.trim()!==property.title?.trim() && <span className="block text-sm font-normal">{property.buildingName}</span>}
                                               <span className="block text-xs font-normal">Property ID: {property.id}{property.agreementStatus ? ` ? ${property.agreementStatus.replaceAll("_"," ")}` : ""}{property.agreementRequest?.status==="pending" ? ` ? Pending ${property.agreementRequest.kind}` : ""}</span>
-                                              {formatPropertyAddress(property)}
+                                              <span className={workspaceStyles.address}>{formatPropertyAddress(property)}</span><span className={workspaceStyles.stateLabel}>{property.status==='inactive'||property.isActive===false?'Inactive':property.status==='active'||property.isActive===true?'Active':'Status not recorded'}</span>
                                             </h3>
                                             <Badge
                                               variant="outline"
@@ -1106,6 +975,7 @@ const ManageProperty = () => {
                                               Tenant
                                             </Badge>
                                           </div>
+                                          {property.moderationStatus&&<Badge variant="outline">Listing: {property.moderationStatus.replaceAll('_',' ')}</Badge>}
                                           {property.createdAs==='tenant'&&<OwnerVerificationStatus status={property.ownershipVerification} reason={property.ownershipVerificationReason}/>}
                                           {/* Show owner info */}
                                           {property.ownerName && (
@@ -1113,17 +983,40 @@ const ManageProperty = () => {
                                               {property.ownerRole === "agent" ? "Agent" : "Owner"}: {property.ownerName}
                                             </p>
                                           )}
-                                          <button type="button" className={workspaceStyles.viewLink} onClick={() => handleView(property.id)}>View details <span aria-hidden="true">→</span></button>
+
+                                          <p className={workspaceStyles.price}>{formatPrice(property)}</p>
                                         </div>
                                       </div>
                                       {/* Action Menu for Tenants - Limited options */}
-                                      <DropdownMenu>
+
+                                    </div>
+
+                                    {/* Property Details */}
+                                    <div className="ml-5 sm:ml-8 space-y-2">
+                                      <div className="flex flex-wrap gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground items-center">
+                                        <span className="flex items-center gap-1 whitespace-nowrap">
+                                           {property.propertyType?.toUpperCase() || 'CATEGORY NOT RECORDED'}
+                                        </span>
+                                        {property.squareFeet > 0 && (
+                                          <span className="flex items-center gap-1 whitespace-nowrap">
+                                             {property.squareFeet} sqft
+                                          </span>
+                                        )}
+                                        {property.listingType && (
+                                          <Badge className="bg-blue-600 text-white hover:bg-blue-700 text-xs whitespace-nowrap">
+                                            {purposeLabel(property.listingType)}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                {property.updatedAt&&<p className={workspaceStyles.rowDate}>Last modified: {formatDisplayDate(property.updatedAt)} at {formatDisplayTime(property.updatedAt)}</p>}</div><aside className={workspaceStyles.rowActions} aria-label={`Actions for property ${property.title}`}><div className={workspaceStyles.actionTop}><button type="button" className={workspaceStyles.viewLink} onClick={() => handleView(property.id)}>View details <span aria-hidden="true">&rarr;</span></button><DropdownMenu>
                                         <DropdownMenuTrigger asChild>
-                                          <Button variant="ghost" size="sm" className="h-8 w-8 sm:h-9 sm:w-9 p-0 hover:bg-gray-100 flex-shrink-0">
+                                          <Button variant="ghost" size="sm" aria-label={`Actions for ${property.title}`} disabled={!!busyProperties[property.id]} className="h-9 w-9 p-0 flex-shrink-0">
                                             <MoreVertical className="h-4 w-4 sm:h-5 sm:w-5" />
                                           </Button>
                                         </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end" className="w-48">
+                                        <DropdownMenuContent align="end" className={workspaceStyles.propertyMenu}>
 <DropdownMenuItem onClick={()=>navigate(`/manage-property/${property.id}`)}>Property 360</DropdownMenuItem>
                                           <DropdownMenuItem onClick={() => handleView(property.id)}>
                                             <Eye className="h-4 w-4 mr-2" />
@@ -1168,29 +1061,7 @@ const ManageProperty = () => {
                                             Request Termination
                                           </DropdownMenuItem>
                                         </DropdownMenuContent>
-                                      </DropdownMenu>
-                                    </div>
-
-                                    {/* Property Details */}
-                                    <div className="ml-5 sm:ml-8 space-y-2">
-                                      <div className="flex flex-wrap gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground items-center">
-                                        <span className="flex items-center gap-1 whitespace-nowrap">
-                                          🏠 {property.propertyType.toUpperCase()}
-                                        </span>
-                                        {property.squareFeet > 0 && (
-                                          <span className="flex items-center gap-1 whitespace-nowrap">
-                                            📐 {property.squareFeet} sqft
-                                          </span>
-                                        )}
-                                        {property.listingType && (
-                                          <Badge className="bg-blue-600 text-white hover:bg-blue-700 text-xs whitespace-nowrap">
-                                            {property.listingType === 'rent' ? 'Rent' : property.listingType === 'sell' ? 'Sell' : property.listingType}
-                                          </Badge>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </CardContent>
+                                      </DropdownMenu></div></aside></CardContent>
                               </div>
                             </Card>
                           ))
@@ -1234,9 +1105,10 @@ const ManageProperty = () => {
 
         </div>
         </section>
+        {hasNextPage&&<p className={workspaceStyles.pagination} role="status">Showing loaded properties. Load more to view older records. <Button variant="outline" disabled={isFetchingNextPage} onClick={()=>void fetchNextPage()}>Load more properties</Button></p>}
         <BrokerEnquiries/>
       </div>
-    </main>
+    </div>
   );
 };
 

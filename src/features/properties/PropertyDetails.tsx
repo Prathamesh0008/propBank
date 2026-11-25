@@ -1,5 +1,5 @@
 "use client";
-import {propertyPriceText, propertyAreaText, propertyOccupancy} from '@/lib/property-presentation';
+import {propertyPricing, propertyAreaText, propertyOccupancy} from '@/lib/property-presentation';
 
 import {formatPropertyAddress} from "@/lib/property-address";
 import {formatDisplayDate, formatDisplayTime} from '@/lib/date-format';
@@ -10,6 +10,7 @@ import PropertyPurposeSummary from "@/features/properties/PropertyPurposeSummary
 import {purposeLabel} from "@/lib/property-purpose";
 
 import styles from "./PropertyDetails.module.css";
+import PropertyPhotoGallery from "./PropertyPhotoGallery";
 
 import NegotiationPanel from '@/features/negotiations/NegotiationPanel';
 import {ServiceRequestHistory} from '@/features/services/ServiceRequestWorkflow';
@@ -382,7 +383,7 @@ const PropertyDetails = () => {
     }
   };
 
-  const formatPrice = (property: Property) => propertyPriceText(property);
+
 
   const getListingTypeBadge = (listingType: string) => {
     if (listingType === 'rent') {
@@ -489,6 +490,8 @@ const PropertyDetails = () => {
     );
   }
 
+  const pricing=propertyPricing(property);
+
   return (
     <div className={styles.page}>
       <>
@@ -497,15 +500,15 @@ const PropertyDetails = () => {
 
       {/* Hero Section */}
       <div className={styles.hero}>
-        {property.images && property.images.length > 0 ? (
+        <div className={styles.heroFallback} aria-hidden="true" />
+        {property.images?.[0] ? (
           <SessionMediaImage
             src={property.images[0]}
             alt={property.title}
             className={styles.heroImage}
+            onError={event=>{event.currentTarget.style.visibility='hidden';}}
           />
-        ) : (
-          <div className={styles.heroFallback} />
-        )}
+        ) : null}
         <div className={styles.heroOverlay} />
 
         <div className={styles.heroContent}>
@@ -523,7 +526,7 @@ const PropertyDetails = () => {
               </Badge>
             </div>
 
-            <PropertyPurposeSummary property={property}/><h1 className="text-3xl md:text-5xl font-bold text-white tracking-tight">
+            <h1 className="text-3xl md:text-5xl font-bold text-white tracking-tight">
               {property.title}
             </h1>
 
@@ -551,6 +554,7 @@ const PropertyDetails = () => {
           variant="outline"
           size="icon"
           className="absolute top-4 left-4 rounded-full bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white transition-all backdrop-blur-md"
+          aria-label="Go back"
           onClick={() => navigate(-1)}
         >
           <ArrowLeft className="h-5 w-5" />
@@ -558,13 +562,14 @@ const PropertyDetails = () => {
       </div>
 
       <div className={styles.content}>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            <Card>
+        <div className={styles.detailsGrid}>
+          <div className={styles.mainColumn}>
+            <Card className={styles.sectionCard}>
               <CardHeader>
                 <CardTitle>Property Information</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                <PropertyPurposeSummary property={property}/>
                 <div className="flex items-center gap-2">
                   <MapPin className="h-5 w-5 text-muted-foreground" />
                   <span>{formatPropertyAddress(property)}</span>
@@ -597,62 +602,13 @@ const PropertyDetails = () => {
               </CardContent >
             </Card >
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Property Image</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="rounded-lg overflow-hidden border bg-gradient-to-br from-gray-100 to-gray-200 relative h-64 flex items-center justify-center">
-                  {property.images && property.images.length > 0 && property.images[0] ? (
-                    <SessionMediaImage
-                      src={property.images[0]}
-                      alt={property.title}
-                      className="w-full h-full object-cover absolute inset-0"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = 'none';
-                      }}
-                    />
-                  ) : null}
-                  <div className="flex items-center justify-center text-gray-400 flex-col gap-2">
-                    <Home className="h-16 w-16" />
-                    <span className="text-sm">No image available</span>
-                  </div>
-                </div>
-              </CardContent>
+            <Card className={styles.sectionCard}>
+              <CardHeader><CardTitle>Property Gallery</CardTitle></CardHeader>
+              <CardContent><PropertyPhotoGallery key={property.id} title={property.title} cover={property.images?.[0]} internal={property.internalImages||[]}/></CardContent>
             </Card>
 
-            {/* Internal Images */}
-            {
-              property.internalImages && property.internalImages.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Internal Images</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      {property.internalImages.map((img, index) => (
-                        <div key={index} className="rounded-lg overflow-hidden border bg-gray-100 relative h-32 flex items-center justify-center group">
-                          <SessionMediaImage
-                            src={img}
-                            alt={`Internal ${index + 1}`}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement;
-                              target.style.display = 'none';
-                            }}
-                          />
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors pointer-events-none" />
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )
-            }
-
             {/* Unit Details */}
-            <Card>
+            <Card className={styles.sectionCard}>
               <CardHeader>
                 <CardTitle>Unit Details</CardTitle>
               </CardHeader>
@@ -671,7 +627,7 @@ const PropertyDetails = () => {
             </Card>
 
             {/* Area Details */}
-            <Card>
+            <Card className={styles.sectionCard}>
               <CardHeader>
                 <CardTitle>Area Details</CardTitle>
               </CardHeader>
@@ -700,7 +656,7 @@ const PropertyDetails = () => {
             {/* Agreement & Security Details */}
             {
               (property.securityDeposit || property.agreementPeriod || property.agreementStartDate || property.agreementEndDate || property.noticePeriod) && (
-                <Card>
+                <Card className={styles.sectionCard}>
                   <CardHeader>
                     <CardTitle>Agreement & Security</CardTitle>
                   </CardHeader>
@@ -760,7 +716,7 @@ const PropertyDetails = () => {
             {/* Unit Condition & Maintenance */}
             {
               (property.unitCondition || property.maintenanceToBePaidBy || property.rentalStatus || property.projectCondition || (property.possessionDate && !(property.listingType === 'rent' && property.rentalStatus === 'rented'))) && (
-                <Card>
+                <Card className={styles.sectionCard}>
                   <CardHeader>
                     <CardTitle>Unit Condition & Maintenance</CardTitle>
                   </CardHeader>
@@ -784,7 +740,7 @@ const PropertyDetails = () => {
             {/* Furnished Checklist */}
             {
               property.furnishedChecklist && property.furnishedChecklist.filter((item: any) => item.checked).length > 0 && (
-                <Card>
+                <Card className={styles.sectionCard}>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <CheckCircle className="h-5 w-5 text-green-600" />
@@ -880,7 +836,7 @@ const PropertyDetails = () => {
             {/* Comments */}
             {
               property.specificComments && (
-                <Card>
+                <Card className={styles.sectionCard}>
                   <CardHeader>
                     <CardTitle>Additional Comments</CardTitle>
                   </CardHeader>
@@ -894,7 +850,7 @@ const PropertyDetails = () => {
             {/* Tenants Information - Moved below Additional Comments */}
             {
               property.tenants && property.tenants.length > 0 && (
-                <Card>
+                <Card className={styles.sectionCard}>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Home className="h-5 w-5" />
@@ -986,7 +942,7 @@ const PropertyDetails = () => {
             }
 
             {/* Service Request History Section */}
-            <Card id="service-history" className="scroll-mt-24">
+            <Card id="service-history" className={`${styles.sectionCard} scroll-mt-24`}>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <ClipboardList className="h-5 w-5" />
@@ -1173,17 +1129,16 @@ const PropertyDetails = () => {
             {user && <NegotiationPanel propertyId={property.id} canOffer={!isOwner && !isTenant && property.rentalStatus !== "rented" && !property.isSold}/>}
       </div >
 
-          <div className="space-y-6">
+          <aside className={styles.sidebar} aria-label="Pricing and property contacts">
             {/* Pricing */}
             {!(property.listingType === 'rent' && property.rentalStatus === 'rented') && (
-              <Card>
+              <Card className={styles.pricingCard}>
                 <CardHeader>
                   <CardTitle>Pricing</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold text-primary mb-2">
-                    {formatPrice(property)}
-                  </div>
+                  <div className={styles.priceLine}><strong>{pricing.amount===null?'Not recorded':new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:0}).format(pricing.amount)}</strong>{pricing.amount!==null&&pricing.monthly&&<span>/ month</span>}</div>
+                  <p className={styles.priceExplanation}>{pricing.label}</p>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
                     <Calendar className="h-4 w-4" />
                     Listed on {formatDisplayDate(property.createdAt)}
@@ -1217,7 +1172,7 @@ const PropertyDetails = () => {
             )}
 
             {/* Owner Information */}
-            <Card>
+            <Card className={styles.ownerCard}>
               <CardHeader>
                 <CardTitle>{property.ownerRole === "agent" ? "Agent Information" : "Owner Information"}</CardTitle>
               </CardHeader>
@@ -1243,7 +1198,7 @@ const PropertyDetails = () => {
                   ) : (
                     <div className="pt-2">
                       <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-100">
-                        Contact details are hidden for privacy. Please use the "Enquire Now" button to contact the admin.
+                        Owner contact details are restricted to authorized accounts.
                       </p>
                     </div>
                   )}
@@ -1261,7 +1216,7 @@ const PropertyDetails = () => {
 
             {/* Buyers Information */}
             {property.buyers && property.buyers.length > 0 && (
-              <Card className="border-2">
+              <Card className={styles.buyersCard}>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Eye className="h-5 w-5" />
@@ -1326,7 +1281,7 @@ const PropertyDetails = () => {
                 </CardContent>
               </Card>
             )}
-          </div>
+          </aside>
         </div >
 
         <Dialog open={isTerminationDialogOpen} onOpenChange={setIsTerminationDialogOpen}>

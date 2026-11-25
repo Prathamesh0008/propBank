@@ -26,7 +26,7 @@ const SelectPropertyType = () => {
   };
 
   return (
-    <main className={styles.page}>
+    <main className={`${styles.page} ${relationship?styles.categoryPage:""}`}>
       {!relationship ? (
         <section className={styles.inner} aria-labelledby="add-property-heading">
           <p className={styles.kicker}>Your property workspace</p>
@@ -53,7 +53,8 @@ const SelectPropertyType = () => {
           </button>
           <PropertyTypeSelector
             onSelect={handlePropertyTypeSelect}
-            title="Select property category"
+            title="Select Property Type"
+            description={relationship==="owner"?"As an Owner":"As a Tenant"}
           />
         </section>
       )}

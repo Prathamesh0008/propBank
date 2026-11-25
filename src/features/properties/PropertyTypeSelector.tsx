@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Building, Building2, Factory } from "lucide-react";
+import { Building, Building2, Factory } from "lucide-react";
 import styles from "./PropertyTypeSelector.module.css";
 
 type PropertyType = "residential" | "commercial" | "industrial";
@@ -24,11 +24,11 @@ const PropertyTypeSelector = ({ onSelect, title, description }: PropertyTypeSele
       {description && <p>{description}</p>}
     </header>
     <div className={styles.list}>
-      {propertyTypes.map(({ id, title: name, description: detail, icon: Icon }) => (
+      {propertyTypes.map(({ id, title: name, icon: Icon }) => (
         <button type="button" key={id} onClick={() => onSelect(id)} className={styles.option} aria-label={`Select ${name} property`}>
-          <span className={styles.symbol}><Icon aria-hidden="true" size={27} strokeWidth={1.5} /></span>
-          <span className={styles.copy}><strong>{name}</strong><span>{detail}</span></span>
-          <ArrowUpRight className={styles.arrow} size={22} aria-hidden="true" />
+          <span className={styles.symbol}><Icon aria-hidden="true" size={22} strokeWidth={1.5} /></span>
+          <span className={styles.copy}><strong>{name}</strong></span>
+
         </button>
       ))}
     </div>
