@@ -313,7 +313,13 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
   };
 
   const form = useForm<FormData>({
-    resolver: (values,context,options)=>zodResolver(formSchema)({...values,...(!['rent','sell_rent'].includes(values.listingType)||values.rentalStatus!=='rented'?{tenantEmail:''}:{}),...(values.listingType!=='pre_leased'?{preLeased:undefined}:{}),...(accountRole!=='agent'?{agentOwnerEmail:''}:{})},context,options),
+    resolver: (values,context,options)=>{
+      const applicableValues={...values,...(!['rent','sell_rent'].includes(values.listingType)||values.rentalStatus!=='rented'?{tenantEmail:''}:{}),...(accountRole!=='agent'?{agentOwnerEmail:''}:{})};
+      // Absence matters: normalizePurpose treats an own preLeased key, even
+      // undefined, as an explicit request to clear lease metadata.
+      if(values.listingType!=='pre_leased')delete applicableValues.preLeased;
+      return zodResolver(formSchema)(applicableValues,context,options);
+    },
     shouldFocusError:false,
     defaultValues: {
       propertyTitle: "",
