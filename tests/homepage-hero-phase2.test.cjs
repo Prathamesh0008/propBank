@@ -36,9 +36,9 @@ test('legacy defaults adopt the new copy while explicit admin titles and descrip
  assert.match(hero({quote:'An existing configured quote'}).render(),/An existing configured quote/);
 });
 
-test('CTA links use the legitimate property directory and an existing sticky-header-safe section anchor',()=>{
- const html=hero().render();assert.match(html,/href="\/properties"/);assert.match(html,/Explore Properties/);assert.match(html,/href="#how-it-works-heading"/);assert.match(html,/How It Works/);
- assert.ok(fs.existsSync('src/app/properties/page.tsx'));
+test('CTA links use the existing protected management route and an existing sticky-header-safe section anchor',()=>{
+ const html=hero().render();assert.match(html,/href="\/manage-property"/);assert.match(html,/Manage Property/);assert.match(html,/href="#how-it-works-heading"/);assert.match(html,/How It Works/);
+ assert.ok(fs.existsSync('src/app/(protected)/manage-property/page.tsx'));
  assert.match(fs.readFileSync('src/features/landing-page/PortfolioSections.tsx','utf8'),/id="how-it-works-heading"/);
  assert.match(fs.readFileSync('src/features/landing-page/HeroSection.module.css','utf8'),/#how-it-works-heading\)\s*\{\s*scroll-margin-top:104px/);
 });
@@ -67,4 +67,15 @@ test('homepage still composes all existing sections and the original search flow
  const css=fs.readFileSync('src/features/landing-page/HeroSection.module.css','utf8');
  assert.match(css,/min-height:clamp\(620px,43vw,720px\)/);assert.match(css,/font-size:clamp\(42px,3.65vw,56px\)/);
  assert.match(css,/object-position:var\(--hero-focal-desktop/);assert.doesNotMatch(css,/hero-photo-drift|scale\(/);assert.match(css,/padding:48px 32px 104px/);
+});
+
+test('desktop glass panel aligns right and centers vertically without changing mobile sizing',()=>{
+ const css=fs.readFileSync('src/features/landing-page/HeroSection.module.css','utf8');
+ assert.match(css,/@media \(min-width:1024px\)\s*\{\s*\.shell\s*\{\s*justify-content:flex-end; padding-block:76px;/);
+ assert.match(css,/align-items:center; min-height:clamp\(620px,43vw,720px\)/);
+ assert.match(css,/max-width:1440px; margin-inline:auto; padding:48px 32px 104px/);
+ assert.match(css,/width:min\(100%,580px\)/);assert.match(css,/backdrop-filter:blur\(14px\) saturate\(130%\)/);
+ assert.match(css,/@media \(max-width:767px\)/);assert.match(css,/padding:28px 20px 148px/);
+ const h=hero();h.render();const primary=h.find(n=>n.props?.to==='/manage-property');assert.ok(primary);assert.equal(primary.props.className,'primary');
+ assert.match(fs.readFileSync('src/app/(protected)/layout.tsx','utf8'),/RouteGuard/);
 });

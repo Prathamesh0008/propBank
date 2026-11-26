@@ -7,7 +7,7 @@ test('homepage uses the approved villa hero with working discovery actions',()=>
  const landing=fs.readFileSync('src/features/landing-page/LandingPage.tsx','utf8');
  assert.match(hero,/aria-labelledby="homepage-hero-heading"/);assert.match(hero,/Find, Manage and/);assert.match(hero,/Grow Your Property/);
  assert.match(hero,/<HeroImageCarousel/);assert.equal(fs.existsSync('public/images/hero/villa-pool.webp'),true);
- assert.match(hero,/to="\/properties"/);assert.match(hero,/Explore Properties/);assert.match(hero,/to="#how-it-works-heading"/);assert.match(hero,/How It Works/);
+ assert.match(hero,/to="\/manage-property"/);assert.match(hero,/Manage Property/);assert.match(hero,/to="#how-it-works-heading"/);assert.match(hero,/How It Works/);
  assert.doesNotMatch(hero,/GradientSpotlight|LeftHeroSection|RightHeroSection/);
  assert.match(landing,/onNavigate=\{navigate\}/);
 });

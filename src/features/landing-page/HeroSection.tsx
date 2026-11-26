@@ -56,7 +56,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           </h1>
           <p className={styles.description}>{description}</p>
           <div className={styles.actions}>
-            <Link to="/properties" className={styles.primary}>Explore Properties<ArrowRight size={18} strokeWidth={1.6} aria-hidden="true" /></Link>
+            <Link to="/manage-property" className={styles.primary}>Manage Property<ArrowRight size={18} strokeWidth={1.6} aria-hidden="true" /></Link>
             <Link to="#how-it-works-heading" className={styles.secondary}><Play size={15} strokeWidth={1.6} aria-hidden="true" />How It Works</Link>
           </div>
         </div>

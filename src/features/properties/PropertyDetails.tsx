@@ -11,6 +11,7 @@ import {purposeLabel} from "@/lib/property-purpose";
 
 import styles from "./PropertyDetails.module.css";
 import PropertyPhotoGallery from "./PropertyPhotoGallery";
+import PropertyAdvertisement from "./PropertyAdvertisement";
 
 import NegotiationPanel from '@/features/negotiations/NegotiationPanel';
 import {ServiceRequestHistory} from '@/features/services/ServiceRequestWorkflow';
@@ -1281,6 +1282,7 @@ const PropertyDetails = () => {
                 </CardContent>
               </Card>
             )}
+            <PropertyAdvertisement />
           </aside>
         </div >
 
