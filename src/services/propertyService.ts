@@ -263,11 +263,12 @@ class PropertyService {
     return this.legacyArray(data);
   }
 
-  async searchPropertyPage(query: string, listingType?: 'buy' | 'rent', projectCondition?: string,cursor=''): Promise<PropertiesResponse> {
+  async searchPropertyPage(query: string, listingType?: 'buy' | 'rent', projectCondition?: string,cursor='',categories:readonly string[]=[]): Promise<PropertiesResponse> {
     const headers = await this.getHeaders();
 
     // Build query parameters
     const searchParams = new URLSearchParams({cursor});
+    if(categories.length)searchParams.set('categories',categories.join(','));
     if (query) searchParams.append('q', query);
     if (listingType) {
       // Map frontend types to backend types

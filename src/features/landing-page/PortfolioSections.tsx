@@ -6,9 +6,9 @@ import { Link } from "@/lib/navigation";
 import styles from "./PortfolioSections.module.css";
 
 const propertyTypes = [
-  { name: "Residential", image: "residential", alt: "Contemporary white home with glass balconies and a pool", detail: "Homes. Apartments. Everyday living." },
-  { name: "Commercial", image: "commercial", alt: "Glass office towers viewed from the street", detail: "Spaces built for business." },
-  { name: "Industrial", image: "industrial", alt: "High-ceiling warehouse with organized storage aisles", detail: "Room for bigger operations." },
+  { name: "Residential", category: "residential", image: "residential", alt: "Contemporary white home with glass balconies and a pool", detail: "Homes. Apartments. Everyday living." },
+  { name: "Commercial", category: "commercial", image: "commercial", alt: "Glass office towers viewed from the street", detail: "Spaces built for business." },
+  { name: "Industrial", category: "industrial", image: "industrial", alt: "High-ceiling warehouse with organized storage aisles", detail: "Room for bigger operations." },
 ];
 const steps = [
   [HousePlus, "Add your properties", "Register and enter your property details."],
@@ -34,10 +34,12 @@ export function PropertyManagementSections() {
         <div className={styles.gallery}>
           {propertyTypes.map((type, index) => (
             <article className={styles.propertyType} key={type.image}>
+              <Link to={`/properties?type=buy&categories=${type.category}&types=buy,rent`} prefetch={false} className={styles.typeLink} aria-label={`Browse ${type.name.toLowerCase()} properties`}>
               <div className={styles.typeImage}>
                 <Image src={`/images/portfolio/${type.image}.jpg`} alt={type.alt} width={1200} height={1000} sizes={index === 0 ? "(max-width: 650px) 100vw, 58vw" : "(max-width: 650px) 100vw, 38vw"}/>
               </div>
               <div className={styles.typeCaption}><h3>{type.name}</h3><p>{type.detail}</p></div>
+              </Link>
             </article>
           ))}
         </div>

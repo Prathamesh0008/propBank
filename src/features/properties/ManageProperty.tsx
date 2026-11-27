@@ -40,6 +40,8 @@ import { Label } from "@/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { API_BASE_URL } from "../../utils/config";
 
+const priceFormatter=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:0});
+
 interface SpouseInfo {
   firstName: string;
   lastName: string;
@@ -296,7 +298,7 @@ const ManageProperty = () => {
     });
   }, [filteredTenantProperties]);
 
-  const formatPrice=(property:Property)=>{const price=propertyPricing(property);return price.amount===null?price.label+': Not recorded':new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:0}).format(price.amount)+(price.monthly?' / month':'')+' - '+price.label;};
+  const formatPrice=(property:Property)=>{const price=propertyPricing(property);return price.amount===null?price.label+': Not recorded':priceFormatter.format(price.amount)+(price.monthly?' / month':'')+' - '+price.label;};
 
   const getListingTypeBadge = (listingType: string) => {
     if(listingType==='sell_rent')return <Badge variant="outline">For Sale / Rent</Badge>;

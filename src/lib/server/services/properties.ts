@@ -62,6 +62,13 @@ const listResponse=(rows:RecordData[],extra:RecordData={})=>jsonResponse({succes
 function available(property:RecordData,raw:RecordData) {
   return publicListing({...property,isSold:raw.isSold,isRented:raw.isRented});
 }
+/** Category filtering uses the existing bounded public cursor scan, including legacy aliases. */
+function publicCategories(params:URLSearchParams):string[] {
+  const value=params.get('categories')||'';if(!value)return [];
+  if(value.length>100||value.split(',').length>3)throw new ApiError(400,'Invalid property categories');
+  return [...new Set(value.split(',').map(value=>{const category=parsePropertyCategory(value);if(!category)throw new ApiError(400,'Invalid property category');return category;}))];
+}
+function matchesPublicCategory(categories:readonly string[],property:RecordData){return !categories.length||categories.includes(parsePropertyCategory(property.propertyCategory)||parsePropertyCategory(property.propertyType)||'');}
 async function siteSettings():Promise<RecordData|null> {
   const defaults={quote:'Manage your properties and plan visits with ease',quoteAuthor:'',heroTitle:'Your Smart Hub for Property Management',heroSubtitle:'Manage, list your properties and find your dream houseâ€” all in one platform',announcementText:'',isAnnouncementActive:false,bannerImages:[]};
   try {
@@ -93,18 +100,20 @@ export async function listProperties(request:Request) {
     const user=await requireUser(request);if(user.role!=='admin')throw new AccessError(403,'Administrator access required');
     const {size,cursor}=pageOptions(params);const page=await documentPage(properties(),size,cursor);return listResponse(page.docs.map(doc=>propertyResponse(fromDocument(doc),'normal','admin')),{nextCursor:page.nextCursor,coverageComplete:!page.nextCursor});
   }
-  const listingType=params.get('listingType')||'';
+  const listingType=params.get('listingType')||'',categories=publicCategories(params);
   if(listingType==='manage')return listResponse([],{listingType});
   let query:Query=properties().where('isActive','==',true).where('moderationStatus','==','approved');
   if(listingType)query=['rent','sell'].includes(listingType)?query.where('listingType','in',listingType==='rent'?['rent','sell_rent']:['sell','sell_rent','pre_leased']):query.where('listingType','==',listingType);
-  const {size,cursor}=pageOptions(params),page=await documentPage(query,size,cursor),rows=page.docs.map(doc=>({property:fromDocument(doc),raw:doc.data()}));
-  const filtered=rows.filter(row=>available(row.property,row.raw)&&!(listingType==='rent'&&row.property.rentalStatus==='rented')&&(!listingType||row.property.listingType===listingType||listingType==='sell'&&row.property.listingType==='pre_leased'||row.property.listingType==='sell_rent'&&['rent','sell'].includes(listingType))).map(row=>publicPropertyResponse(listingType&&row.property.listingType==='sell_rent'?{...row.property,listingType}:row.property));
-  return listResponse(filtered,{...(!cursor?await siteSettings() || {}:{}),...(listingType?{listingType}:{}),nextCursor:page.nextCursor,coverageComplete:!page.nextCursor,candidatesInspected:page.examined});
+  const {size,cursor}=pageOptions(params);
+  const [page,settings]=await Promise.all([documentPage(query,size,cursor),cursor?Promise.resolve(null):siteSettings()]);
+  const rows=page.docs.map(doc=>({property:fromDocument(doc),raw:doc.data()}));
+  const filtered=rows.filter(row=>matchesPublicCategory(categories,row.raw)&&available(row.property,row.raw)&&!(listingType==='rent'&&row.property.rentalStatus==='rented')&&(!listingType||row.property.listingType===listingType||listingType==='sell'&&row.property.listingType==='pre_leased'||row.property.listingType==='sell_rent'&&['rent','sell'].includes(listingType))).map(row=>publicPropertyResponse(listingType&&row.property.listingType==='sell_rent'?{...row.property,listingType}:row.property));
+  return listResponse(filtered,{...(settings||{}),...(listingType?{listingType}:{}),nextCursor:page.nextCursor,coverageComplete:!page.nextCursor,candidatesInspected:page.examined});
 }
 export async function searchProperties(request:Request) {
   const params=new URL(request.url).searchParams;
   const term=params.get('q')||'';
-  const listingType=params.get('listingType')||'';
+  const listingType=params.get('listingType')||'',categories=publicCategories(params);
   if(listingType==='manage')return listResponse([],{listingType});
   const projectCondition=params.get('projectCondition')||'';
   let query:Query=properties().where('isActive','==',true).where('moderationStatus','==','approved');
@@ -113,6 +122,7 @@ export async function searchProperties(request:Request) {
   const {size,cursor}=pageOptions(params),page=await documentPage(query,size,cursor),rows=page.docs.map(doc=>({property:fromDocument(doc,false),raw:doc.data()}));
   const search=term.trim().toLowerCase();
   const filtered=rows.filter(({property,raw})=>{
+    if(!matchesPublicCategory(categories,raw))return false;
     if(projectCondition==='Preleased'&&property.listingType!=='pre_leased'&&property.projectCondition!=='Preleased')return false;
     if (!available(property,raw)||listingType==='rent'&&property.rentalStatus==='rented'||listingType&&property.listingType!==listingType&&!(listingType==='sell'&&property.listingType==='pre_leased')&&!(property.listingType==='sell_rent'&&['rent','sell'].includes(listingType))) return false;
     if (!term) return true;
@@ -158,7 +168,7 @@ function validateProperty(input:RecordData,previous?:RecordData) {
   validatePropertyMoney(input,previous);
   for(const key of Object.keys(input))if(key.includes('.')||key.includes('/')||key.startsWith('__'))throw new Error('Invalid property field');
   for(const key of additiveFields)if(!purposeFields.includes(key as typeof purposeFields[number])&&key in input&&typeof input[key]!=='string')throw new Error('Invalid property field');
-  for(const [key,values] of Object.entries({listingType:['rent','sell','sell_rent','pre_leased','manage'],rentalStatus:['available','rented'],status:['active','inactive'],maintenanceToBePaidBy:['owner','tenant'],propertyCategory:['residential','commercial','industrial']}))if(input[key]) {const normalized=s(input[key]).toLowerCase();if(!values.includes(normalized))throw new Error(`Invalid ${key}`);input[key]=normalized;}
+  for(const [key,values] of Object.entries({listingType:['rent','sell','sell_rent','pre_leased','manage'],rentalStatus:['available','rented'],status:['active','inactive'],maintenanceToBePaidBy:['owner','tenant','shared'],propertyCategory:['residential','commercial','industrial']}))if(input[key]) {const normalized=s(input[key]).toLowerCase();if(!values.includes(normalized))throw new Error(`Invalid ${key}`);input[key]=normalized;}
   for(const key of ['isActive','isSold','isRented'])if(key in input&&typeof input[key]!=='boolean')throw new Error(`Invalid ${key}`);
   if(input.paymentDueDate&&(!/^\d{1,2}$/.test(s(input.paymentDueDate))||Number(input.paymentDueDate)<1||Number(input.paymentDueDate)>31))throw new Error('Invalid payment due day');
   if(input.nextAgreementDraft!==undefined&&input.nextAgreementDraft!==null){const error=validateNextAgreementDraft(input.nextAgreementDraft,s(input.agreementEndDate));if(error)throw new Error(error);}

@@ -4,7 +4,12 @@ import Image from "next/image";
 import GeneralInquiryForm from "@/features/landing-page/GeneralInquiryForm";
 import styles from "./QuickInquirySection.module.css";
 
-export const QuickInquirySection = () => (
+export const QuickInquirySection = ({embedded=false}:{embedded?:boolean}) => embedded ? (
+  <section id="quick-inquiry" className={`${styles.form} ${styles.embedded}`} aria-labelledby="quick-inquiry-title">
+    <div className={styles.formHeading}><span>YOUR NEXT MOVE</span><h2 id="quick-inquiry-title">Client Enquiry</h2></div>
+    <GeneralInquiryForm hideHeader disableDemoAutofill compact/>
+  </section>
+) : (
   <section id="quick-inquiry" className={styles.section} aria-labelledby="quick-inquiry-title">
     <div className={styles.shell}>
       <div className={styles.story}>

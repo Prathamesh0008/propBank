@@ -16,7 +16,7 @@ const purchaseBudgets = [1000000, 2000000, 3000000, 5000000, 7500000, 10000000, 
 const rentalBudgets = [5000, 10000, 20000, 30000, 50000, 100000, 200000, 500000];
 const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 
-export function HeroPropertySearch({ onSearch }: { onSearch: (selection: HeroPropertySearchSelection) => void }) {
+export function HeroPropertySearch({ onSearch, embedded = false }: { onSearch: (selection: HeroPropertySearchSelection) => void; embedded?: boolean }) {
   const [mode, setMode] = useState<"buy" | "rent" | "projects">("buy");
   const [location, setLocation] = useState("");
   const [category, setCategory] = useState("");
@@ -24,7 +24,7 @@ export function HeroPropertySearch({ onSearch }: { onSearch: (selection: HeroPro
   const budgets = mode === "rent" ? rentalBudgets : purchaseBudgets;
 
   return (
-    <section className={styles.section} aria-label="Find a property">
+    <section className={`${styles.section} ${embedded ? styles.embedded : ""}`} aria-label="Find a property">
       <div className={styles.shell}>
         <div className={styles.tabs} role="group" aria-label="Search listing type">
           {(["buy", "rent", "projects"] as const).map(tab => (

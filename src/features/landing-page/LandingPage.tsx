@@ -62,7 +62,11 @@ const LandingPage = () => {
         onNavigate={navigate}
       />
 
-      <HeroPropertySearch onSearch={selection => {
+      <section className={styles.discovery} aria-label="Property search and client enquiry">
+        <div className={styles.discoveryGrid}>
+          <section className={styles.searchColumn} aria-labelledby="homepage-property-search-title">
+            <header className={styles.searchHeading}><span>FIND YOUR NEXT SPACE</span><h2 id="homepage-property-search-title">Property Search</h2></header>
+      <HeroPropertySearch embedded onSearch={selection => {
         setSearchType(selection.type);
         setSearchQuery(selection.location);
         setSelectedCategories(selection.category ? [selection.category] : []);
@@ -91,6 +95,10 @@ const LandingPage = () => {
           handleSearch={handleSearch}
         />
       </details>
+          </section>
+          <QuickInquirySection embedded />
+        </div>
+      </section>
 
       {coverageIncomplete&&<p role="status">Showing loaded property pages. Continue browsing for remaining listings; filters apply to loaded records. <button type="button" disabled={loadingMore} onClick={()=>void loadMoreProperties(true)}>Continue browsing server pages</button></p>}
       <PropertiesSection
@@ -114,8 +122,6 @@ const LandingPage = () => {
       <PropertyManagementServices />
 
       <PropertyManagementSections />
-
-      <QuickInquirySection />
 
       <PortfolioCallToAction />
     </>

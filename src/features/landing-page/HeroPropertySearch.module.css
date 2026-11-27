@@ -32,3 +32,14 @@
  .field input,.field select { min-height:36px; font-size:16px; }
  .submit { width:100%; margin-top:20px; }
 }
+
+/* Compact presentation inside the homepage search/enquiry columns. */
+.section.embedded{padding:0;margin:0;z-index:auto}
+.embedded .shell{max-width:none}
+.embedded .tab,.embedded .activeTab{min-width:0;flex:1;padding-inline:12px}
+.embedded .panel{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 0;padding:18px 12px;box-shadow:none}
+.embedded .field,.embedded .field:first-child{padding-inline:10px;gap:8px}
+.embedded .field:first-child{grid-column:1 / -1;padding-bottom:14px;border-right:0;border-bottom:1px solid #e6e1d6}
+.embedded .field:nth-child(2){border-right:1px solid #e6e1d6}
+.embedded .submit{grid-column:1 / -1;width:100%;margin-top:0;padding-inline:12px}
+@media(max-width:767px){.embedded .panel{grid-template-columns:minmax(0,1fr);gap:0;padding:8px 16px 16px}.embedded .field,.embedded .field:first-child,.embedded .field:nth-child(2){padding:14px 0;border-right:0;border-bottom:1px solid #e6e1d6}.embedded .submit{margin-top:16px}}

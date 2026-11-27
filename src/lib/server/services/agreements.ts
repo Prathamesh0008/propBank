@@ -39,7 +39,7 @@ function readTerms(value:unknown):RecordData {
   }
   if(result.monthlyRent&&(!Number.isFinite(Number(result.monthlyRent))||Number(result.monthlyRent)<=0))throw new ApiError(400,'Positive monthly rent required');
   if(result.paymentDueDate&&(!/^\d{1,2}$/.test(s(result.paymentDueDate))||Number(result.paymentDueDate)<1||Number(result.paymentDueDate)>31))throw new ApiError(400,'Payment due day must be 1–31');
-  if(result.maintenanceToBePaidBy&&!['owner','tenant'].includes(s(result.maintenanceToBePaidBy)))throw new ApiError(400,'Invalid maintenance payer');
+  if(result.maintenanceToBePaidBy&&!['owner','tenant','shared'].includes(s(result.maintenanceToBePaidBy)))throw new ApiError(400,'Invalid maintenance payer');
   if(result.agreementStartDate)date(result.agreementStartDate);
   if(result.agreementEndDate)date(result.agreementEndDate);
   if(result.agreementStartDate&&result.agreementEndDate&&date(result.agreementEndDate)<=date(result.agreementStartDate))throw new ApiError(400,'Agreement end must follow start');

@@ -27,3 +27,7 @@
 @media (min-width:701px) and (max-width:1000px) { .shell { gap:18px; grid-template-columns:minmax(0,.43fr) minmax(0,.57fr); } .storyContent { padding:24px 20px; } .form { padding:20px 16px; } .story h2 { font-size:36px; } .form form[data-compact-inquiry] { column-gap:10px; } .form [role="group"] button { padding-inline:4px; font-size:11px; } }
 @media (max-width:700px) { .shell { grid-template-columns:1fr; gap:16px; } .section { padding:24px 20px; } .story { min-height:275px; } .storyContent { padding:24px; } .story h2 { font-size:37px; } .story::after { background:linear-gradient(100deg,rgba(250,247,241,.97),rgba(250,247,241,.72) 62%,rgba(250,247,241,.12)); } .form { padding:20px 16px; } }
 @media (max-width:420px) { .form form[data-compact-inquiry] > [data-inquiry-field] { grid-column:1 / -1; } .form [role="group"] button { padding-inline:4px; font-size:11px; } }
+
+.embedded{min-width:0;scroll-margin-top:100px}
+.embedded .formHeading h2{font-family:var(--pb-editorial);font-size:28px;font-weight:500;line-height:1.1;margin:5px 0 0}
+@media(max-width:767px){.embedded.form{padding:20px 16px}.embedded.form form[data-compact-inquiry]>[data-inquiry-field]{grid-column:1 / -1}.embedded.form input,.embedded.form button[role="combobox"]{width:100%;font-size:16px}.embedded.form button[type="submit"]{width:100%}}

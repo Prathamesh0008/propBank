@@ -10,7 +10,7 @@ import {purposeLabel} from "@/lib/property-purpose";
 import { apiFetch } from '@/lib/api-client';
 import {useQueryClient} from '@tanstack/react-query';
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useSearchParams, Link, useNavigate } from "@/lib/navigation";
 import { Search, MapPin, BedDouble, Bath, Maximize, Loader2, ArrowUpRight, SlidersHorizontal, X, ArrowRight } from "lucide-react";
 import styles from "./SearchResults.module.css";
@@ -21,6 +21,8 @@ import { API_BASE_URL } from "../../utils/config";
 import {useDataRefresh} from '@/lib/data-refresh';
 
 const placeholderImage="data:image/svg+xml,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400"><rect width="640" height="400" fill="#f1ede4"/><path d="M260 230v-85h120v85m-140 0h160M280 165h20m20 0h20m-60 25h20m20 0h20" fill="none" stroke="#a3864f" stroke-width="5"/><text x="320" y="280" text-anchor="middle" fill="#586375" font-family="sans-serif" font-size="17">Photograph unavailable</text></svg>');
+const priceFormatter=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:0});
+
 const SearchResults = () => {
   const queryClient=useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -39,10 +41,10 @@ const SearchResults = () => {
   const searchGeneration=useRef(0);const appliedSearch=useRef<DiscoveryFilters>(initial);
   const locationKey=searchParams.toString();
   const performSearch=async(selection:DiscoveryFilters,append=false)=>{
-    const generation=++searchGeneration.current;if(!append){appliedSearch.current=selection;lastSearchKey.current='';}setLoading(true);setError('');setFailedAppend(append);
+    const generation=++searchGeneration.current;if(!append){appliedSearch.current=selection;lastSearchKey.current='';setProperties([]);setCursors({});}setLoading(true);setError('');setFailedAppend(append);
     const kinds=selection.kinds.length?selection.kinds:[selection.type];const pending=kinds.filter(kind=>!append||!!cursors[kind]);
     try{
-      const pages=await Promise.all(pending.map(kind=>queryClient.fetchQuery({queryKey:['publicProperties','search',selection.query,kind,selection.condition,append?cursors[kind]||'':''],queryFn:()=>propertyService.searchPropertyPage(selection.query,kind,selection.condition,append?cursors[kind]||'':''),staleTime:60_000,retry:false})));
+      const pages=await Promise.all(pending.map(kind=>queryClient.fetchQuery({queryKey:['publicProperties','search',selection.query,kind,selection.condition,selection.categories.join(','),append?cursors[kind]||'':''],queryFn:()=>propertyService.searchPropertyPage(selection.query,kind,selection.condition,append?cursors[kind]||'':'',selection.categories),staleTime:60_000,retry:false})));
       if(generation!==searchGeneration.current)return;appliedSearch.current=selection;lastSearchKey.current=discoveryParams({...selection,sort:'recommended'}).toString();
       const results=filterDiscoveryProperties(pages.flatMap(page=>page.properties||[]),selection);
       setProperties(previous=>[...new Map([...(append?previous:[]),...results].map(property=>[property.id,property])).values()]);
@@ -64,7 +66,7 @@ const SearchResults = () => {
   const updateFilter=<K extends keyof DiscoveryFilters>(key:K,value:DiscoveryFilters[K])=>setFilters(previous=>({...previous,[key]:value}));
   const searchType=filters.type,searchQuery=filters.query,selectedCategories=filters.categories,selectedListingTypes=filters.kinds,selectedProjectCondition=filters.condition;
   const hasMore=Object.values(cursors).some(Boolean);
-  const visibleProperties=sortDiscoveryProperties(properties,filters.sort);
+  const visibleProperties=useMemo(()=>sortDiscoveryProperties(properties,filters.sort),[properties,filters.sort]);
   const filterCount=selectedCategories.length+selectedListingTypes.length+Number(Boolean(selectedProjectCondition))+Number(Boolean(filters.min||filters.max));
 
   const handleEnquireProperty = async (property: Property) => {
@@ -143,7 +145,7 @@ const SearchResults = () => {
     }
   };
 
-  const formatPrice=(property:Property)=>{const price=propertyPricing(property);return price.amount===null?'Price not recorded':new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:0}).format(price.amount)+(price.monthly?' / month':'');};
+  const formatPrice=(property:Property)=>{const price=propertyPricing(property);return price.amount===null?'Price not recorded':priceFormatter.format(price.amount)+(price.monthly?' / month':'');};
   return (
     <div className={styles.page}>
       <div className={styles.shell}>
@@ -215,7 +217,7 @@ const SearchResults = () => {
               <div className={styles.propertyActions}><button type="button" disabled={sendingEnquiry !== null} onClick={() => void handleEnquireProperty(property)}>{sendingEnquiry === property.id ? 'Sending enquiry…' : 'Enquire'} <ArrowUpRight size={16}/></button><Link to={`/property/${property.id}`}>View Property <ArrowRight size={16}/></Link></div>
             </div>
           </article>)}</div>}
-          {hasMore&&<div className={styles.pagination}><p>More property pages are available. Filters and sorting cover loaded results.</p><button type="button" disabled={loading} onClick={()=>void performSearch(appliedSearch.current,true)}>{loading?'Loading...':'Load More Properties'}<ArrowRight size={16}/></button></div>}
+          {hasMore&&<div className={styles.pagination}><p>More property pages are available. Categories apply to every server page; budget filters and sorting cover loaded results.</p><button type="button" disabled={loading} onClick={()=>void performSearch(appliedSearch.current,true)}>{loading?'Loading...':'Load More Properties'}<ArrowRight size={16}/></button></div>}
 
         </section>
       </div>

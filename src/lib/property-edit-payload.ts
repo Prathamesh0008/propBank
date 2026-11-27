@@ -8,7 +8,7 @@ export function propertyEditPayload(candidate: Data, dirty: Data, previous: Data
   }
   if (dirty.structuredAddress) result.expectedAddressVersion = previous.addressVersion ?? 0;
   if (dirty.propertyTitle && !previous.structuredAddress && !dirty.structuredAddress && (!previous.buildingName || previous.buildingName === previous.title)) result.buildingName = candidate.title;
-  for (const key of ['images','furnishedChecklist']) if (key in candidate && JSON.stringify(candidate[key]) !== JSON.stringify(previous[key] ?? [])) result[key] = candidate[key];
+  for (const key of ['images','internalImages','furnishedChecklist']) if (key in candidate && JSON.stringify(candidate[key]) !== JSON.stringify(previous[key] ?? [])) result[key] = candidate[key];
   const terms = ['monthlyRent','securityDeposit','paymentDueDate','agreementStartDate','agreementEndDate','noticePeriod','lockInPeriod','escalationPercentage','escalationAmount'];
   if (terms.some(key=>dirty[key]) && previous.tenants?.some((t:Data)=>t.isActive===true)) {
     if (previous.tenants.filter((t:Data)=>t.isActive===true).length > 1) throw new Error('Edit rental terms for each tenancy separately; multiple active contracts exist.');

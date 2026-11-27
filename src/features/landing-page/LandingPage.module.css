@@ -7,3 +7,13 @@
 .filters[open] { margin-bottom:0; }
 @media (max-width:1100px) and (min-width:651px) { .filters { padding-inline:24px; } }
 @media (max-width:650px) { .filters { padding-inline:20px; } }
+
+.discovery{padding:28px 32px;background:#faf7f1;color:#0b1d39;font-family:var(--pb-ui)}
+.discoveryGrid{display:grid;grid-template-columns:minmax(0,.55fr) minmax(0,.45fr);align-items:start;gap:24px;max-width:1180px;margin-inline:auto}
+.searchColumn{min-width:0;padding:24px;background:#fff;border:1px solid #e5dccb;border-top:2px solid #c89432;border-radius:8px;box-shadow:0 6px 20px #0b1d3906}
+.searchHeading{margin-bottom:18px}.searchHeading>span{display:block;color:#876024;font-size:10px;font-weight:600;letter-spacing:.16em;line-height:1.5}
+.searchHeading h2{margin:5px 0 0;font-family:var(--pb-editorial);font-size:28px;font-weight:500;line-height:1.1}
+.searchColumn .filters{max-width:none;margin:12px 0 0;padding:0}
+.searchColumn :global(#landing-advanced-filters){grid-template-columns:minmax(0,1fr);gap:12px}
+@media(max-width:1023px){.discoveryGrid{grid-template-columns:minmax(0,1fr);gap:20px}.discovery{padding-inline:24px}}
+@media(max-width:767px){.discovery{padding:24px 20px}.searchColumn{padding:20px 16px}}

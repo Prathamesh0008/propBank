@@ -1,6 +1,14 @@
 "use client";
+import {PropertyIntakeHeader} from './PropertyFormSteps';
+import editStyles from './EditProperty.module.css';
+import {OWNER_STEPS,ownerFieldStep as propertyFieldSection} from './property-form-navigation';
+import {propertyEditDefaults,propertyEditError,focusEditPropertyError} from '@/lib/property-edit-form';
+import EditPropertyImages from './EditPropertyImages';
+import NextAgreementFields from '@/components/NextAgreementFields';
+import {emptyNextAgreementDraft,type NextAgreementDraft} from '@/lib/next-agreement-draft';
+import {calculateAgreementEndDate} from '@/lib/rent-schedule';
 import StructuredAddressFields from '@/components/StructuredAddressFields';
-import {propertyAddressSchema,propertyAddressDisplay,readPropertyAddress,propertyAddressDraft} from '@/lib/property-address';
+import {propertyAddressSchema,propertyAddressDisplay,propertyAddressDraft} from '@/lib/property-address';
 import {propertyEditPayload} from '@/lib/property-edit-payload';
 import {formatDisplayDateTime} from '@/lib/date-format';
 
@@ -14,7 +22,7 @@ import ClientPropertyFields, {clientPropertySchema} from './ClientPropertyFields
 import { apiFetch } from '@/lib/api-client';
 import AmountInWords from '@/components/AmountInWords';
 
-import { useParams, useNavigate, useLocation } from "@/lib/navigation";
+import { Link, useParams, useNavigate, useLocation } from "@/lib/navigation";
 import { ArrowLeft, Building2, CheckCircle2, CheckSquare, Loader2, XCircle } from "lucide-react";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
@@ -89,6 +97,8 @@ const formSchema = z.object({
   buyerLastName: z.string().optional(),
   buyerPhone: z.string().optional(),
   images: z.array(z.string()).optional(),
+  internalImages: z.array(z.string()).optional(),
+  nextAgreementDraft:z.custom<NextAgreementDraft|null>().optional(),
   specificComments: z.string().optional(),
   furnishedChecklist: z.array(z.object({
     id: z.string(),
@@ -102,6 +112,7 @@ const formSchema = z.object({
 type FormData = z.infer<typeof formSchema>;
 
 interface Property {
+  [key:string]:any;
   rentTermsVersion?:number;
   preLeased?: any;managementServices?:string[];managementDescription?:string;investment?:{monthlyRentalIncome:number;annualRentalIncome:number;grossYield:number;leaseEndDate:string;leaseReviewRequired:boolean;verificationStatus:string};
   userRole?:string;
@@ -176,7 +187,8 @@ const EditProperty = () => {
   const isRenewalMode = new URLSearchParams(location.search).get('mode') === 'renewal';
   const [property, setProperty] = useState<Property | null>(null);
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadedInternalImages,setUploadedInternalImages]=useState<string[]>([]);
+  const uploadLock=useRef(false),hydratedId=useRef<string>('');
   const [showFurnishedModal, setShowFurnishedModal] = useState(false);
   const [furnishedChecklist, setFurnishedChecklist] = useState<any[]>([]);
   const [furnishingSelectionChanged,setFurnishingSelectionChanged]=useState(false);
@@ -231,77 +243,49 @@ const EditProperty = () => {
     },
   });
 
+  const [saveError,setSaveError]=useState('');
+  const editForm=useRef<HTMLFormElement>(null),submitLock=useRef(false);
+  const busy=form.formState.isSubmitting||isUploading;
+  const showError=(field:string,message:string)=>{
+    form.setError(field as keyof FormData,{type:'manual',message});setSaveError(message);
+    focusEditPropertyError(editForm.current,field,propertyFieldSection(field.split('.')[0]));
+  };
+  const validateEdit=()=>{
+    form.clearErrors();setSaveError('');
+    const data=form.getValues(),result=formSchema.safeParse(data);
+    if(!result.success){const issues=result.error.issues.filter(issue=>!(issue.path[0]==='preLeased'&&data.listingType!=='pre_leased')).sort((a,b)=>propertyFieldSection(String(a.path[0]))-propertyFieldSection(String(b.path[0])));
+      for(const issue of issues)form.setError(issue.path.join('.') as Parameters<typeof form.setError>[0],{type:'manual',message:issue.message});
+      if(issues.length){const first=issues[0];setSaveError(first.message);focusEditPropertyError(editForm.current,first.path.join('.'),propertyFieldSection(String(first.path[0])));return false;}}
+    const issue=propertyEditError(data,form.formState.dirtyFields,property||{});
+    if(issue){showError(issue.field,issue.message);return false;}
+    const controls=editForm.current?Array.from(editForm.current.querySelectorAll<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>('input,select,textarea')):[];
+    const changedSections=new Set(Object.keys(form.formState.dirtyFields).map(propertyFieldSection));
+    const native=controls.find(control=>!control.matches(':disabled')&&control.type!=='file'&&control.type!=='hidden'&&changedSections.has(Number(control.closest('[data-edit-section]')?.getAttribute('data-edit-section')))&&!control.checkValidity());
+    if(native){setSaveError(native.validationMessage);native.scrollIntoView({block:'center'});native.focus({preventScroll:true});return false;}
+    return true;
+  };
+  const submitEdit=async(event:React.FormEvent<HTMLFormElement>)=>{
+    event.preventDefault();if(submitLock.current||uploadLock.current||busy||!isPropertyEditable()||!validateEdit())return;
+    submitLock.current=true;
+    try{await form.handleSubmit(onSubmit,errors=>{const field=Object.keys(errors).sort((a,b)=>propertyFieldSection(a)-propertyFieldSection(b))[0]||'propertyTitle';showError(field,'Please review the highlighted fields.');})(event);}
+    finally{submitLock.current=false;}
+  };
   const dirtyFields = form.formState.dirtyFields; // Subscribe before render so explicit edits are tracked.
 
   const { data: propertyData, isLoading: loading } = usePropertyDetails(propertyId);
 
   useEffect(() => {
     if (propertyData) {
+      if(hydratedId.current===String(propertyData.id)&&(form.formState.isDirty||submitLock.current||uploadLock.current))return;
+      if(hydratedId.current!==String(propertyData.id)){setSaveError('');setLeaseFiles({});evidenceKeys.current={lease:crypto.randomUUID(),proof:crypto.randomUUID()};}
+      hydratedId.current=String(propertyData.id);
       setProperty(propertyData);
-      setUploadedImages(propertyData.images || []);
-
-      // Populate form with existing data
-      let activeTenant = null;
-      if (propertyData.tenants && propertyData.tenants.length > 0) {
-        // Assuming the last tenant in the list is the active one
-        activeTenant = [...propertyData.tenants].reverse().find(tenant=>tenant.isActive===true)||null;
-      }
-
-      const formData = {
-        propertyTitle: propertyData.title || "",
-        propertyType: propertyData.propertyType || "",
-        ...Object.fromEntries(Object.keys(clientPropertySchema).map(key=>[key,String(propertyData[key] ?? (key==="propertyCategory"?propertyData.propertyType:""))])),
-        configuration: propertyData.configuration || "",
-        listingType: propertyData.listingType || "",
-        preLeased: propertyData.preLeased || null,
-        unitNumber: propertyData.unitNumber || "",
-        floor: propertyData.floor || "",
-        location: propertyData.location || propertyData.address || "",
-        structuredAddress: ["residential","commercial"].includes(propertyData.propertyType) ? readPropertyAddress(propertyData) : undefined,
-        carpetArea: propertyData.carpetArea || "",
-        plotArea: propertyData.plotArea || "",
-        constructedArea: propertyData.constructedArea || "",
-
-
-
-        // Pricing Details - Prefer active tenant data for lease details
-        monthlyRent: String(activeTenant?.monthlyRent ?? propertyData.monthlyRent ?? ""),
-        escalationPercentage:propertyData.escalationPercentage||"",
-        escalationAmount:propertyData.escalationAmount||"",
-        sellingPrice: String(propertyData.sellingPrice ?? ""),
-        paymentDueDate: activeTenant?.paymentDueDate || propertyData.paymentDueDate || "",
-        monthlyRent1stYear: propertyData.monthlyRent1stYear || "",
-        monthlyRent2ndYear: propertyData.monthlyRent2ndYear || "",
-        monthlyRent3rdYear: propertyData.monthlyRent3rdYear || "",
-        monthlyRent4thYear: propertyData.monthlyRent4thYear || "",
-        rentFromDate1: propertyData.rentFromDate1 || "",
-        rentToDate1: propertyData.rentToDate1 || "",
-        rentFromDate2: propertyData.rentFromDate2 || "",
-        rentToDate2: propertyData.rentToDate2 || "",
-        securityDeposit: String(activeTenant?.securityDeposit ?? propertyData.securityDeposit ?? ""),
-        agreementPeriod: propertyData.agreementPeriod || "",
-        agreementStartDate: activeTenant?.leaseStartDate || propertyData.agreementStartDate || "",
-        agreementEndDate: activeTenant?.leaseEndDate || propertyData.agreementEndDate || "",
-        noticePeriod: activeTenant?.noticePeriod || propertyData.noticePeriod || "",
-        lockInPeriod: propertyData.lockInPeriod || "",
-        unitCondition: propertyData.unitCondition || "",
-        maintenanceToBePaidBy: propertyData.maintenanceToBePaidBy || "",
-        rentalStatus: propertyData.rentalStatus || "",
-        projectCondition:propertyData.projectCondition ?? "",
-        possessionDate:propertyData.possessionDate ?? "",
-        saleStatus: propertyData.isSold ? "sold" : "available",
-        buyerFirstName: propertyData.buyers && propertyData.buyers.length > 0 ? propertyData.buyers[propertyData.buyers.length - 1].firstName || "" : "",
-        buyerLastName: propertyData.buyers && propertyData.buyers.length > 0 ? propertyData.buyers[propertyData.buyers.length - 1].lastName || "" : "",
-        buyerPhone: propertyData.buyers && propertyData.buyers.length > 0 ? propertyData.buyers[propertyData.buyers.length - 1].phone || "" : "",
-        images: propertyData.images || [],
-        specificComments: propertyData.specificComments || "",
-        furnishedChecklist: propertyData.furnishedChecklist || [],
-      };
-
-      setFurnishedChecklist(propertyData.furnishedChecklist || []);
+      const values=propertyEditDefaults(propertyData);
+      setUploadedImages(values.images);
+      setUploadedInternalImages(values.internalImages);
+      setFurnishedChecklist(values.furnishedChecklist);
       setFurnishingSelectionChanged(false);
-
-      form.reset(formData);
+      form.reset(values as FormData);
     }
   }, [propertyData, form]);
 
@@ -309,11 +293,15 @@ const EditProperty = () => {
 
 
   // Image handling functions
-  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>,internal=false) => {
+    if(uploadLock.current||submitLock.current||!isPropertyEditable())return;
+    const selectedInput=event.currentTarget;
+    const setImages=internal?setUploadedInternalImages:setUploadedImages;
+    const fieldName=internal?'internalImages':'images';
     const files = event.target.files;
     if (!files) return;
 
-    const totalImages = uploadedImages.length + files.length;
+    const totalImages = (internal?uploadedInternalImages:uploadedImages).length + files.length;
     if (totalImages > 6) {
       toast({
         title: "Too many images",
@@ -323,6 +311,7 @@ const EditProperty = () => {
       return;
     }
 
+    uploadLock.current=true;
     setIsUploading(true);
 
     for (const file of Array.from(files)) {
@@ -339,11 +328,11 @@ const EditProperty = () => {
 
           try {
             // Upload to Cloudflare R2
-            const uploadedUrl = await uploadBase64Image(base64Image, 'properties', `edit-${propertyId}`);
+            const uploadedUrl = await uploadBase64Image(base64Image, 'properties', internal?'internal':`edit-${propertyId}`);
 
-            setUploadedImages(prev => {
+            setImages(prev => {
               const newImages = [...prev, uploadedUrl];
-              form.setValue('images', newImages);
+              form.setValue(fieldName, newImages,{shouldDirty:true});
               return newImages;
             });
 
@@ -354,9 +343,9 @@ const EditProperty = () => {
           } catch (uploadError) {
 
             // Fallback to base64 if R2 upload fails
-            setUploadedImages(prev => {
+            setImages(prev => {
               const newImages = [...prev, base64Image];
-              form.setValue('images', newImages);
+              form.setValue(fieldName, newImages,{shouldDirty:true});
               return newImages;
             });
 
@@ -377,17 +366,19 @@ const EditProperty = () => {
       }
     }
 
+    uploadLock.current=false;
     setIsUploading(false);
 
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    selectedInput.value='';
   };
 
-  const removeImage = (index: number) => {
-    setUploadedImages(prev => {
+  const removeImage = (index: number,internal=false) => {
+    if(uploadLock.current||submitLock.current||!isPropertyEditable())return;
+    const setImages=internal?setUploadedInternalImages:setUploadedImages;
+    const fieldName=internal?'internalImages':'images';
+    setImages(prev => {
       const newImages = prev.filter((_, i) => i !== index);
-      form.setValue('images', newImages);
+      form.setValue(fieldName, newImages,{shouldDirty:true});
       return newImages;
     });
   };
@@ -397,6 +388,7 @@ const EditProperty = () => {
     return [...(current&&!PROPERTY_CONFIGURATIONS.includes(current as typeof PROPERTY_CONFIGURATIONS[number])?[{value:current,label:current}]:[]),...PROPERTY_CONFIGURATIONS.map(value=>({value,label:value}))];
   };
 
+  const includesRent=['rent','sell_rent'].includes(form.watch('listingType')),includesSale=['sell','sell_rent'].includes(form.watch('listingType'));
   const editCategory=propertyCategory(form.watch('propertyCategory')||form.watch('propertyType'));
   const editPlotStructure=structureUsesPlotArea(form.watch('structure'));
   const editStructure=form.watch('structure');
@@ -409,6 +401,9 @@ const EditProperty = () => {
   // Do not treat loading a legacy plot record as an explicit furnishing edit.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[editStructure,form.formState.dirtyFields.structure]);
+
+  const agreementStart=form.watch('agreementStartDate'),agreementPeriod=form.watch('agreementPeriod');
+  useEffect(()=>{if(!dirtyFields.agreementStartDate&&!dirtyFields.agreementPeriod)return;const end=calculateAgreementEndDate(agreementStart||'',agreementPeriod||'');if(end)form.setValue('agreementEndDate',end,{shouldDirty:true});},[agreementStart,agreementPeriod,dirtyFields.agreementStartDate,dirtyFields.agreementPeriod,form]);
 
   const getUnitLabel = () => {
     switch (form.watch("propertyType")) {
@@ -425,55 +420,7 @@ const EditProperty = () => {
 
   const onSubmit = async (data: FormData) => {
     try {
-      // Validate pricing based on listing type
-      if (data.listingType === "rent" && (dirtyFields.listingType || dirtyFields.monthlyRent || dirtyFields.expectedRent) && !(data.rentalStatus === "rented" ? data.monthlyRent : data.expectedRent)?.trim()) {
-        toast({
-          title: "Missing Monthly Rent",
-          description: "Please enter the applicable asking or contractual monthly rent.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      if (data.listingType === "sell" && (dirtyFields.listingType || dirtyFields.sellingPrice) && (!data.sellingPrice || data.sellingPrice.trim() === "")) {
-        toast({
-          title: "Missing Selling Price",
-          description: "Please enter the selling price for sale properties.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Validate buyer details for sold properties
-      if (data.listingType === "sell" && data.saleStatus === "sold") {
-        if (!data.buyerFirstName || data.buyerFirstName.trim() === "") {
-          toast({
-            title: "Missing Buyer Information",
-            description: "Please enter the buyer's first name for sold properties.",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        if (!data.buyerLastName || data.buyerLastName.trim() === "") {
-          toast({
-            title: "Missing Buyer Information",
-            description: "Please enter the buyer's last name for sold properties.",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        if (!data.buyerPhone || data.buyerPhone.trim() === "") {
-          toast({
-            title: "Missing Buyer Contact",
-            description: "Please enter the buyer's phone number for sold properties.",
-            variant: "destructive",
-          });
-          return;
-        }
-      }
-
+      const issue=propertyEditError(data,dirtyFields,property||{});if(issue){showError(issue.field,issue.message);return;}
       const currentUser = auth.currentUser;
       if (!currentUser) {
         toast({
@@ -509,7 +456,7 @@ const EditProperty = () => {
         ...safeRestData
       } = restData as any;
 
-      let updatedBuyers = property?.buyers || [];
+      let updatedBuyers = (property?.buyers || []).map(buyer=>({...buyer}));
 
       if (data.listingType === "sell") {
         if (data.saleStatus === "sold") {
@@ -543,6 +490,7 @@ const EditProperty = () => {
         ...Object.fromEntries(Object.entries(safeRestData).filter(([key])=>!["saleStatus","buyerFirstName","buyerLastName","buyerPhone"].includes(key))),
         title: propertyTitle,
         images: uploadedImages,
+        internalImages:uploadedInternalImages,
         ...(furnishingSelectionChanged?{furnishedChecklist:checkedFurnishedItems}:{}),
         ownerUID: property?.ownerUID || currentUser.uid,
         tenants: updatedTenants,
@@ -550,17 +498,24 @@ const EditProperty = () => {
         buyers: updatedBuyers,
       };
 
+      const patch=propertyEditPayload(updateData,dirtyFields,property as any);
+      const payload=(dirtyFields.listingType||dirtyFields.preLeased||dirtyFields.sellingPrice)?normalizePurpose(patch,property as any):patch;
+      if(Object.keys(payload).every(key=>key==='expectedRentTermsVersion')&&!Object.values(leaseFiles).some(Boolean)){toast({title:'No changes to save',description:'Existing property data is unchanged.'});return;}
       const response = await apiFetch(`${API_BASE_URL}/properties/${propertyId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(normalizePurpose(propertyEditPayload(updateData,dirtyFields,property as any),property as any))
+        body: JSON.stringify(payload)
       });
 
       const result = await response.json();
 
-      if (result.success) {
+      if (response.ok&&result.success) {
+        if(result.property){
+          const saved={...property,...result.property} as Property,values=propertyEditDefaults(saved);
+          setProperty(saved);form.reset(values as FormData);setUploadedImages(values.images);setUploadedInternalImages(values.internalImages);setFurnishedChecklist(values.furnishedChecklist);setFurnishingSelectionChanged(false);
+        }else form.reset(form.getValues());
         if(data.listingType==='pre_leased'){
           try{for(const kind of ['lease','proof'] as const){const file=leaseFiles[kind];if(file)await uploadSupportingDocument(String(propertyId),file,kind==='lease'?'rental_agreement':'rent_receipt',evidenceKeys.current[kind]);}}
           catch(error){toast({title:'Property saved; evidence upload incomplete',description:'Open private Documents to retry the failed upload. No tenant records were created.',variant:'destructive'});navigate(`/attach-documents/${String(propertyId)}?supporting=1`);return;}
@@ -581,6 +536,7 @@ const EditProperty = () => {
         // Optional: navigate back or stay on the page
         // navigate("/manage-property");
       } else {
+        setSaveError(result.message||"Failed to update property. Please try again.");
         toast({
           title: "Error",
           description: result.message || "Failed to update property. Please try again.",
@@ -588,15 +544,16 @@ const EditProperty = () => {
         });
       }
     } catch (error) {
+      setSaveError(error instanceof Error?error.message:"Failed to connect to server. Please try again.");
       toast({
         title: "Error",
-        description: "Failed to connect to server. Please try again.",
+        description: error instanceof Error?error.message:"Failed to connect to server. Please try again.",
         variant: "destructive",
       });
     }
   };
 
-  const isPropertyEditable = () => !!property && (property.ownerUID === auth.currentUser?.uid || property.userRole === 'admin');
+  const isPropertyEditable = () => !!property && String(property.id)===String(propertyId) && !!auth.currentUser && (property.ownerUID === auth.currentUser?.uid || property.userRole === 'admin');
   const getPropertyStatusMessage = () => 'Only the property owner or an administrator can edit these details.';
 
   if (loading) {
@@ -624,85 +581,23 @@ const EditProperty = () => {
   }
 
   return (
-    <main className={styles.page}>
+    <main className={`${styles.page} ${styles.compactPage}`}>
       <>
-        <title>{property.title.charAt(0).toUpperCase() + property.title.slice(1)}</title>
+        <title>{String(property.title||form.getValues('propertyTitle')||'Property')}</title>
         <meta name="description" content={`Edit property details for ${property.title}`} />
       </>
 
       <div className={styles.shell}>
-        {/* Header */}
-        <div className={styles.pageIntro}>
-          <Button variant="ghost" onClick={() => navigate("/manage-property")} className="mb-4">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Manage Properties
-          </Button>
-
-          <div className="flex items-center gap-4 mb-4">
-            <div className={styles.introIcon}>
-              <Building2 className="h-8 w-8 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className={styles.title}>{isRenewalMode ? "Renew Agreement" : "Refine your listing"}</h1>
-              <p className="text-lg text-muted-foreground">
-                {property.title}
-                <span className="ml-2 px-2 py-1 text-sm bg-primary/10 text-primary rounded-md capitalize">
-                  {property.propertyType.charAt(0).toUpperCase() + property.propertyType.slice(1)}
-                </span>
-                {!isPropertyEditable() && (
-                  <span className="ml-2 px-2 py-1 text-sm bg-orange-100 text-orange-800 rounded-md">
-                    {property.isSold ? "🏷️ SOLD" : "🏠 RENTED"}
-                  </span>
-                )}
-              </p>
-            </div>
-          </div>
-        </div>
-
+        <PropertyIntakeHeader category={editCategory||property.propertyType} context={property.userRole==='admin'?'Administrator editing':'Owner editing'} action={isRenewalMode?'Renew Agreement - Edit':'Edit'}><Button type="button" variant="ghost" onClick={()=>navigate('/manage-property')}><ArrowLeft className="h-4 w-4 mr-2"/>Back to Manage Properties</Button></PropertyIntakeHeader>
         <Card className={styles.formPanel}>
-          <CardHeader>
-            <CardTitle>Property Details</CardTitle>
-            <CardDescription>
-              {isPropertyEditable()
-                ? "Update the form below to modify your property listing."
-                : getPropertyStatusMessage()
-              }
-            </CardDescription>
-            {property.updatedAt && (
-              <div className="text-sm text-muted-foreground mt-2">
-                <strong>Last Modified:</strong> {formatDisplayDateTime(property.updatedAt)}
-              </div>
-            )}
-          </CardHeader>
+          {property.updatedAt&&<p className="mb-3 text-xs text-muted-foreground">Last modified: {formatDisplayDateTime(property.updatedAt)}</p>}
           <CardContent>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
-                const invalidFields = Object.keys(errors);
-                const firstError = errors[invalidFields[0] as keyof typeof errors];
-                const firstMessage = firstError && typeof firstError === "object" && "message" in firstError
-                  ? String(firstError.message || "") : "";
-                toast({ title: "Please review the highlighted fields", description: firstMessage || `${invalidFields.length} field(s) need attention.`, variant: "destructive" });
-              })} className={`${styles.formBody} space-y-8`}>
-                <ClientPropertyFields form={form} disabled={!isPropertyEditable()}/>
-                {['residential','commercial'].includes(editCategory||'') && <StructuredAddressFields disabled={!isPropertyEditable()} value={propertyAddressDraft(form.watch('structuredAddress'))} onChange={value=>{form.setValue('structuredAddress',value,{shouldDirty:true});form.setValue('location',propertyAddressDisplay(value),{shouldDirty:true});form.setValue('unitNumber',value.structured.unitNumber||'',{shouldDirty:true});}} error={form.formState.errors.structuredAddress ? 'Please review the address fields.' : undefined}/>}
+              <form data-demo-autofill="off" ref={editForm} noValidate onSubmit={submitEdit} className={`${styles.formBody} space-y-4`}>
 
-                <fieldset className="grid gap-4 sm:grid-cols-2">
-                  <legend className="font-semibold mb-3">Unit and area details</legend>
-                  {!['residential','commercial'].includes(editCategory||'') && <>                  <FormField control={form.control} name="unitNumber" render={({field})=><FormItem><FormLabel>{getUnitLabel()}</FormLabel><FormControl><Input disabled={!isPropertyEditable()} {...field} value={field.value||''}/></FormControl><FormMessage/></FormItem>}/></>}
-                  {!editPlotStructure&&<FormField control={form.control} name="floor" render={({field})=><FormItem><FormLabel>Floor</FormLabel><FormControl><Input disabled={!isPropertyEditable()} {...field} value={field.value||''}/></FormControl><FormMessage/></FormItem>}/>}
-                  {!editPlotStructure&&<FormField control={form.control} name="carpetArea" render={({field})=><FormItem><FormLabel>Carpet area</FormLabel><FormControl><Input type="number" min="0" disabled={!isPropertyEditable()} {...field} value={field.value||''}/></FormControl><FormMessage/></FormItem>}/>}
-                  {!editPlotStructure&&<FormField control={form.control} name="constructedArea" render={({field})=><FormItem><FormLabel>Built-up / Constructed area</FormLabel><FormControl><Input type="number" min="0" disabled={!isPropertyEditable()} {...field} value={field.value||''}/></FormControl><FormMessage/></FormItem>}/>}
-                  {editPlotStructure&&<FormField control={form.control} name="plotArea" render={({field})=><FormItem><FormLabel>Plot area</FormLabel><FormControl><Input type="number" min="0" disabled={!isPropertyEditable()} {...field} value={field.value||''}/></FormControl><FormMessage/></FormItem>}/>}
-                </fieldset>
-                <div className="grid gap-4 sm:grid-cols-2">{(["escalationPercentage","escalationAmount"] as const).map(name=><FormField key={name} control={form.control} name={name} render={({field})=><FormItem><FormLabel>{name==="escalationPercentage"?"Rent escalation percentage":"Rent escalation fixed amount"}</FormLabel><FormControl><Input {...field} value={field.value||""}/></FormControl>{name==='escalationAmount'&&<AmountInWords amount={field.value}/>}<FormMessage/></FormItem>}/>)}</div>
-
-                {/* Basic Property Information */}
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 p-6 border rounded-lg">
-                  <div className="lg:col-span-4">
-                    <h3 className="text-lg font-semibold mb-6">Property Details</h3>
-                  </div>
-
-                  {editCategory==='residential'&&!editPlotStructure&&<FormField
+<fieldset className={editStyles.section} data-edit-section={1} disabled={busy||!isPropertyEditable()} aria-labelledby="edit-property-section-1"><h2 id="edit-property-section-1">{OWNER_STEPS[0]}</h2>
+<ClientPropertyFields form={form} disabled={busy||!isPropertyEditable()} section="details"/>
+{editCategory==='residential'&&!editPlotStructure&&<FormField
                     control={form.control}
                     name="configuration"
                     render={({ field }) => (
@@ -726,8 +621,9 @@ const EditProperty = () => {
                       </FormItem>
                     )}
                   />}
-
-                  <FormField
+</fieldset>
+<fieldset className={editStyles.section} data-edit-section={2} disabled={busy||!isPropertyEditable()} aria-labelledby="edit-property-section-2"><h2 id="edit-property-section-2">{OWNER_STEPS[1]}</h2><div className="grid gap-4 sm:grid-cols-2">
+<FormField
                     control={form.control}
                     name="listingType"
                     render={({ field }) => (
@@ -740,6 +636,7 @@ const EditProperty = () => {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
+                            {field.value&&!['rent','sell','pre_leased','manage'].includes(field.value)&&<SelectItem value={field.value}>{field.value==='sell_rent'?'For Sale and Rent (existing)':field.value}</SelectItem>}
                             <SelectItem value="rent">For Rent</SelectItem>
                             <SelectItem value="sell">For Sale</SelectItem>
                             <SelectItem value="pre_leased">Pre-Leased Sale</SelectItem>
@@ -750,10 +647,9 @@ const EditProperty = () => {
                       </FormItem>
                     )}
                   />
-                  <PropertyPurposeFields form={form} existingLease={property?.listingType==='pre_leased'?property.preLeased:undefined} onEvidence={(kind,file)=>{if(file){const error=validateSupportingDocuments([file]);if(error){setLeaseFiles(previous=>({...previous,[kind]:undefined}));toast({title:"Invalid evidence",description:error,variant:"destructive"});return;}}setLeaseFiles(previous=>({...previous,[kind]:file||undefined}));}}/>
-                  {/* Sale Status - Only show for sale properties */}
-                  {form.watch("listingType") === "sell" && (
-                    <FormField
+{includesRent&&<FormField control={form.control} name="rentalStatus" render={({field})=><FormItem><FormLabel>Rental Status</FormLabel><Select onValueChange={field.onChange} value={field.value||''}><FormControl><SelectTrigger><SelectValue placeholder="Select rental status"/></SelectTrigger></FormControl><SelectContent>{field.value&&!['available','rented'].includes(field.value)&&<SelectItem value={field.value}>{field.value}</SelectItem>}<SelectItem value="available">Available for Rent</SelectItem><SelectItem value="rented">Already Rented Out</SelectItem></SelectContent></Select><FormMessage/></FormItem>}/>}
+<PropertyPurposeFields form={form} existingLease={property?.listingType==='pre_leased'?property.preLeased:undefined} onEvidence={(kind,file)=>{if(file){const error=validateSupportingDocuments([file]);if(error){setLeaseFiles(previous=>({...previous,[kind]:undefined}));toast({title:"Invalid evidence",description:error,variant:"destructive"});return;}}setLeaseFiles(previous=>({...previous,[kind]:file||undefined}));}}/>
+{includesSale&&<FormField
                       control={form.control}
                       name="saleStatus"
                       render={({ field }) => (
@@ -773,12 +669,47 @@ const EditProperty = () => {
                           <FormMessage />
                         </FormItem>
                       )}
-                    />
-                  )}
-                </div>
-
-                {/* Buyer Information - Only show when property is already sold */}
-                {form.watch("listingType") === "sell" && form.watch("saleStatus") === "sold" && (
+                    />}
+{includesRent&&<><FormField
+                        control={form.control}
+                        name={form.watch("rentalStatus") === "rented" ? "monthlyRent" : "expectedRent"}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{form.watch("rentalStatus") === "rented" ? "Finalized Monthly Rent (₹) *" : "Expected Monthly Rent (₹) *"}</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="e.g., 25000"
+                                type="number"
+                                disabled={!isPropertyEditable()}
+                                {...field}
+                              />
+                            </FormControl>
+                            <AmountInWords amount={field.value}/>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      /></>}
+{includesSale&&<FormField
+                      control={form.control}
+                      name="sellingPrice"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Selling Price (₹) *</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="Enter selling price (e.g., 5000000)"
+                              type="number"
+                              disabled={!isPropertyEditable()}
+                              {...field}
+                            />
+                          </FormControl>
+                          <AmountInWords amount={field.value}/>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />}
+{form.watch('listingType')==='sell_rent'&&form.watch('rentalStatus')==='rented'&&<FormField control={form.control} name="expectedRent" render={({field})=><FormItem><FormLabel>Expected Monthly Rent (₹)</FormLabel><FormControl><Input type="number" min="0" step="0.01" {...field}/></FormControl><AmountInWords amount={field.value}/><FormMessage/></FormItem>}/>}
+</div>{includesSale && form.watch("saleStatus") === "sold" && (
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 border rounded-lg">
                     <div className="lg:col-span-3">
                       <h3 className="text-lg font-semibold mb-4">Buyer Information</h3>
@@ -835,62 +766,21 @@ const EditProperty = () => {
                       />
                     </div>
                   </div>
-                )}
-
-
-                {/* Pricing & Lease Information */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 border rounded-lg">
-                  <div className="lg:col-span-3">
-                    <h3 className="text-lg font-semibold mb-6">
-                      {form.watch("listingType") === "rent" ? "Lease & Pricing Details" : "Pricing Details"}
-                    </h3>
-                  </div>
-
-                  {['sell','sell_rent'].includes(form.watch('listingType'))&&<FormField control={form.control} name="projectCondition" render={({field})=><FormItem><FormLabel>Project Condition</FormLabel><FormControl><select disabled={!isPropertyEditable()} className="h-10 w-full rounded border px-3" {...field} value={field.value||''}><option value="">Select project condition</option>{field.value&&!['New Project','Ready Project','Preleased'].includes(field.value)&&<option value={field.value}>{field.value}</option>}{['New Project','Ready Project','Preleased'].map(value=><option key={value}>{value}</option>)}</select></FormControl><FormMessage/></FormItem>}/>}
-                  {(['sell','sell_rent'].includes(form.watch('listingType'))||form.watch('listingType')==='rent'&&form.watch('rentalStatus')==='available')&&<FormField control={form.control} name="possessionDate" render={({field})=><FormItem><FormLabel>Possession Date</FormLabel><FormControl><DatePicker disabled={!isPropertyEditable()} value={field.value} onChange={field.onChange}/></FormControl><FormMessage/></FormItem>}/>}
-                  {form.watch("listingType") === "rent" && (
-                    <>
-                      <FormField
-                        control={form.control}
-                        name={form.watch("rentalStatus") === "rented" ? "monthlyRent" : "expectedRent"}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>{form.watch("rentalStatus") === "rented" ? "Contractual Monthly Rent (\u20b9) *" : "Expected Monthly Asking Rent (\u20b9) *"}</FormLabel>
-                            <FormControl>
-                              <Input
-                                placeholder="e.g., 25000"
-                                type="number"
-                                disabled={!isPropertyEditable()}
-                                {...field}
-                              />
-                            </FormControl>
-                            <AmountInWords amount={field.value}/>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name="securityDeposit"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Security Deposit (₹)</FormLabel>
-                            <FormControl>
-                              <Input
-                                placeholder="e.g., 100000"
-                                type="number"
-                                disabled={!isPropertyEditable()}
-                                {...field}
-                              />
-                            </FormControl>
-                            <AmountInWords amount={field.value}/>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
+                )}</fieldset>
+<fieldset className={editStyles.section} data-edit-section={3} disabled={busy||!isPropertyEditable()} aria-labelledby="edit-property-section-3"><h2 id="edit-property-section-3">{OWNER_STEPS[2]}</h2>
+{['residential','commercial'].includes(editCategory||'') && <StructuredAddressFields disabled={!isPropertyEditable()} value={propertyAddressDraft(form.watch('structuredAddress'))} onChange={value=>{form.setValue('structuredAddress',value,{shouldDirty:true});form.setValue('location',propertyAddressDisplay(value),{shouldDirty:true});form.setValue('unitNumber',value.structured.unitNumber||'',{shouldDirty:true});}} error={form.formState.errors.structuredAddress ? 'Please review the address fields.' : undefined}/>}
+{!['residential','commercial'].includes(editCategory||'')&&<FormField control={form.control} name="location" render={({field})=><FormItem><FormLabel>Address</FormLabel><FormControl><Input {...field}/></FormControl><FormMessage/></FormItem>}/>}
+<fieldset className={editStyles.areaGrid}>
+  <legend className="font-semibold mb-3">Unit &amp; Area Details</legend>
+  {!['residential','commercial'].includes(editCategory||'')&&<FormField control={form.control} name="unitNumber" render={({field})=><FormItem><FormLabel>{getUnitLabel()}</FormLabel><FormControl><Input disabled={!isPropertyEditable()} {...field} value={field.value||''}/></FormControl><FormMessage/></FormItem>}/>}
+  {!editPlotStructure&&<FormField control={form.control} name="floor" render={({field})=><FormItem><FormLabel>Floor</FormLabel><FormControl><Input disabled={!isPropertyEditable()} {...field} value={field.value||''}/></FormControl><FormMessage/></FormItem>}/>}
+  {([['carpetArea','Carpet Area','carpetAreaUnit'],['constructedArea','Built-up / Constructed Area','constructedAreaUnit'],['plotArea','Plot Area','plotAreaUnit']] as const).filter(([name])=>editPlotStructure?name==='plotArea':name!=='plotArea').map(([name,label,unitName])=><FormField key={name} control={form.control} name={name} render={({field})=><FormItem><FormLabel>{label}</FormLabel><div className={editStyles.measurementGrid}><FormControl><Input type="number" min="0" disabled={!isPropertyEditable()} {...field} value={field.value||''}/></FormControl><FormField control={form.control} name={unitName} render={({field:unit})=><FormItem><FormControl><select aria-label={`${label} unit`} disabled={!isPropertyEditable()} className="h-10 rounded border bg-background px-3" {...unit} value={unit.value||''}><option value="">Choose unit</option>{unit.value&&!(name==='plotArea'?['sq ft','sq m','sq yd','acre','hectare']:['sq ft','sq m','sq yd']).includes(unit.value)&&<option value={unit.value}>{unit.value}</option>}{(name==='plotArea'?['sq ft','sq m','sq yd','acre','hectare']:['sq ft','sq m','sq yd']).map(value=><option key={value} value={value}>{value}</option>)}</select></FormControl><FormMessage/></FormItem>}/></div><FormMessage/></FormItem>}/>)}
+  {!editCategory&&(['areaUnit',...(editPlotStructure?['carpetAreaUnit','constructedAreaUnit']:['plotAreaUnit'])] as Array<'areaUnit'|'carpetAreaUnit'|'constructedAreaUnit'|'plotAreaUnit'>).map(name=><FormField key={name} control={form.control} name={name} render={({field})=><FormItem><FormLabel>{name==='areaUnit'?'Area unit':name==='plotAreaUnit'?'Plot area unit':name==='carpetAreaUnit'?'Carpet area unit':'Built-up / Constructed area unit'}</FormLabel><FormControl><select aria-label={name} className="h-10 rounded border bg-background px-3" {...field} value={field.value||''}><option value="">Choose unit</option>{field.value&&!['sq ft','sq m','sq yd','acre','hectare'].includes(field.value)&&<option value={field.value}>{field.value}</option>}{(name==='areaUnit'||name==='plotAreaUnit'?['sq ft','sq m','sq yd','acre','hectare']:['sq ft','sq m','sq yd']).map(value=><option key={value} value={value}>{value}</option>)}</select></FormControl><FormMessage/></FormItem>}/>)}
+</fieldset>
+</fieldset>
+<fieldset className={editStyles.section} data-edit-section={4} disabled={busy||!isPropertyEditable()} aria-labelledby="edit-property-section-4"><h2 id="edit-property-section-4">{OWNER_STEPS[3]}</h2>
+{includesRent&&form.watch('rentalStatus')==='rented'&&<><section className="space-y-3"><h3>Current tenancy</h3>{(property.tenants||[]).filter(tenant=>tenant.isActive===true).map((tenant,index)=><p key={tenant.id||index}>{[tenant.firstName,tenant.lastName].filter(Boolean).join(' ')||'Existing tenant'}{tenant.email?` - ${tenant.email}`:''}</p>)}<p className="text-sm text-muted-foreground">Tenant identities, invitations and detailed rent schedules remain in the existing tenancy workflow.</p><Link to={`/add-tenant/${propertyId}`} className="underline">Manage tenant information and rent schedule</Link></section><div className="grid gap-4 sm:grid-cols-2">
+<FormField
                         control={form.control}
                         name="paymentDueDate"
                         render={({ field }) => (
@@ -913,9 +803,7 @@ const EditProperty = () => {
                             <FormMessage />
                           </FormItem>
                         )}
-                      />
-
-                      <FormField
+                      /><FormField control={form.control} name="agreementPeriod" render={({field})=><FormItem><FormLabel>Agreement Period (in months)</FormLabel><FormControl><Input type="number" min="1"  {...field} value={field.value||''}/></FormControl><FormMessage/></FormItem>}/><FormField
                         control={form.control}
                         name="agreementStartDate"
                         render={({ field }) => (
@@ -931,9 +819,7 @@ const EditProperty = () => {
                             <FormMessage />
                           </FormItem>
                         )}
-                      />
-
-                      <FormField
+                      /><FormField
                         control={form.control}
                         name="agreementEndDate"
                         render={({ field }) => (
@@ -950,82 +836,9 @@ const EditProperty = () => {
                           </FormItem>
                         )}
                       />
-
-                      <FormField
-                        control={form.control}
-                        name="noticePeriod"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Notice Period</FormLabel>
-                            <Select
-                              onValueChange={field.onChange}
-                              value={field.value || ""}
-                              disabled={!isPropertyEditable()}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select Notice Period" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="1 Month">1 Month</SelectItem>
-                                <SelectItem value="2 Months">2 Months</SelectItem>
-                                <SelectItem value="3 Months">3 Months</SelectItem>
-                                <SelectItem value="4 Months">4 Months</SelectItem>
-                                <SelectItem value="5 Months">5 Months</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name="lockInPeriod"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Lock-in Period (Months)</FormLabel>
-                            <FormControl>
-                              <Input
-                                placeholder="e.g., 6"
-                                type="number"
-                                disabled={!isPropertyEditable()}
-                                {...field}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </>
-                  )}
-
-                  {form.watch("listingType") === "sell" && (
-                    <FormField
-                      control={form.control}
-                      name="sellingPrice"
-                      render={({ field }) => (
-                        <FormItem className="lg:col-span-3">
-                          <FormLabel>Selling Price (₹) *</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="Enter selling price (e.g., 5000000)"
-                              type="number"
-                              disabled={!isPropertyEditable()}
-                              {...field}
-                            />
-                          </FormControl>
-                          <AmountInWords amount={field.value}/>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  )}
-                </div>
-
-                {/* Unit Condition & Maintenance */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 border rounded-lg">
+<FormField control={form.control} name="noticePeriod" render={({field})=><FormItem><FormLabel>Notice / Early Termination Period (months)</FormLabel><FormControl><Input type="number" min="0" max="120" {...field} value={field.value||''}/></FormControl><FormMessage/></FormItem>}/><FormField control={form.control} name="lockInPeriod" render={({field})=><FormItem><FormLabel>Lock-in Period (months)</FormLabel><FormControl><Input type="number" min="0" max="120" {...field} value={field.value||''}/></FormControl><FormMessage/></FormItem>}/>
+</div><div className="grid gap-4 sm:grid-cols-2">{(["escalationPercentage","escalationAmount"] as const).map(name=><FormField key={name} control={form.control} name={name} render={({field})=><FormItem><FormLabel>{name==="escalationPercentage"?"Rent escalation percentage":"Rent escalation fixed amount"}</FormLabel><FormControl><Input {...field} value={field.value||""}/></FormControl>{name==='escalationAmount'&&<AmountInWords amount={field.value}/>}<FormMessage/></FormItem>}/>)}</div><NextAgreementFields preserveInitialValue idPrefix="edit-next-agreement" enabled={!!form.watch('nextAgreementDraft')} currentAgreementEndDate={form.watch('agreementEndDate')||''} value={form.watch('nextAgreementDraft')||emptyNextAgreementDraft()} onEnabledChange={enabled=>form.setValue('nextAgreementDraft',enabled?emptyNextAgreementDraft():null,{shouldDirty:true})} onChange={value=>form.setValue('nextAgreementDraft',value,{shouldDirty:true})}/></>}
+<div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 border rounded-lg">
                   <div className="lg:col-span-3">
                     <h3 className="text-lg font-semibold mb-2">Unit Condition & Maintenance</h3>
                   </div>
@@ -1107,72 +920,12 @@ const EditProperty = () => {
                     />
                   )}
                 </div>
-
-                {/* Images */}
-                <div className="grid grid-cols-1 gap-6 p-6 border rounded-lg">
-                  <div>
-                    <h3 className="text-lg font-semibold mb-6">Property Images</h3>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        multiple
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                        className="hidden"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploadedImages.length >= 6 || !isPropertyEditable() || isUploading}
-                      >
-                        {isUploading ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Uploading...
-                          </>
-                        ) : !isPropertyEditable()
-                          ? 'Property cannot be edited'
-                          : uploadedImages.length >= 6
-                            ? 'Maximum 6 images uploaded'
-                            : 'Upload Images (Max 6)'
-                        }
-                      </Button>
-                    </div>
-
-                    {uploadedImages.length > 0 && (
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        {uploadedImages.map((image, index) => (
-                          <div key={index} className="relative group">
-                            <img
-                              src={image}
-                              alt={`Property ${index + 1}`}
-                              className="w-full h-32 object-cover rounded-lg border"
-                            />
-                            {isPropertyEditable() && (
-                              <Button
-                                type="button"
-                                variant="destructive"
-                                size="sm"
-                                className={styles.imageRemoveButton} aria-label={`Remove property photo ${index + 1}`}
-                                onClick={() => removeImage(index)}
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Comments */}
-                <div className="grid grid-cols-1 gap-6 p-6 border rounded-lg">
+<div className="grid gap-4 sm:grid-cols-2">{['sell','sell_rent'].includes(form.watch('listingType'))&&<FormField control={form.control} name="projectCondition" render={({field})=><FormItem><FormLabel>Project Condition</FormLabel><FormControl><select disabled={!isPropertyEditable()} className="h-10 w-full rounded border px-3" {...field} value={field.value||''}><option value="">Select project condition</option>{field.value&&!['New Project','Ready Project','Preleased'].includes(field.value)&&<option value={field.value}>{field.value}</option>}{['New Project','Ready Project','Preleased'].map(value=><option key={value}>{value}</option>)}</select></FormControl><FormMessage/></FormItem>}/>}{(['sell','sell_rent'].includes(form.watch('listingType'))||form.watch('listingType')==='rent'&&form.watch('rentalStatus')==='available')&&<FormField control={form.control} name="possessionDate" render={({field})=><FormItem><FormLabel>Possession Date</FormLabel><FormControl><DatePicker disabled={!isPropertyEditable()} value={field.value} onChange={field.onChange}/></FormControl><FormMessage/></FormItem>}/>}</div>
+</fieldset>
+<fieldset className={editStyles.section} data-edit-section={5} disabled={busy||!isPropertyEditable()} aria-labelledby="edit-property-section-5"><h2 id="edit-property-section-5">{OWNER_STEPS[4]}</h2>
+<EditPropertyImages label="Exterior images" images={uploadedImages} busy={busy} onUpload={event=>handleImageUpload(event)} onRemove={index=>removeImage(index)}/>
+<EditPropertyImages label="Internal images" images={uploadedInternalImages} busy={busy} onUpload={event=>handleImageUpload(event,true)} onRemove={index=>removeImage(index,true)}/>
+<div className="grid grid-cols-1 gap-6 p-6 border rounded-lg">
                   <div>
                     <h3 className="text-lg font-semibold mb-6">Additional Comments</h3>
                   </div>
@@ -1195,9 +948,10 @@ const EditProperty = () => {
                     )}
                   />}
                 </div>
-
-                {/* Status Alert */}
-                {!isPropertyEditable() && (
+<p className="text-sm text-muted-foreground">Existing documents are retained. <Link to={`/attach-documents/${propertyId}`} className="underline">Open property documents</Link></p>
+</fieldset>
+{saveError&&<p role="alert" className="text-destructive">{saveError}</p>}
+{!isPropertyEditable() && (
                   <div className="p-4 border border-orange-200 bg-orange-50 rounded-lg">
                     <div className="flex items-center">
                       <div className="flex-shrink-0">
@@ -1211,23 +965,7 @@ const EditProperty = () => {
                     </div>
                   </div>
                 )}
-
-                {/* Submit Button */}
-                <div className="flex justify-end space-x-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => navigate("/manage-property")}
-                  >
-                    {isPropertyEditable() ? "Cancel" : "Back to Properties"}
-                  </Button>
-                  {isPropertyEditable() && (
-                    <Button type="submit">
-                      Update Property
-                    </Button>
-                  )}
-                </div>
-              </form>
+<div className={editStyles.actions}><Button type="button" variant="outline" disabled={busy} onClick={()=>navigate('/manage-property')}>Cancel</Button>{isPropertyEditable()&&<Button type="submit" className={editStyles.save} disabled={busy}>{form.formState.isSubmitting?'Saving...':'Save Changes'}</Button>}</div></form>
             </Form>
           </CardContent>
         </Card>

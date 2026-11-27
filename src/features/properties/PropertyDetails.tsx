@@ -327,7 +327,7 @@ const PropertyDetails = () => {
       setUser(currentUser);
       if (currentUser) {
         try {
-          const res = await apiFetch(`${API_BASE_URL}/users/${currentUser.uid}`);
+          const res = await apiFetch(`${API_BASE_URL}/users/${currentUser.uid}?summary=true`);
           if (res.ok) {
             const userData = await res.json();
             // Handle both {success: true, user: {...}} and direct {...} formats

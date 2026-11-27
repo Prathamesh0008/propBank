@@ -1,4 +1,5 @@
-﻿import {propertyPricing} from '@/lib/property-presentation';
+﻿import {propertyCategory} from '@/lib/property-category';
+import {propertyPricing} from '@/lib/property-presentation';
 import type {Property} from '@/services/propertyService';
 export type DiscoveryFilters={type:'buy'|'rent';query:string;categories:string[];kinds:('buy'|'rent')[];condition:string;min:number;max:number;sort:string};
 const unique=(values:string[])=>[...new Set(values)];
@@ -11,11 +12,12 @@ export function discoveryParams(filters:DiscoveryFilters){
 }
 export function filterDiscoveryProperties(properties:Property[],filters:DiscoveryFilters){
  return properties.filter(property=>{
-  if(filters.categories.length&&!filters.categories.some(category=>String(property.propertyType||property.propertyCategory||'').toLowerCase().includes(category)))return false;
+  if(filters.categories.length&&!filters.categories.some(category=>(propertyCategory(property.propertyCategory)||propertyCategory(property.propertyType))===category))return false;
   if(!filters.min&&!filters.max)return true;
   const price=propertyPricing(property).amount;return price!==null&&(!filters.min||price>=filters.min)&&(!filters.max||price<=filters.max);
  });
 }
 export function sortDiscoveryProperties(properties:Property[],sort:string){
- return [...properties].sort((a,b)=>{const x=propertyPricing(a).amount,y=propertyPricing(b).amount;if(sort==='recommended')return 0;if(x===null)return y===null?0:1;if(y===null)return -1;return sort==='price-high'?y-x:x-y;});
+ if(sort==='recommended')return [...properties];
+ return properties.map(property=>({property,amount:propertyPricing(property).amount})).sort((a,b)=>{const x=a.amount,y=b.amount;if(x===null)return y===null?0:1;if(y===null)return -1;return sort==='price-high'?y-x:x-y;}).map(row=>row.property);
 }
