@@ -144,8 +144,17 @@ export async function advertisementImage(request:Request,id:string){
   identifier(id);const row=(await collection().doc(id).get()).data();if(!row||row.deleted||!row.image)throw new ApiError(404,'Advertisement image unavailable');
   if(!row.active){try{await admin(request);}catch{throw new ApiError(404,'Advertisement image unavailable');}}
   const key=storageKey(id,row.image.key);if(row.image.bucket!==bucket())throw new ApiError(404,'Advertisement image unavailable');
+  // Browsers may retain public ad bytes, but must revalidate the current record.
+  // Never use shared caching or bypass active/deleted/bucket/administrator checks.
+  const etag=`"${createHash('sha256').update(JSON.stringify([id,row.version,key])).digest('hex')}"`;
+  const headers:Record<string,string>={'Content-Type':'image/webp','Cache-Control':row.active?'private, no-cache, must-revalidate':'private, no-store','X-Content-Type-Options':'nosniff','Content-Disposition':'inline; filename="advertisement.webp"'};
+  if(row.active){
+    headers.ETag=etag;
+    const validators=(request.headers.get('If-None-Match')||'').split(',').map(value=>value.trim().replace(/^W\//,''));
+    if(validators.includes(etag)||validators.includes('*'))return new Response(null,{status:304,headers});
+  }
   const object=await getR2Client().send(new GetObjectCommand({Bucket:row.image.bucket,Key:key}),{abortSignal:AbortSignal.timeout(30000)});
   if(!object.Body)throw new ApiError(404,'Advertisement image unavailable');
   const chunks:Buffer[]=[];let size=0;for await(const chunk of object.Body as AsyncIterable<Uint8Array>){size+=chunk.length;if(size>ADVERTISEMENT_MAX_BYTES)throw new ApiError(502,'Advertisement image is too large');chunks.push(Buffer.from(chunk));}
-  return new Response(new Uint8Array(Buffer.concat(chunks)),{headers:{'Content-Type':'image/webp','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Content-Disposition':'inline; filename="advertisement.webp"'}});
+  return new Response(new Uint8Array(Buffer.concat(chunks)),{headers});
 }
