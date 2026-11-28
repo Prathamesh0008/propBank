@@ -1,3 +1,5 @@
+import {adminInvitationEligible} from '@/lib/admin-property-intake';
+import {applyAdminIntakeDecision} from './admin-intake-relationships';
 import {propertyEmailContext} from '@/lib/email-design';
 import {formatPropertyAddress} from '@/lib/property-address';
 import {formatDisplayDateTime} from '@/lib/date-format';
@@ -153,6 +155,7 @@ export async function throttleRelationshipAction(uid: string, action: string, li
 }
 
 function eligible(claim: RecordData, property: RecordData, tenant?: RecordData): boolean {
+  if(claim.adminIntake===true)return adminInvitationEligible(claim,property,tenant);
   if (property.isActive === false || property.status === 'inactive') return false;
   if (claim.relationship === 'owner') return property.createdAs === 'tenant' && !property.ownerUID &&
     ['pending', 'rejected'].includes(s(property.ownershipVerification)) &&
@@ -188,7 +191,7 @@ export async function discoverFor(user: AuthenticatedUser) {
   for (const {ref, mail} of [...candidates.values()].slice(0, 100)) {
     const updated = await getDatabase().runTransaction(async tx => {
       const snapshot = await tx.get(ref), stored = snapshot.data();
-      if (!stored || stored.candidateUID && stored.candidateUID !== user.uid || stored.createdByUID === user.uid || stored.ownerUID === user.uid) return false;
+      if (!stored || stored.candidateUID && stored.candidateUID !== user.uid || stored.createdByUID === user.uid&&!stored.adminIntake || stored.ownerUID === user.uid) return false;
       const current = await connectionIdentity(user);
       const profile = (await tx.get(getDatabase().collection(COLLECTIONS.users).doc(user.uid))).data();
       if (!profile || profile.isActive === false) return false;
@@ -214,7 +217,7 @@ export async function discoverFor(user: AuthenticatedUser) {
 
 function safeClaim(id: string, claim: RecordData) {
   const expires = connectionExpiry(claim);
-  return {id, reference: id.slice(0, 8), relationship: claim.relationship,
+  return {id, reference: id.slice(0, 8), relationship: claim.relationship,adminIntake:claim.adminIntake===true,accepted:!!claim.confirmedByUID,
     status: currentConnectionState(claim), version: Number(claim.version || 0),
     ...(Number.isFinite(expires) ? {expiresAt: new Date(expires).toISOString()} : {}),
     ...(claim.status === 'linked' ? {propertyId: claim.propertyId} : {})};
@@ -247,8 +250,9 @@ export async function listRelationshipLinks(request: Request) {
   for (const doc of candidatePages.flatMap(page => page.docs)) {
     if (seen.has(doc.id)) continue;
     const claim = await refreshState(doc.ref, user, identity, false, doc.data());
-    if (!claim || claim.candidateUID !== user.uid || !matches(claim, identity) || claim.createdByUID === user.uid) continue;
-    const row = {...safeClaim(doc.id, claim), viewer: 'candidate' as const};
+    if (!claim || claim.candidateUID !== user.uid || !matches(claim, identity) || claim.createdByUID === user.uid&&!claim.adminIntake) continue;
+    const property=claim.adminIntake?(await getDatabase().collection(COLLECTIONS.properties).doc(s(claim.propertyId)).get()).data():undefined;
+    const row = {...safeClaim(doc.id, claim), viewer: 'candidate' as const,...(property?{review:{tenancyRevision:Number(property.tenancyRevision||0),rentTermsVersion:Number(property.rentTermsVersion||0),category:property.propertyType,rentalStatus:property.rentalStatus,monthlyRent:property.monthlyRent||'',securityDeposit:property.securityDeposit||'',paymentDueDate:property.paymentDueDate||'',agreementStartDate:property.agreementStartDate||'',agreementEndDate:property.agreementEndDate||''}}:{})};
     seen.add(doc.id); claims.push(row); connections.push(row);
   }
   for (const doc of invitationPages.flatMap(page => page.docs)) {
@@ -277,8 +281,8 @@ export async function actOnRelationshipLink(request: Request) {
   let body: RecordData;
   try {body = await readObject(request, 4096);} catch {throw new ApiError(400, 'Invalid relationship request');}
   const action = s(body.action);
-  if (Object.keys(body).some(key => !['action', 'claimId', 'expectedVersion'].includes(key))) throw new ApiError(400, 'Relationship discovery and claims are scoped to your authenticated identity');
-  if (!['discover', 'request_owner_verification', 'confirm_tenancy', 'approve_tenancy', 'authorize_tenancy_invitation', 'reject'].includes(action)) throw new ApiError(400, 'Invalid relationship action');
+  if (Object.keys(body).some(key => !['action', 'claimId', 'expectedVersion','expectedTenancyRevision','expectedRentTermsVersion'].includes(key))) throw new ApiError(400, 'Relationship discovery and claims are scoped to your authenticated identity');
+  if (!['discover', 'request_owner_verification', 'confirm_tenancy', 'approve_tenancy', 'authorize_tenancy_invitation', 'accept_admin_invitation', 'reject'].includes(action)) throw new ApiError(400, 'Invalid relationship action');
   await throttleRelationshipAction(user.uid, action === 'discover' ? 'discover' : 'claim', action === 'discover' ? 20 : 10);
   if (action === 'discover') return jsonResponse({success: true, ...await discoverFor(user)});
   if (!/^[a-f0-9]{64}$/.test(s(body.claimId))) throw new ApiError(400, 'Invalid relationship reference');
@@ -297,7 +301,7 @@ export async function actOnRelationshipLink(request: Request) {
     const profile = (await tx.get(getDatabase().collection(COLLECTIONS.users).doc(user.uid))).data();
     if (!profile || profile.isActive === false || !property) throw new AccessError(403, 'Relationship request unavailable');
     const asOwner = claim.relationship === 'tenant' && claim.ownerUID === user.uid && property.ownerUID === user.uid;
-    const asCandidate = claim.candidateUID === user.uid && matches(claim, await connectionIdentity(user)) && claim.createdByUID !== user.uid;
+    const asCandidate = claim.candidateUID === user.uid && matches(claim, await connectionIdentity(user)) && (claim.createdByUID !== user.uid||claim.adminIntake===true);
     if (ownerAction ? !asOwner : action === 'reject' ? !asOwner && !asCandidate : !asCandidate) throw new AccessError(403, 'Relationship request unavailable');
     const state = currentConnectionState(claim);
     if (state === 'linked') {
@@ -311,6 +315,7 @@ export async function actOnRelationshipLink(request: Request) {
     if (state === 'rejected') throw new ApiError(409, 'This relationship request was rejected');
     if (body.expectedVersion !== undefined && body.expectedVersion !== Number(claim.version || 0)) throw new ApiError(409, 'Connection changed; refresh and review it again');
     const version = Number(claim.version || 0) + 1;
+    if(claim.adminIntake===true){if(action==='accept_admin_invitation'&&(!Number.isInteger(body.expectedTenancyRevision)||!Number.isInteger(body.expectedRentTermsVersion)||body.expectedTenancyRevision!==Number(property.tenancyRevision||0)||body.expectedRentTermsVersion!==Number(property.rentTermsVersion||0)))throw new ApiError(409,'Property rental terms changed; refresh and review before accepting');if(claim.confirmedByUID&&action==='accept_admin_invitation'){outcome=state;return;}const result=await applyAdminIntakeDecision(tx,user,ref,claim,property,action);outcome=result.status;invitationEvents.push(...result.events);intentIds.push(...result.intentIds);return;}
     if (action === 'reject') {tx.update(ref, {status: 'rejected', version, rejectedByUID: user.uid, rejectedAt: new Date(), updatedAt: new Date()}); return;}
     const tenantRef = claim.tenantId ? getDatabase().collection(COLLECTIONS.tenants).doc(s(claim.tenantId)) : null;
     const tenant = tenantRef ? (await tx.get(tenantRef)).data() : undefined;

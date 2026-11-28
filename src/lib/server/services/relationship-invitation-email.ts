@@ -44,10 +44,16 @@ function publicOrigin(): string | null {
 }
 
 /** Only a fixed variant and trusted deployment configuration enter this layout. */
-export function invitationEmailTemplate(kind: Kind) {
+export function invitationEmailTemplate(kind: Kind, adminIntake=false, registered=false) {
   const origin = publicOrigin();
   if (!origin) return null;
-  const variant = variants[kind], href = `${origin}/manage-property#pending-connections`, support = `${origin}/support`;
+  const baseVariant=variants[kind];
+  const variant=adminIntake?{...baseVariant,paragraphs:[
+    kind==='owner'?'PropBank Admin submitted a property and nominated you as the prospective owner.':'PropBank Admin submitted a tenancy invitation for your review.',
+    registered?'Sign in with the verified account that received this invitation, then review and accept or reject the relationship.':'Create an account or sign in, verify the same email address that received this invitation, then review and accept or reject the relationship.',
+    'No ownership or tenancy access is granted by this email. Tenant access requires both owner and tenant acceptance.'
+  ]}:baseVariant;
+  const href = `${origin}/manage-property#pending-connections`, support = `${origin}/support`;
   const supportEmail = normalizeEmailAddress(process.env.SUPPORT_EMAIL || process.env.FROM_EMAIL || DEFAULT_EMAIL_SENDER);
   const ignore = 'If you do not recognize this invitation, please ignore it or report it to our support team.';
   return {subject:variant.subject,...renderTransactionalEmail(variant.heading,variant.paragraphs.map(text=>`<p>${escape(text)}</p>`).join('')+`<p>Report an unsolicited invitation or contact support${supportEmail?`: ${escape(supportEmail)}`:''}.</p>`,variant.paragraphs.join('\n\n')+`\n\nReport an unsolicited invitation or contact support${supportEmail?`: ${supportEmail}`:''}.`,{label:variant.cta,path:'/manage-property#pending-connections'},{preheader:variant.paragraphs[0],nextStep:ignore+' This invitation does not verify an identity or authorize property access.'})};
@@ -64,9 +70,9 @@ export async function stageInvitationEmails(tx: Transaction, freshClaims: Record
     const kind = claim.relationship;
     if (kind !== 'owner' && kind !== 'tenant') continue;
     const actor = s(claim.invitationAuthorizedByUID || claim.createdByUID);
-    if (kind === 'tenant' && (!claim.ownerUID || claim.authorizedByUID !== claim.ownerUID || actor !== claim.ownerUID)) continue;
+    if (kind === 'tenant' && !claim.adminIntake && (!claim.ownerUID || claim.authorizedByUID !== claim.ownerUID || actor !== claim.ownerUID)) continue;
     if (!actor) continue;
-    const content = invitationEmailTemplate(kind), idempotencyKey = `relationship-invitation-v1-${hash(`${kind}:${s(claim.id)}`)}`;
+    const content = invitationEmailTemplate(kind,claim.adminIntake===true,!!claim.candidateUID), idempotencyKey = `relationship-invitation-v1-${hash(`${kind}:${s(claim.id)}`)}`;
     const event: TransactionalEmailEvent = {
       eventType: `relationship.${kind}_invitation`, eventId: s(claim.id),
       recipientRole: `reported_${kind}_invitation`, recipientEmail: email,
@@ -78,7 +84,7 @@ export async function stageInvitationEmails(tx: Transaction, freshClaims: Record
     if ((await tx.get(ref)).exists) continue;
     if (!actors.has(actor)) {
       const profile = await tx.get(getDatabase().collection(COLLECTIONS.users).doc(actor));
-      actors.set(actor, profile.exists && profile.data()?.isActive !== false);
+      actors.set(actor, profile.exists && profile.data()?.isActive !== false && (!claim.adminIntake||profile.data()?.role==='admin'&&claim.adminAuthorizedByUID===actor));
     }
     if (!actors.get(actor)) {suppressed.push({event, reason: 'Sender is not active'}); continue;}
     if (!content) {suppressed.push({event, reason: 'Invitation application URL requires configuration'}); continue;}

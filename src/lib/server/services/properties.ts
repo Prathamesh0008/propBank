@@ -32,7 +32,8 @@ import { uploadPropertyImages } from './property-images';
 import {prepareMediaBindings,restoreFileReferences} from './media';
 import {readObject} from './domain-contracts';
 import { propertyNotificationEvents, bestEffort, propertyCreatedEffects, propertyUpdatedEffects } from './property-effects';
-import { prepareLink, stageLinks, validContact } from './relationship-links';
+import { prepareLink, stageLinks, validContact, throttleRelationshipAction } from './relationship-links';
+import {adminOwnerContact,type AdminOwnerContact} from '@/lib/admin-property-intake';
 import {activeFurnishedItems,supportsFurnishedChecklist} from '@/lib/property-furnishing';
 
 import { writeEmailOutbox, dispatchEmailOutbox, type TransactionalEmailEvent } from './transactional-email';
@@ -196,15 +197,32 @@ export async function createProperty(request:Request) {
     return jsonResponse({success:false,message:`${reason} Reference: ${reference}`,code:'PROPERTY_CREATION_FAILED',reference},503);
   }
 }
-async function createPropertyRecord(request:Request) {
+export async function createAdminProperty(request:Request){const user=await requireUser(request);if(user.role!=='admin')throw new AccessError(403,'Administrator access required');await throttleRelationshipAction(user.uid,'admin-create',5);return createPropertyRecord(request,true);}
+async function createPropertyRecord(request:Request,adminIntake=false) {
   const user=await requireUser(request);
   let req:RecordData;
   let submissionFingerprint='';
+  let nominatedOwner:AdminOwnerContact|undefined;
   let body:unknown;
   try {body=await readObject(request,20<<20);}catch {return propertyError('Invalid JSON request body',400);}
   try {
     if (body!==null&&!isRecord(body)) throw new Error('invalid request object');
     const raw=normalizePurpose((body||{}) as RecordData);
+    if(adminIntake){
+      nominatedOwner=adminOwnerContact((body as RecordData).adminOwner);
+      const rental=(body as RecordData).adminRental;
+      if(!isRecord(rental)||!['available','rented'].includes(s(rental.rentalStatus)))throw Error('Select whether the property is rented');
+      const fields=['tenantFirstName','tenantLastName','tenantEmail','mobileNumber','tenantAlternatePhone','tenantEmergencyContact','tenantPreviousAddress','tenantEmploymentStatus','tenantEmployer','tenantMonthlyIncome','tenantIsMarried','tenantSpouse','monthlyRent','securityDeposit','paymentDueDate','agreementPeriod','agreementStartDate','agreementEndDate','noticePeriod','lockInPeriod','escalationPercentage','escalationAmount','rentSchedule','maintenanceToBePaidBy'];
+      if(Object.keys(rental).some(key=>key!=='rentalStatus'&&!fields.includes(key)))throw Error('Invalid rental information');
+      if(rental.rentalStatus==='rented'){
+        Object.assign(raw,Object.fromEntries(fields.filter(key=>key in rental).map(key=>[key,rental[key]])));
+        const email=normalizeEmailAddress(raw.tenantEmail);
+        if(!email||email===nominatedOwner.email||!s(raw.tenantFirstName).trim())throw Error('A separate tenant name and valid email are required');
+        if(!s(raw.agreementPeriod)||!s(raw.monthlyRent)||Number(raw.monthlyRent)<=0||!s(raw.paymentDueDate)||!s(raw.agreementStartDate)||!s(raw.agreementEndDate))throw Error('Complete rental and agreement fields');
+        raw.tenantEmail=email;
+      }
+      raw.rentalStatus=rental.rentalStatus;raw.ownerUID=user.uid;delete raw.createdAs;
+    }
     if('addressVersion' in raw || 'expectedAddressVersion' in raw)throw new Error('Address version is server controlled on creation');
     if('structuredAddress' in raw)Object.assign(raw,resolvePropertyAddress(raw.structuredAddress),{addressVersion:1});
     if(Array.isArray(raw.tenants)&&raw.tenants.some(t=>isRecord(t)&&Object.keys(t).some(key=>['agreementinventory','inventoryhistory'].includes(key.toLowerCase()))))throw new Error('Inventory snapshots are server controlled');
@@ -245,6 +263,7 @@ async function createPropertyRecord(request:Request) {
     }
   } catch(error) { return propertyError(`Invalid property data: ${error instanceof Error?error.message:'invalid request'}`,400); }
   const tenantCreated=req.createdAs==='tenant';
+  if(!adminIntake&&user.role==='admin'&&s(req.ownerUID)!==user.uid)return propertyError('Use the unified administrator property form for nominated owners',400);
   req.furnishedChecklist=activeFurnishedItems(req.furnishedChecklist,req.unitCondition,req.structure);
   if(user.role==='agent'&&!tenantCreated) {
     if(!req.agentOwnerEmail||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s(req.agentOwnerEmail)))return propertyError('A registered legal owner email is required for agent listings',400);
@@ -256,6 +275,8 @@ async function createPropertyRecord(request:Request) {
     const dates=[s(req.agreementStartDate),s(req.agreementEndDate)];
     if(dates.some(value=>!/^\d{4}-\d{2}-\d{2}$/.test(value)||!Number.isFinite(Date.parse(value)))||dates[1]<dates[0])return propertyError('Valid agreement start and end dates are required',400);
   }
+  if(adminIntake&&nominatedOwner?.selectedUID){const claim=await prepareLink('owner','candidate',nominatedOwner.phone,user.uid,'','',nominatedOwner.email);if(claim.candidateUID!==nominatedOwner.selectedUID)throw new ApiError(409,'Selected owner must match the current verified account email');}
+  if(adminIntake&&isRecord(body)&&isRecord(body.adminRental)&&body.adminRental.tenantAlternatePhone)req.tenantAlternatePhone=validContact(body.adminRental.tenantAlternatePhone);
   if(!tenantCreated&&req.rentalStatus==='rented')validContact(req.mobileNumber);
   if (!req.propertyTitle||!req.propertyType||!req.location||(!tenantCreated&&!req.ownerUID)) return propertyError('Missing required fields: propertyTitle, propertyType, location, ownerUID',400);
   if(!tenantCreated&&user.role!=='agent')requireSelfOrAdmin(user,s(req.ownerUID));
@@ -280,7 +301,8 @@ async function createPropertyRecord(request:Request) {
   for(const [to,from] of projections.request) property[to]=req[from];
   property.rentSchedule=req.rentSchedule;
   property.internalImages=await uploadPropertyImages((req.internalImages as string[]|null)||[],id,user,true);
-  Object.assign(property,{id,title:req.propertyTitle,address:req.location,tenantName:`${s(req.tenantFirstName)} ${s(req.tenantLastName)}`,images:await uploadPropertyImages((req.images as string[]|null)||[],id,user,tenantCreated||req.listingType==='manage'),ownerUID:req.ownerUID,ownerName:owner.name,ownerEmail:owner.email,ownerPhone:owner.phoneNumber,ownerRole:owner.role,status:'active',isActive:true});
+  Object.assign(property,{id,title:req.propertyTitle,address:req.location,tenantName:`${s(req.tenantFirstName)} ${s(req.tenantLastName)}`,images:await uploadPropertyImages((req.images as string[]|null)||[],id,user,adminIntake||tenantCreated||req.listingType==='manage'),ownerUID:req.ownerUID,ownerName:owner.name,ownerEmail:owner.email,ownerPhone:owner.phoneNumber,ownerRole:owner.role,status:'active',isActive:true});
+  if(adminIntake&&nominatedOwner)Object.assign(property,{createdAs:'admin',adminIntake:true,createdByUID:user.uid,submittedByUID:user.uid,ownershipVerification:'pending',reportedOwner:nominatedOwner,ownerUID:'',ownerName:'',ownerEmail:'',ownerPhone:'',ownerRole:'',relationshipHistory:[{action:'admin_property_created',actorUID:user.uid,at:new Date()}]});
   if(tenantCreated) {
     Object.assign(property,{createdAs:'tenant',submittedByUID:user.uid,ownershipVerification:'pending',reportedOwner:req.reportedOwner,ownerUID:'',ownerName:'',ownerEmail:'',ownerPhone:'',ownerRole:'',listingType:'rent',rentalStatus:'rented',isSold:false});
     req.rentalStatus='rented';req.isSold=false;req.tenantEmail=user.token.email||'';
@@ -293,6 +315,7 @@ async function createPropertyRecord(request:Request) {
     const tenant=model('TenantInfo',{firstName:first,lastName:last,email:req.tenantEmail,phone:req.mobileNumber,paymentDueDate:req.paymentDueDate,monthlyRent:req.monthlyRent,leaseStartDate:req.agreementStartDate,leaseEndDate:req.agreementEndDate,noticePeriod:req.noticePeriod,emergencyContact:req.tenantEmergencyContact,previousAddress:req.tenantPreviousAddress,employmentStatus:req.tenantEmploymentStatus,employer:req.tenantEmployer,monthlyIncome:req.tenantMonthlyIncome,isMarried:req.tenantIsMarried,spouse:req.tenantSpouse,rentSchedule:req.rentSchedule,isActive:true,createdAt:now.toISOString().slice(0,19)+'Z',updatedAt:now.toISOString().slice(0,19)+'Z'});
     if(tenantCreated){tenant.userUID=user.uid;tenant.email=user.token.email||'';}
     else Object.assign(tenant,{userUID:'',phoneE164:validContact(req.mobileNumber),linkConfirmationRequired:true});
+    if(adminIntake&&req.tenantAlternatePhone)tenant.alternatePhone=req.tenantAlternatePhone;
     property.tenants=[tenant];
   }
   if(req.isSold) property.buyers=[model('BuyerInfo',{id:`buyer_${BigInt(now.getTime())*1000000n}`,firstName:req.buyerFirstName,lastName:req.buyerLastName,phone:req.buyerPhone,isActive:true,createdAt:now,updatedAt:now})];
@@ -303,7 +326,8 @@ async function createPropertyRecord(request:Request) {
   // Atomic create avoids overwriting a property on a race or infrastructure failure.
   const data={...storeModel('Property',property),...Object.fromEntries([...additiveFields,...addressFields].filter(key=>key in property).map(key=>[key,property[key]]))};
   if(property.nextAgreementDraft)data.nextAgreementDraft=property.nextAgreementDraft;
-  if(tenantCreated)for(const key of ['createdAs','submittedByUID','ownershipVerification','reportedOwner'])data[key]=property[key];
+  if(tenantCreated||adminIntake)for(const key of ['createdAs','submittedByUID','ownershipVerification','reportedOwner'])data[key]=property[key];
+  if(adminIntake)data.adminIntake=true;
   for(const key of ['createdByUID','adminCreatedForUID','relationshipHistory','submittedByUID','submittingAgentUID','submittingAgentName'])if(key in property)data[key]=property[key];
   for(const key of moderationFields)if(key in property)data[key]=property[key];
   const notificationSubmitter=user.role==='agent'?(await getUser(user.uid)||owner):owner;
@@ -422,11 +446,12 @@ async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnTyp
   const db=getDatabase(),ref=properties().doc(id);
   if(Array.isArray(updates.tenants))for(const tenant of updates.tenants as RecordData[]) {tenant.id ||= randomUUID();tenant.createdAt ||= new Date();tenant.updatedAt=new Date();}
   const candidates:RecordData[]=[];
-  if(create&&updates.createdAs==='tenant')candidates.push(await prepareLink('owner',id,s((updates.reportedOwner as RecordData).phone),user.uid,'','',(updates.reportedOwner as RecordData).email));
+  if(create&&['tenant','admin'].includes(s(updates.createdAs)))candidates.push(await prepareLink('owner',id,s((updates.reportedOwner as RecordData).phone),user.uid,'','',(updates.reportedOwner as RecordData).email));
   if(Array.isArray(updates.tenants))for(const tenant of updates.tenants as RecordData[])if(tenant.isActive===true&&tenant.linkConfirmationRequired===true&&!tenant.userUID) {
     const ownerUID=s(updates.ownerUID)||(await ref.get()).data()?.ownerUID||'';
     candidates.push(await prepareLink('tenant',id,s(tenant.phone),user.uid,ownerUID,s(tenant.id),tenant.email));
   }
+  if(create&&updates.adminIntake===true)for(const claim of candidates)Object.assign(claim,{adminIntake:true,adminAuthorizedByUID:user.uid});
   const intents=create?candidates.map(claim=>({claimId:s(claim.id),email:claim.relationship==='owner'?(updates.reportedOwner as RecordData)?.email:(updates.tenants as RecordData[]|undefined)?.find(t=>t.id===claim.tenantId)?.email})):[];
   let invitationEvents:TransactionalEmailEvent[]=[];
   const participantIds:string[]=[];
@@ -434,6 +459,7 @@ async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnTyp
   const result=await db.runTransaction(async tx=>{
     const updates:RecordData={...submittedUpdates,...(Array.isArray(submittedUpdates.tenants)?{tenants:submittedUpdates.tenants.map((t:RecordData)=>({...t}))}:{})};
     invitationEvents=[];participantIds.length=0;
+    if(updates.adminIntake===true){const actor=(await tx.get(db.collection(COLLECTIONS.users).doc(user.uid))).data();if(actor?.role!=='admin'||actor.isActive===false)throw new AccessError(403,'Administrator access required');}
     if(submission&&(await tx.get(submission.ref)).exists)return false;
     const before=await tx.get(ref);
     if(create&&before.exists)throw new Error('Property ID conflict');
@@ -507,7 +533,7 @@ async function writeProperty(id:string,updates:RecordData,user:Awaited<ReturnTyp
     if(Array.isArray(updates.tenants)) {
       for(const tenantRef of tenantRefs)if(tenantRef.exists&&tenantRef.data()?.propertyId!==id)throw new AccessError(403,'Tenant belongs to another property');
       for(const record of records?.docs||[])if(!(updates.tenants as RecordData[]).some(t=>t.id===record.id))tx.update(record.ref,{isActive:false,updatedAt:new Date()});
-      for(const tenant of updates.tenants as RecordData[])tx.set(db.collection(COLLECTIONS.tenants).doc(s(tenant.id)),storeModel('Tenant',model('Tenant',{...tenant,propertyId:id,ownerUID:updates.ownerUID||before.data()?.ownerUID})),{merge:true});
+      for(const tenant of updates.tenants as RecordData[])tx.set(db.collection(COLLECTIONS.tenants).doc(s(tenant.id)),{...storeModel('Tenant',model('Tenant',{...tenant,propertyId:id,ownerUID:updates.ownerUID||before.data()?.ownerUID})),...(tenant.alternatePhone?{alternatePhone:tenant.alternatePhone}:{})},{merge:true});
       if(!create)updates.rentalStatus=(updates.tenants as RecordData[]).some(t=>t.isActive===true)?'rented':'available';
     }
     for(const doc of evidence?.docs||[])if(doc.data().accessScope!==PRE_LEASED_EVIDENCE)tx.set(doc.ref,{accessScope:PRE_LEASED_EVIDENCE},{merge:true});

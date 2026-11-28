@@ -14,14 +14,14 @@ import styles from './PropertyHub.module.css';
 type Connection = {
   id: string; reference: string; relationship: 'owner' | 'tenant'; status: ConnectionState;
   viewer: 'owner' | 'candidate'; version: number; expiresAt?: string;
-  propertyId?: string; propertyLabel?: string; canAuthorizeInvitation?: boolean;
+  propertyId?: string; propertyLabel?: string; canAuthorizeInvitation?: boolean;adminIntake?:boolean;accepted?:boolean;review?:Record<string,string|number>;
 };
 type ConnectionsResponse = {connections: Connection[]; emailVerified: boolean; phoneVerified?: boolean; truncated: boolean};
 
 async function connectionRequest(action: string, connection?: Connection) {
   const response = await apiFetch('/api/relationship-links', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({action, ...(connection ? {claimId: connection.id, expectedVersion: connection.version} : {})}),
+    body: JSON.stringify({action, ...(connection ? {claimId: connection.id, expectedVersion: connection.version,...(connection.adminIntake?{expectedTenancyRevision:Number(connection.review?.tenancyRevision||0),expectedRentTermsVersion:Number(connection.review?.rentTermsVersion||0)}:{})} : {})}),
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.message || 'The connection could not be updated.');
@@ -74,7 +74,7 @@ export default function PendingConnections() {
     setBusy(true); setFailure(''); setFeedback('');
     try {
       const result = await connectionRequest(action, connection);
-      setFeedback(action === 'reject' ? 'Connection rejected.' : action === 'request_owner_verification' ? 'Ownership verification requested. An administrator must review the evidence.' : action === 'authorize_tenancy_invitation' ? 'Owner authorization recorded. The invitation is queued once delivery checks pass; the tenant must still accept.' : result.status === 'linked' ? 'Your tenancy has been connected successfully.' : 'Your acceptance has been recorded. Waiting for the property owner\u2019s approval.');
+      setFeedback(action==='accept_admin_invitation'?(result.status==='linked'?'Relationship accepted. Your authorized property is available.':'Acceptance recorded. Waiting for owner acceptance.'):action === 'reject' ? 'Connection rejected.' : action === 'request_owner_verification' ? 'Ownership verification requested. An administrator must review the evidence.' : action === 'authorize_tenancy_invitation' ? 'Owner authorization recorded. The invitation is queued once delivery checks pass; the tenant must still accept.' : result.status === 'linked' ? 'Your tenancy has been connected successfully.' : 'Your acceptance has been recorded. Waiting for the property owner\u2019s approval.');
       setReview('');
       await Promise.all(['relationshipLinks', 'userProperties', 'productHub', 'allProperties', 'property'].map(key => cache.invalidateQueries({queryKey: [key]})));
     } catch (error) {
@@ -101,9 +101,9 @@ export default function PendingConnections() {
         const Icon = item.relationship === 'owner' ? Building2 : KeyRound;
         const open = review === item.id;
         const ownership = item.relationship === 'owner';
-        const canRequest = ownership && item.viewer === 'candidate' && data?.emailVerified && ['verification_required', 'pending_owner_authorization'].includes(item.status);
-        const canAccept = !ownership && item.viewer === 'candidate' && item.status === 'pending_tenant_acceptance';
-        const canApprove = item.viewer === 'owner' && item.status === 'pending_owner_authorization';
+        const canRequest = !item.adminIntake && ownership && item.viewer === 'candidate' && data?.emailVerified && ['verification_required', 'pending_owner_authorization'].includes(item.status);
+        const canAccept = !item.adminIntake && !ownership && item.viewer === 'candidate' && item.status === 'pending_tenant_acceptance';
+        const canApprove = !item.adminIntake && item.viewer === 'owner' && item.status === 'pending_owner_authorization';
         return <article key={item.id} className={styles.connectionRow}>
           <Icon className={styles.connectionIcon} size={21} strokeWidth={1.4} aria-hidden="true"/>
           <div className={styles.connectionBody}>
@@ -112,7 +112,7 @@ export default function PendingConnections() {
             {item.viewer === 'owner' && item.canAuthorizeInvitation && <p>This request needs your authorization before an invitation email can be sent.</p>}
             <div className={styles.connectionActions}>
               <button type="button" disabled={disabled} aria-expanded={open} aria-controls={`${id}-${item.id}`} onClick={() => setReview(open ? '' : item.id)}>{!ownership && item.viewer === 'candidate' ? 'Review Invitation' : 'Review'} <ChevronDown size={14} aria-hidden="true"/></button>
-              {canRequest && <button type="button" className={styles.connectionPrimary} disabled={disabled} onClick={() => void act('request_owner_verification', item)}><ShieldCheck size={15} aria-hidden="true"/> Request Ownership Verification</button>}
+              {item.adminIntake&&item.viewer==='candidate'&&!item.accepted&&<button type="button" className={styles.connectionPrimary} disabled={disabled||!open} onClick={()=>void act('accept_admin_invitation',item)}>Accept {ownership?'Ownership':'Tenancy'}</button>}{canRequest && <button type="button" className={styles.connectionPrimary} disabled={disabled} onClick={() => void act('request_owner_verification', item)}><ShieldCheck size={15} aria-hidden="true"/> Request Ownership Verification</button>}
               {canAccept && <button type="button" className={styles.connectionPrimary} disabled={disabled || !open || !data?.emailVerified} title={!open ? 'Review the invitation before accepting' : undefined} onClick={() => void act('confirm_tenancy', item)}><Check size={15} aria-hidden="true"/> Accept Tenancy</button>}
               {item.viewer === 'owner' && item.canAuthorizeInvitation && <button type="button" className={styles.connectionPrimary} disabled={disabled || !open} onClick={() => void act('authorize_tenancy_invitation', item)}><MailCheck size={15} aria-hidden="true"/> Authorize &amp; Send Invitation</button>}
               {canApprove && <button type="button" className={styles.connectionPrimary} disabled={disabled || !open} onClick={() => void act('approve_tenancy', item)}><Check size={15} aria-hidden="true"/> Approve Tenant Connection</button>}
@@ -120,9 +120,9 @@ export default function PendingConnections() {
             </div>
             <div id={`${id}-${item.id}`} className={styles.connectionReview} hidden={!open}>
               <p className={styles.connectionReference}>Support reference: {item.reference}</p>
-              <p>{ownership ? 'Confirm this reference with the person who reported the property. An administrator must independently review documentary ownership evidence before access is granted.' : item.viewer === 'owner' ? 'Check this reference with the tenant using contact details you already trust. Your authorization and their explicit acceptance are both required.' : 'Accept only an invitation you expect. Confirm this reference with the owner through a contact you already trust. Owner authorization is also required.'}</p>
+              <p>{item.adminIntake?'PropBank Admin nominated this relationship. Accept only if it belongs to you. A tenant receives access only after the owner has also accepted.':ownership ? 'Confirm this reference with the person who reported the property. An administrator must independently review documentary ownership evidence before access is granted.' : item.viewer === 'owner' ? 'Check this reference with the tenant using contact details you already trust. Your authorization and their explicit acceptance are both required.' : 'Accept only an invitation you expect. Confirm this reference with the owner through a contact you already trust. Owner authorization is also required.'}</p>
               {item.status === 'pending_admin_verification' && <p>Ownership evidence is reviewed through the existing administrator verification workflow. <Link to="/support">Arrange a secure review</Link></p>}
-              {item.expiresAt && <p>Expires {formatDisplayDate(item.expiresAt)}</p>}
+              {item.adminIntake&&item.review&&<dl>{Object.entries(item.review).filter(([key,value])=>!['tenancyRevision','rentTermsVersion'].includes(key)&&value).map(([key,value])=><div key={key}><dt>{({category:'Property category',rentalStatus:'Rental status',monthlyRent:'Monthly rent',securityDeposit:'Deposit',paymentDueDate:'Payment due day',agreementStartDate:'Agreement start',agreementEndDate:'Agreement end'} as Record<string,string>)[key]||key}</dt><dd>{String(value)}</dd></div>)}</dl>}{item.expiresAt && <p>Expires {formatDisplayDate(item.expiresAt)}</p>}
             </div>
           </div>
         </article>;

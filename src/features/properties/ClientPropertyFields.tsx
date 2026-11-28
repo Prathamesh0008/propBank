@@ -9,10 +9,11 @@ const schemaFields=['propertyCategory','structure','buildingName','expectedRent'
 const fields=[['propertyCategory','Property category'],['propertyTitle','Property Name'],['structure','Property Type'],['expectedRent','Expected rent'],['areaUnit','Area unit'],['carpetAreaUnit','Carpet area unit'],['constructedAreaUnit','Built-up / Constructed area unit'],['plotAreaUnit','Plot area unit']] as const;
 export const clientPropertySchema=Object.fromEntries(schemaFields.map(key=>[key,z.string().optional()])) as Record<typeof schemaFields[number],z.ZodOptional<z.ZodString>>;
 const choices:Record<string,string[]>={propertyCategory:['residential','commercial','industrial'],structure:['Apartment','Independent House','Villa','Residential Plot','Office','Shop','Showroom','Commercial Plot','Warehouse','Factory','Industrial Shed','Industrial Plot','Flat','Bungalow','Unit','RCC Shed','Land'],areaUnit:['sq ft','sq m','sq yd','acre','hectare'],carpetAreaUnit:['sq ft','sq m','sq yd'],constructedAreaUnit:['sq ft','sq m','sq yd'],plotAreaUnit:['sq ft','sq m','sq yd','acre','hectare']};
-export default function ClientPropertyFields<T extends FieldValues>({form,disabled=false,fixedCategory,creation=false,section}:{form:UseFormReturn<T>;disabled?:boolean;fixedCategory?:PropertyCategory;creation?:boolean;section?:'details'|'areas'}) {
+export default function ClientPropertyFields<T extends FieldValues>({form,disabled=false,fixedCategory,creation=false,section,onlyFields,hideLegend=false}:{form:UseFormReturn<T>;disabled?:boolean;fixedCategory?:PropertyCategory;creation?:boolean;section?:'details'|'areas';onlyFields?:readonly string[];hideLegend?:boolean}) {
   const selectedCategory=propertyCategory(fixedCategory||(typeof form.watch==='function'?form.watch('propertyCategory' as Path<T>):''));
   const plotStructure=structureUsesPlotArea(typeof form.watch==='function'?form.watch('structure' as Path<T>):'');
   const visibleFields=fields.filter(([key])=>{
+    if(onlyFields&&!onlyFields.includes(key))return false;
     const areaField=['areaUnit','carpetAreaUnit','constructedAreaUnit','plotAreaUnit'].includes(key);
     if(section==='details'&&areaField||section==='areas'&&!areaField)return false;
     if(key==='expectedRent'&&(!!section||creation||form.watch('listingType' as Path<T>)!=='sell_rent'))return false; // Standard rent is edited once in the financial section.
@@ -23,7 +24,7 @@ export default function ClientPropertyFields<T extends FieldValues>({form,disabl
     if(!creation&&selectedCategory&&key==='areaUnit')return false;
     return true;
   });
-  return <fieldset className="grid gap-4 sm:grid-cols-2"><legend className="font-semibold mb-3">{creation?'Building details':fixedCategory?'Building and area details':'Building, category and area details'}</legend>{visibleFields.map(([key,label])=>{
+  return <fieldset className="grid gap-4 sm:grid-cols-2">{!hideLegend&&<legend className="font-semibold mb-3">{creation?'Building details':fixedCategory?'Building and area details':'Building, category and area details'}</legend>}{visibleFields.map(([key,label])=>{
     const options=key==='structure'&&selectedCategory?[...PROPERTY_STRUCTURES[selectedCategory]]:choices[key];
     return <FormField key={key} control={form.control} name={key as Path<T>} render={({field})=><FormItem><FormLabel>{label}</FormLabel><FormControl>{options?<select disabled={disabled} aria-label={label} className="h-10 w-full border rounded px-3 bg-background" value={field.value||''} onChange={event=>{field.onChange(event);if(key==='propertyCategory')form.setValue('propertyType' as Path<T>,event.target.value as T[Path<T>],{shouldValidate:true,...(section?{shouldDirty:true}:{})});}}><option value="">Choose {label.toLowerCase()}</option>{field.value&&!options.includes(field.value)&&<option value={field.value}>{field.value}</option>}{options.map(value=><option key={value} value={value}>{value}</option>)}</select>:<Input disabled={disabled} required={key==='propertyTitle'} autoComplete={key==='propertyTitle'?'organization':'off'} {...field} value={field.value||''}/>}</FormControl>{key==='expectedRent'&&<AmountInWords amount={field.value}/>}<FormMessage/></FormItem>}/>;
   })}</fieldset>;

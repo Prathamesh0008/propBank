@@ -1,3 +1,4 @@
+import {adminInvitationEligible} from '@/lib/admin-property-intake';
 import {renderTransactionalEmail,type EmailContext} from '@/lib/email-design';
 import 'server-only';
 import {recordRead} from '../read-budget';
@@ -188,6 +189,11 @@ async function invitationIsCurrent(value:RecordData){
   const property=(await getDatabase().collection(COLLECTIONS.properties).doc(s(value.propertyId)).get()).data();
   if(!property||property.isActive===false)return false;
   const email=normalizeEmailAddress(value.recipientEmail);
+  if(claim.adminIntake===true){
+    if(sender.role!=='admin'||claim.confirmedByUID||email!==normalizeEmailAddress(claim.recipientEmailNormalized))return false;
+    const tenant=claim.tenantId?(await getDatabase().collection(COLLECTIONS.tenants).doc(s(claim.tenantId)).get()).data():undefined;
+    return adminInvitationEligible(claim,property,tenant);
+  }
   if(value.eventType==='relationship.owner_invitation')return claim.relationship==='owner'&&property.createdAs==='tenant'&&!property.ownerUID&&email!==null&&email===normalizeEmailAddress(property.reportedOwner?.email);
   if(claim.relationship!=='tenant'||!claim.ownerUID||claim.ownerUID!==property.ownerUID||claim.authorizedByUID!==claim.ownerUID||(claim.invitationAuthorizedByUID||claim.createdByUID)!==claim.ownerUID)return false;
   const tenant=(await getDatabase().collection(COLLECTIONS.tenants).doc(s(claim.tenantId)).get()).data();

@@ -1,4 +1,6 @@
 "use client";
+import {Button} from "@/ui/button";
+
 
 
 import AdminServiceRequestsWorkspace from './AdminServiceRequestsWorkspace';
@@ -28,6 +30,7 @@ import { AdminServiceRequestsTab } from "./AdminServiceRequestsTab";
 import { AdminPropertiesTab } from "./AdminPropertiesTab";
 import {useDataRefresh} from '@/lib/data-refresh';
 
+const AdminInvitationStatus=dynamic(()=>import('./AdminInvitationStatus'));
 const AdminRentedProperties=dynamic(()=>import('./AdminRentedProperties'));
 const AdminNotificationFeed=dynamic(()=>import('./AdminNotificationFeed'));
 const AdminVisits=dynamic(()=>import('./AdminVisits'));
@@ -400,7 +403,7 @@ const AdminPortal = () => {
         </aside>
         <div className={styles.content}>
 
-        <TabsContent value="dashboard"><section className={styles.overview}><header><p className={styles.sidebarLabel}>OVERVIEW</p><h1>Portfolio workspace</h1></header>{(propertiesError||overview.error)&&<p role="alert">Some summary data could not be loaded. Open the relevant section to retry.</p>}<div className={styles.summary}>
+        <TabsContent value="dashboard"><section className={styles.overview}><header><p className={styles.sidebarLabel}>OVERVIEW</p><h1>Portfolio workspace</h1><Button onClick={()=>navigate('/admin/add-property')}>Add Property</Button></header><AdminInvitationStatus properties={allProperties.filter((p:Property)=>(p as any).adminIntake)}/>{(propertiesError||overview.error)&&<p role="alert">Some summary data could not be loaded. Open the relevant section to retry.</p>}<div className={styles.summary}>
         {[
           ['Properties (loaded)',propertiesData?adminPropertyDirectory(allProperties).all.length:undefined,'properties'],
           ['Pending approvals (loaded)',propertiesData?allProperties.filter((p:Property)=>matchesAdminPropertySection(p,'pending')).length:undefined,'approvals'],

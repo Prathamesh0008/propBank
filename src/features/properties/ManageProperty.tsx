@@ -12,7 +12,7 @@ import workspaceStyles from './ManageProperty.module.css';
 import {OwnerVerificationStatus} from '@/features/admin/OwnerVerification';
 import {BrokerEnquiries} from '@/features/enquiries/EnquiryInbox';
 import ListingModeration from './ListingModeration';
-import {ProductDashboard} from './PropertyHub';
+import {ProductDashboard,AdminCreatePropertyAction} from './PropertyHub';
 import { propertyCategoryMatches } from '@/lib/client-workflows';
 import { apiFetch } from '@/lib/api-client';
 import SessionMediaImage from '@/components/SessionMediaImage';
@@ -459,7 +459,7 @@ const ManageProperty = () => {
             <div><p className={workspaceStyles.eyebrow}>YOUR PORTFOLIO</p><h1>Manage Properties</h1><p className={workspaceStyles.subtitle}>Manage your property portfolio, listings and tenancy activity in one place.</p></div>
 
             <div className={workspaceStyles.headerActions}>
-              <DropdownMenu>
+              <AdminCreatePropertyAction className={workspaceStyles.primaryAction}><DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button className={workspaceStyles.primaryAction}>
                     <Plus className="h-4 w-4 mr-2" />
@@ -475,7 +475,7 @@ const ManageProperty = () => {
                     <Key className="mr-2 h-4 w-4" />As a Tenant
                   </DropdownMenuItem>
                 </DropdownMenuContent>
-              </DropdownMenu>
+              </DropdownMenu></AdminCreatePropertyAction>
               <Button
                 className={workspaceStyles.secondaryAction}
                 variant="outline"

@@ -10,7 +10,7 @@ function callback(source,name,context){
 }
 function ownerCheck(category='residential',extra={}){
  const errors={},messages=[];const lib=isolated();
- const check=callback(owner,'validateOwnerStep',{selectedPropertyType:category,accountRole:'individual',addNextAgreementManually:false,nextAgreementDraft:{},form:{setError:(key,value)=>errors[key]=value},validationToast:value=>messages.push(value),setWizardError:value=>messages.push(value),structureUsesPlotArea:lib.load('@/lib/property-category').structureUsesPlotArea,normalizePurpose:lib.load('@/lib/property-purpose').normalizePurpose,validateNextAgreementDraft:lib.load('@/lib/next-agreement-draft').validateNextAgreementDraft,...extra});
+ const check=callback(owner,'validateOwnerStep',{adminIntake:false,selectedPropertyType:category,accountRole:'individual',addNextAgreementManually:false,nextAgreementDraft:{},form:{setError:(key,value)=>errors[key]=value},validationToast:value=>messages.push(value),setWizardError:value=>messages.push(value),structureUsesPlotArea:lib.load('@/lib/property-category').structureUsesPlotArea,normalizePurpose:lib.load('@/lib/property-purpose').normalizePurpose,validateNextAgreementDraft:lib.load('@/lib/next-agreement-draft').validateNextAgreementDraft,...extra});
  return {check,errors,messages};
 }
 test('owner validates only the current applicable step for all categories and purposes',()=>{
@@ -55,7 +55,7 @@ test('final submission routes invalid fields back and synchronous lock prevents 
  for(const [source,isOwner] of [[owner,true],[tenant,false]]){
   const lock={current:false},steps=[],calls=[];let release;
   const pending=new Promise(resolve=>release=resolve);
-  const context={wizardStep:6,submitLock:lock,busy:false,uploading:false,isUploading:false,isInternalUploading:false,wizardForm:{current:null},checkStep:()=>true,setWizardStep:step=>steps.push(step),nextStep:()=>{throw Error('unexpected Next')},form:{handleSubmit:handler=>handler},onSubmit:async()=>{calls.push('create');await pending;},submit:async()=>{calls.push('create');await pending;}};
+  const context={adminIntake:false,wizardStep:6,submitLock:lock,busy:false,uploading:false,isUploading:false,isInternalUploading:false,wizardForm:{current:null},checkStep:()=>true,setWizardStep:step=>steps.push(step),nextStep:()=>{throw Error('unexpected Next')},form:{handleSubmit:handler=>handler},onSubmit:async()=>{calls.push('create');await pending;},submit:async()=>{calls.push('create');await pending;}};
   const handler=callback(source,'submitWizard',context),event={preventDefault(){}};
   const first=handler(event);await handler(event);assert.equal(calls.length,1);release();await first;assert.equal(lock.current,false);
   context.checkStep=step=>step!==3;await callback(source,'submitWizard',context)(event);assert.deepEqual(steps,[3]);assert.equal(calls.length,1,isOwner?'owner':'tenant');

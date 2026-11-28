@@ -5,7 +5,7 @@ import {formatDisplayDate, formatDisplayMonth, formatDisplayDateTime} from '@/li
 import PendingConnections from "./PendingConnections";
 import hubStyles from "./PropertyHub.module.css";
 import { OwnerVerificationStatus } from "@/features/admin/OwnerVerification";
-import { useState } from "react";
+import { useState,type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useParams,useSearchParams, Link } from "@/lib/navigation";
@@ -31,6 +31,8 @@ export interface HubResponse {
   pipeline: ProductRecord[];
   truncated: boolean;nextCursor?:string|null;activityPages?:Record<string,string|null>;activityPageActive?:boolean;negotiationPages?:Record<string,string|null>;
 }
+export function AdminCreatePropertyAction({children,className}:{children:ReactNode;className?:string}){const {profileRole}=useAuth();return profileRole==='admin'?<Button asChild className={className}><Link to="/admin/add-property">Add Property</Link></Button>:<>{children}</>;}
+
 export function useProductHub(propertyId?: string, billingMonth?: string,cursor='') {
   const [params]=useSearchParams(),activityCollection=params.get('activityCollection')||'',activityCursor=params.get('activityCursor')||'',negotiationRole=params.get('negotiationRole')||'',negotiationCursor=params.get('negotiationCursor')||'';
   const { user, loading } = useAuth();

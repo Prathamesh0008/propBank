@@ -1,4 +1,11 @@
 "use client";
+import AdminPropertySections,{ADMIN_PROPERTY_SECTIONS,adminVisibleSections,adminPropertyFieldSection} from '@/features/admin/admin-property-sections';
+import RentScheduleEditor from '@/components/RentScheduleEditor';
+import {validateUnifiedRentSchedule,type RentScheduleRow} from '@/lib/rent-schedule';
+import AdminIntakeOwnerFields from '@/features/admin/AdminIntakeOwnerFields';
+import AdminIntakeDocuments,{type IntakeDocument} from '@/features/admin/AdminIntakeDocuments';
+import {adminOwnerContact,emptyAdminOwner,type AdminOwnerContact} from '@/lib/admin-property-intake';
+
 import {PropertyIntakeHeader,FurnishingReview,PropertyFormProgress,PropertyStepPanel,PropertyStepActions,PropertyFormReview,nativeStepError,focusStepError} from './PropertyFormSteps';
 import {ownerFieldStep,OWNER_STEPS} from './property-form-navigation';
 import StructuredAddressFields from '@/components/StructuredAddressFields';
@@ -33,7 +40,7 @@ import { ArrowLeft, Building2, Upload, X, Image as ImageIcon, CheckSquare } from
 import { useNavigate, useSearchParams } from "@/lib/navigation";
 import { auth } from "../../firebase";
 import { User as FirebaseUser } from "firebase/auth";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo,type ReactNode } from "react";
 import { API_BASE_URL } from "../../utils/config";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { FurnishedChecklistModal } from "./FurnishedChecklistModal";
@@ -69,6 +76,8 @@ const formSchema = z.object({
   tenantLastName: z.string().optional(),
   tenantEmail: z.string().email("Invalid email address").optional().or(z.literal("")),
   mobileNumber: z.string().optional(),
+  tenantAlternatePhone:z.string().optional(),
+  escalationPercentage:z.string().optional(),escalationAmount:z.string().optional(),rentSchedule:z.custom<RentScheduleRow[]>().optional(),
 
   // Pricing Details (conditional based on listing type)
   monthlyRent: z.string().optional(), // For rent
@@ -120,13 +129,18 @@ interface UserInfo {
   phoneNumber: string;
 }
 
-const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
+const AddPropertyForm = ({category,adminIntake=false,adminCategorySelector}:{category:PropertyCategory;adminIntake?:boolean;adminCategorySelector?:ReactNode}) => {
+  const [adminOwner,setAdminOwner]=useState<AdminOwnerContact>(emptyAdminOwner);
+  const [adminDocuments,setAdminDocuments]=useState<IntakeDocument[]>([]),[adminUploadError,setAdminUploadError]=useState('');
+  const adminSavedId=useRef('');
+  const [adminDocumentsBusy,setAdminDocumentsBusy]=useState(false);
+  const uploadAdminDocuments=async(propertyId:string)=>{setAdminDocumentsBusy(true);setAdminUploadError('');const documents=adminDocuments.map(d=>({...d}));try{for(const document of documents.filter(d=>!d.uploaded)){await uploadSupportingDocument(propertyId,document.file,document.type,document.key);document.uploaded=true;}setAdminDocuments(documents);return true;}catch{setAdminDocuments(documents);setAdminUploadError('Property saved and invitations staged. Retry only pending documents; the existing property will be reused.');return false;}finally{setAdminDocumentsBusy(false);}};
   const navigate = useNavigate();
   const [leaseFiles,setLeaseFiles]=useState<Partial<Record<"lease"|"proof",File>>>({});
   const evidenceKeys=useRef({lease:crypto.randomUUID(),proof:crypto.randomUUID()});
   const [searchParams] = useSearchParams();
   const selectedPropertyType = category;
-  const selectedRole = searchParams.get('as') || searchParams.get('role') || 'owner';
+  const selectedRole = adminIntake?'admin':searchParams.get('as') || searchParams.get('role') || 'owner';
   const adminOwnerUID = searchParams.get('adminOwnerUID') || '';
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [uploadedInternalImages, setUploadedInternalImages] = useState<string[]>([]);
@@ -314,7 +328,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
 
   const form = useForm<FormData>({
     resolver: (values,context,options)=>{
-      const applicableValues={...values,...(!['rent','sell_rent'].includes(values.listingType)||values.rentalStatus!=='rented'?{tenantEmail:''}:{}),...(accountRole!=='agent'?{agentOwnerEmail:''}:{})};
+      const applicableValues={...values,...(!(adminIntake&&values.rentalStatus==='rented'||['rent','sell_rent'].includes(values.listingType))||values.rentalStatus!=='rented'?{tenantEmail:''}:{}),...(accountRole!=='agent'?{agentOwnerEmail:''}:{})};
       // Absence matters: normalizePurpose treats an own preLeased key, even
       // undefined, as an explicit request to clear lease metadata.
       if(values.listingType!=='pre_leased')delete applicableValues.preLeased;
@@ -403,41 +417,47 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
 
   const [wizardStep,setWizardStep]=useState(1),[furthest,setFurthest]=useState(1),[wizardError,setWizardError]=useState('');
   const wizardForm=useRef<HTMLFormElement>(null),submitLock=useRef(false);
-  const goStep=(step:number)=>{setWizardError('');setWizardStep(step);setFurthest(previous=>Math.max(previous,step));};
+  const adminSections=adminVisibleSections(form.watch('rentalStatus')==='rented');
+  const stepTitles=useMemo(()=>adminIntake?adminSections.map(section=>ADMIN_PROPERTY_SECTIONS[section-1]):OWNER_STEPS,[adminIntake,adminSections]);
+  const stepNumber=adminIntake?adminSections.indexOf(wizardStep)+1:wizardStep;
+  const goStep=(step:number)=>{const next=adminIntake&&step===5&&form.getValues('rentalStatus')!=='rented'?(wizardStep<5?6:4):step;setWizardError('');setWizardStep(next);setFurthest(previous=>Math.max(previous,next));};
   const validateSchemaStep=(step:number)=>{
     const data=form.getValues(),result=formSchema.safeParse(data);form.clearErrors();
     if(result.success)return true;
-    const issues=result.error.issues.filter(issue=>ownerFieldStep(String(issue.path[0]))===step&&!(issue.path[0]==='tenantEmail'&&(!['rent','sell_rent'].includes(data.listingType)||data.rentalStatus!=='rented'))&&!(issue.path[0]==='preLeased'&&data.listingType!=='pre_leased')&&!(issue.path[0]==='agentOwnerEmail'&&accountRole!=='agent'));
+    const issues=result.error.issues.filter(issue=>(adminIntake?adminPropertyFieldSection(String(issue.path[0])):ownerFieldStep(String(issue.path[0])))===step&&!(issue.path[0]==='tenantEmail'&&(!(adminIntake&&data.rentalStatus==='rented'||['rent','sell_rent'].includes(data.listingType))||data.rentalStatus!=='rented'))&&!(issue.path[0]==='preLeased'&&data.listingType!=='pre_leased')&&!(issue.path[0]==='agentOwnerEmail'&&accountRole!=='agent'));
     for(const issue of issues)form.setError(issue.path.join('.') as Parameters<typeof form.setError>[0],{type:'manual',message:issue.message});
     if(issues.length){setWizardError(issues[0].message);return false;}return true;
   };
   const checkStep=(step:number)=>{
+    if(adminIntake&&step===4){try{adminOwnerContact(adminOwner);}catch(e){setWizardError(e instanceof Error?e.message:'Check owner details');return false;}}
     const native=wizardForm.current&&nativeStepError(wizardForm.current,step);
     if(native){setWizardError(native.message);return false;}
     if(!validateSchemaStep(step))return false;
     if(!validateOwnerStep(form.getValues(),step))return false;return true;
   };
   const nextStep=()=>{if(checkStep(wizardStep))goStep(wizardStep+1);else if(wizardForm.current)focusStepError(wizardForm.current,wizardStep);};
-  const submitWizard=async(event:React.FormEvent<HTMLFormElement>)=>{event.preventDefault();if(submitLock.current||isUploading||isInternalUploading)return;if(wizardStep!==6){nextStep();return;}for(let step=1;step<=5;step++){if(!checkStep(step)){setWizardStep(step);if(wizardForm.current)focusStepError(wizardForm.current,step);return;}}submitLock.current=true;try{await form.handleSubmit(onSubmit,errors=>{const name=Object.keys(errors)[0]||'propertyTitle',step=ownerFieldStep(name);goStep(step);setWizardError('Please review the highlighted fields before submitting.');if(wizardForm.current)focusStepError(wizardForm.current,step,name);})(event);}finally{submitLock.current=false;}};
+  const submitWizard=async(event:React.FormEvent<HTMLFormElement>)=>{event.preventDefault();if(submitLock.current||isUploading||isInternalUploading)return;if(wizardStep!==(adminIntake?8:6)){nextStep();return;}for(let step=1;step<(adminIntake?8:6);step++){if(!checkStep(step)){setWizardStep(step);if(wizardForm.current)focusStepError(wizardForm.current,step);return;}}submitLock.current=true;try{await form.handleSubmit(onSubmit,errors=>{const name=Object.keys(errors)[0]||'propertyTitle',step=adminIntake?adminPropertyFieldSection(name):ownerFieldStep(name);goStep(step);setWizardError('Please review the highlighted fields before submitting.');if(wizardForm.current)focusStepError(wizardForm.current,step,name);})(event);}finally{submitLock.current=false;}};
   const validationToast=(message:Parameters<typeof toast>[0])=>{setWizardError(String(message.description||message.title||'Check this section.'));toast(message);};
   const validateOwnerStep=(data:FormData,onlyStep?:number)=>{
-      if((!onlyStep||onlyStep===1)&&!data.structure?.trim()){
+      const checking=(field:string,legacy:number)=>!onlyStep||(adminIntake?adminPropertyFieldSection(field)===onlyStep:onlyStep===legacy);
+      if(adminIntake&&data.rentalStatus==='rented'&&checking('rentSchedule',4)&&data.rentSchedule?.length){const error=validateUnifiedRentSchedule(data.rentSchedule,data.agreementStartDate||'',data.agreementEndDate||'');if(error){setWizardError(error);return false;}}
+      if(checking('structure',1)&&!data.structure?.trim()){
         form.setError('structure',{type:'manual',message:'Select the property type.'});
         validationToast({title:'Missing property type',description:'Select the physical property type before continuing.',variant:'destructive'});
         return false;
       }
-      if((!onlyStep||onlyStep===1)&&selectedPropertyType==='residential'&&!structureUsesPlotArea(data.structure)&&!data.configuration?.trim()){
+      if(checking('configuration',1)&&selectedPropertyType==='residential'&&!structureUsesPlotArea(data.structure)&&!data.configuration?.trim()){
         form.setError('configuration',{type:'manual',message:'Select the residential layout.'});
         validationToast({title:'Missing residential layout',description:'Select the applicable BHK layout.',variant:'destructive'});
         return false;
       }
-      if((!onlyStep||onlyStep===4)&&['rent','sell_rent'].includes(data.listingType)&&addNextAgreementManually){const draftError=validateNextAgreementDraft(nextAgreementDraft,data.agreementEndDate||'');if(draftError){validationToast({title:'Check next agreement details',description:draftError,variant:'destructive'});return false;}}
+      if(checking('nextAgreementDraft',4)&&(adminIntake&&data.rentalStatus==='rented'||['rent','sell_rent'].includes(data.listingType))&&addNextAgreementManually){const draftError=validateNextAgreementDraft(nextAgreementDraft,data.agreementEndDate||'');if(draftError){validationToast({title:'Check next agreement details',description:draftError,variant:'destructive'});return false;}}
       // Validate pricing based on listing type
-      let purposeData;try{if(!onlyStep||onlyStep===2)purposeData=normalizePurpose(data);}catch(error){validationToast({title:'Check property purpose',description:error instanceof Error?error.message:'Invalid purpose details',variant:'destructive'});return false;}
-      const includesRent=['rent','sell_rent'].includes(data.listingType),includesSale=['sell','sell_rent'].includes(data.listingType);
+      let purposeData;try{if(checking('preLeased',2))purposeData=normalizePurpose(data);}catch(error){validationToast({title:'Check property purpose',description:error instanceof Error?error.message:'Invalid purpose details',variant:'destructive'});return false;}
+      const includesRent=(adminIntake&&data.rentalStatus==='rented'||['rent','sell_rent'].includes(data.listingType)),includesSale=['sell','sell_rent'].includes(data.listingType);
       const occupiedRental=includesRent && data.rentalStatus === "rented";
       const rentValue=occupiedRental?data.monthlyRent:data.expectedRent;
-      if ((!onlyStep||onlyStep===2) && includesRent && (!rentValue || rentValue.trim() === "" || !Number.isFinite(Number(rentValue)) || Number(rentValue)<=0)) {
+      if (checking('monthlyRent',2) && includesRent && (!rentValue || rentValue.trim() === "" || !Number.isFinite(Number(rentValue)) || Number(rentValue)<=0)) {
         const field=occupiedRental?'monthlyRent':'expectedRent';
         form.setError(field,{type:'manual',message:occupiedRental?'Enter the finalized monthly rent.':'Enter the asking monthly rent.'});
         validationToast({
@@ -447,13 +467,13 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
         });
         return false;
       }
-      if ((!onlyStep||onlyStep===2) && includesRent && (!data.securityDeposit || data.securityDeposit.trim() === "" || !Number.isFinite(Number(data.securityDeposit)) || Number(data.securityDeposit)<0)) {
+      if (checking('securityDeposit',2) && includesRent && (!data.securityDeposit || data.securityDeposit.trim() === "" || !Number.isFinite(Number(data.securityDeposit)) || Number(data.securityDeposit)<0)) {
         form.setError('securityDeposit',{type:'manual',message:occupiedRental?'Enter the finalized security deposit.':'Enter the expected security deposit.'});
         validationToast({title:'Missing Security Deposit',description:occupiedRental?'Enter the deposit agreed for the current tenancy.':'Enter the expected deposit for this rental listing.',variant:'destructive'});
         return false;
       }
 
-      if ((!onlyStep||onlyStep===2) && includesSale && (!data.sellingPrice || data.sellingPrice.trim() === "" || !Number.isFinite(Number(data.sellingPrice)) || Number(data.sellingPrice)<=0)) {
+      if (checking('sellingPrice',2) && includesSale && (!data.sellingPrice || data.sellingPrice.trim() === "" || !Number.isFinite(Number(data.sellingPrice)) || Number(data.sellingPrice)<=0)) {
         form.setError('sellingPrice',{type:'manual',message:'Enter a valid expected selling price.'});
         validationToast({
           title: "Missing Selling Price",
@@ -464,7 +484,7 @@ const AddPropertyForm = ({category}:{category:PropertyCategory}) => {
       }
 
       // Validate buyer details for sold properties
-      if ((!onlyStep||onlyStep===2) && includesSale && data.saleStatus === "sold") {
+      if (checking('buyerFirstName',2) && includesSale && data.saleStatus === "sold") {
         if (!data.buyerFirstName || data.buyerFirstName.trim() === "") {
           form.setError('buyerFirstName',{type:'manual',message:'Complete this required field.'});
           validationToast({
@@ -497,7 +517,7 @@ form.setError('buyerPhone',{type:'manual',message:'Complete this required field.
       }
 
       // Validate tenant details for rented properties
-      if ((!onlyStep||onlyStep===4) && includesRent && data.rentalStatus === "rented") {
+      if (checking('tenantFirstName',4) && includesRent && data.rentalStatus === "rented") {
         if (!data.tenantFirstName || data.tenantFirstName.trim() === "") {
 form.setError('tenantFirstName',{type:'manual',message:'Complete this required field.'});
           validationToast({
@@ -532,6 +552,8 @@ form.setError('mobileNumber',{type:'manual',message:'Complete this required fiel
           return false;
         }
 
+      }
+      if(checking('agreementPeriod',4)&&includesRent&&data.rentalStatus==='rented'){
         // Validate agreement details for rented properties
         if (!data.agreementPeriod || data.agreementPeriod.trim() === "") {
 form.setError('agreementPeriod',{type:'manual',message:'Complete this required field.'});
@@ -579,9 +601,9 @@ return true;
 };
   const onSubmit = async (data: FormData) => {
     try {
-      for(const step of [1,2,4]){if(!validateOwnerStep(data,step)){goStep(step);setWizardError('Please review the highlighted fields and validation message.');return;}}
+      for(const step of (adminIntake?[1,2,3,4,5,6,7]:[1,2,4])){if(!validateOwnerStep(data,step)){goStep(step);setWizardError('Please review the highlighted fields and validation message.');return;}}
       const purposeData=normalizePurpose(data);
-      const includesRent=['rent','sell_rent'].includes(data.listingType),includesSale=['sell','sell_rent'].includes(data.listingType);
+      const includesRent=(adminIntake&&data.rentalStatus==='rented'||['rent','sell_rent'].includes(data.listingType)),includesSale=['sell','sell_rent'].includes(data.listingType);
       // Get current user
       const currentUser = auth.currentUser;
       if (!currentUser) {
@@ -632,20 +654,24 @@ return true;
 
 
       // Send to backend API
-      const response = await apiFetch(`${API_BASE_URL}/properties`, {
+      const response = adminIntake&&adminSavedId.current?Response.json({success:true,property:{id:adminSavedId.current}}):await apiFetch(adminIntake?`${API_BASE_URL}/admin/properties`:`${API_BASE_URL}/properties`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(normalizePurpose({...propertyData,...(data.listingType==='pre_leased'?{preLeased:purposeData.preLeased,sellingPrice:data.sellingPrice}:{} )}))
+        body: JSON.stringify({...normalizePurpose({...propertyData,...(data.listingType==='pre_leased'?{preLeased:purposeData.preLeased,sellingPrice:data.sellingPrice}:{} )}),...(adminIntake?{adminOwner:adminOwnerContact(adminOwner),adminRental:Object.fromEntries(['rentalStatus','tenantFirstName','tenantLastName','tenantEmail','mobileNumber','tenantAlternatePhone','monthlyRent','securityDeposit','paymentDueDate','agreementPeriod','agreementStartDate','agreementEndDate','noticePeriod','lockInPeriod','escalationPercentage','escalationAmount','rentSchedule','maintenanceToBePaidBy'].filter(key=>key in data).map(key=>[key,(data as Record<string,unknown>)[key]]))}:{})})
       });
 
       const result = await readPropertyResponse(response);
 
       if (result.success) {
+        if(adminIntake){
+          adminSavedId.current=String(result.property?.id||'');
+          if(!await uploadAdminDocuments(adminSavedId.current))return;
+        }
         if(data.listingType==='pre_leased'){
           try{for(const kind of ['lease','proof'] as const){const file=leaseFiles[kind];if(file)await uploadSupportingDocument(String(result.property?.id||""),file,kind==='lease'?'rental_agreement':'rent_receipt',evidenceKeys.current[kind]);}}
-          catch(error){toast({title:'Property saved; evidence upload incomplete',description:'Open private Documents to retry the failed upload. No tenant records were created.',variant:'destructive'});navigate(`/attach-documents/${String(result.property?.id||"")}?supporting=1`);return;}
+          catch(error){toast({title:'Property saved; evidence upload incomplete',description:adminIntake?'Open private Documents to retry this upload against the saved property; invitations remain pending.':'Open private Documents to retry the failed upload. No tenant records were created.',variant:'destructive'});navigate(`/attach-documents/${String(result.property?.id||"")}?supporting=1`);return;}
         }
 
         const listingTypeText = data.listingType === "rent" ? "rental property" : data.listingType==='sell_rent'?'sale and rental property':"property for sale";
@@ -660,7 +686,7 @@ return true;
           title: `${data.propertyTitle} added successfully!`,
           description: data.listingType==='manage'?'Private management property registered. Raise a service request separately when needed.':result.property?.moderationStatus==='pending_review'?'Your listing was submitted for admin review and is not public yet.':`Your ${listingTypeText} has been saved.`,
         });
-        navigate("/manage-property");
+        navigate(adminIntake?"/admin?tab=properties":"/manage-property");
       } else {
         toast({
           title: "Error",
@@ -669,7 +695,7 @@ return true;
         });
       }
     } catch (error) {
-      if(error instanceof PropertySubmissionError&&error.fieldErrors.tenantEmail){goStep(4);form.setError('tenantEmail',{type:'server',message:error.fieldErrors.tenantEmail});if(wizardForm.current)focusStepError(wizardForm.current,4,'tenantEmail');}setWizardError(error instanceof Error?error.message:'Could not save property.');
+      if(error instanceof PropertySubmissionError&&error.fieldErrors.tenantEmail){goStep(adminIntake?5:4);form.setError('tenantEmail',{type:'server',message:error.fieldErrors.tenantEmail});if(wizardForm.current)focusStepError(wizardForm.current,adminIntake?5:4,'tenantEmail');}setWizardError(error instanceof Error?error.message:'Could not save property.');
       toast({
         title: "Error",
         description: error instanceof Error?error.message:"Failed to connect to server. Please try again.",
@@ -695,23 +721,7 @@ return true;
     }
   };
 
-  return (
-    <main className={`${styles.page} ${styles.compactPage}`}>
-      <>
-        <title>Add Property â€” Comprehensive Property Details</title>
-        <meta name="description" content="Add comprehensive property details including rental terms, tenant information, and agreement details." />
-        <link rel="canonical" href="/add-property" />
-      </>
-
-      <div className={styles.shell}>
-<PropertyIntakeHeader category={selectedPropertyType} context={selectedRole==='tenant'?'As a Tenant':'As an Owner'}>          <Button variant="ghost" onClick={() => navigate(`/select-property-type?as=${selectedRole}${adminOwnerUID?`&adminOwnerUID=${encodeURIComponent(adminOwnerUID)}`:''}`)} >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Property Type Selection
-          </Button></PropertyIntakeHeader>
-<Card className={styles.formPanel}>
-          <CardContent className="p-0">
-            <Form {...form}>
-              <form data-demo-autofill="off" ref={wizardForm} noValidate onSubmit={submitWizard} className={`${styles.formBody} space-y-4`}><PropertyFormProgress titles={OWNER_STEPS} step={wizardStep} furthest={furthest} busy={form.formState.isSubmitting||isUploading||isInternalUploading} onStep={goStep}/><PropertyStepPanel number={1} step={wizardStep}><ClientPropertyFields form={form} fixedCategory={selectedPropertyType} creation/><div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 border rounded-lg">
+  const intakePanels=<><PropertyStepPanel number={1} step={wizardStep}>{adminIntake&&<AdminIntakeOwnerFields value={adminOwner} onChange={setAdminOwner}/>}<ClientPropertyFields form={form} fixedCategory={selectedPropertyType} creation/><div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 border rounded-lg">
 {accountRole==='agent'&&<FormField control={form.control} name="agentOwnerEmail" render={({field})=><FormItem><FormLabel>Registered legal owner email</FormLabel><FormControl><Input type="email" placeholder="owner@example.com" {...field}/></FormControl><FormDescription>The owner remains legally separate and must have an active, verified PropBank account.</FormDescription><FormMessage/></FormItem>}/>}
 {selectedPropertyType === 'residential' && !structureUsesPlotArea(selectedStructure) && <FormField
                     control={form.control}
@@ -760,13 +770,13 @@ return true;
                       </FormItem>
                     )}
                   />
-{['rent','sell_rent'].includes(listingType||'') && (
+{(adminIntake||['rent','sell_rent'].includes(listingType||'')) && (
                     <FormField
                       control={form.control}
                       name="rentalStatus"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Rental Status</FormLabel>
+                          <FormLabel>{adminIntake?'Is this property currently rented out?':'Rental Status'}</FormLabel>
                           <Select onValueChange={field.onChange} defaultValue={field.value}>
                             <FormControl>
                               <SelectTrigger>
@@ -774,8 +784,8 @@ return true;
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="available">Available for Rent</SelectItem>
-                              <SelectItem value="rented">Already Rented Out</SelectItem>
+                              <SelectItem value="available">{adminIntake?'No':'Available for Rent'}</SelectItem>
+                              <SelectItem value="rented">{adminIntake?'Yes':'Already Rented Out'}</SelectItem>
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -806,12 +816,12 @@ return true;
                         </FormItem>
                       )}
                     />
-                  )}</div>{['rent','sell','sell_rent'].includes(listingType||'') && <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 border rounded-lg">
+                  )}</div>{(adminIntake&&form.watch('rentalStatus')==='rented'||['rent','sell','sell_rent'].includes(listingType||'')) && <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 border rounded-lg">
                   <div className="lg:col-span-2">
                     <h3 className="text-lg font-semibold">Rental & Sale Pricing</h3>
-                    <p className="text-sm text-muted-foreground">{['rent','sell_rent'].includes(listingType||'')&&form.watch('rentalStatus')==='rented'?'Record the finalized rental amounts and the separate sale asking price.':'Enter the asking price shown with this listing.'}</p>
+                    <p className="text-sm text-muted-foreground">{(adminIntake&&form.watch('rentalStatus')==='rented'||['rent','sell_rent'].includes(listingType||''))&&form.watch('rentalStatus')==='rented'?'Record the finalized rental amounts and the separate sale asking price.':'Enter the asking price shown with this listing.'}</p>
                   </div>
-                  {['rent','sell_rent'].includes(listingType||'')&&<>
+                  {(adminIntake&&form.watch('rentalStatus')==='rented'||['rent','sell_rent'].includes(listingType||''))&&<>
                     <FormField control={form.control} name={form.watch('rentalStatus')==='rented'?"monthlyRent":"expectedRent"} render={({field})=><FormItem><FormLabel>{form.watch('rentalStatus')==='rented'?'Finalized Monthly Rent':'Expected Monthly Rent'} (â‚¹) *</FormLabel><FormControl><Input placeholder="e.g., 25000" type="number" min="0" step="0.01" {...field}/></FormControl><AmountInWords amount={field.value}/><FormMessage/></FormItem>}/>
                     <FormField control={form.control} name="securityDeposit" render={({field})=><FormItem><FormLabel>{form.watch('rentalStatus')==='rented'?'Finalized Security Deposit':'Expected Security Deposit'} (â‚¹) *</FormLabel><FormControl><Input placeholder="e.g., 75000" type="number" min="0" step="0.01" {...field}/></FormControl><AmountInWords amount={field.value}/><FormMessage/></FormItem>}/>
                   </>}
@@ -981,7 +991,7 @@ return true;
                     />
                   )}
                 </div></PropertyStepPanel>
-<PropertyStepPanel number={4} step={wizardStep}>{['rent','sell_rent'].includes(listingType||'') && form.watch("rentalStatus") === "rented" && (
+<PropertyStepPanel number={4} step={wizardStep}>{adminIntake&&form.watch('rentalStatus')==='rented'&&<section className="space-y-4 rounded-lg border p-4"><h3>Rental schedule and escalation</h3>{(['escalationPercentage','escalationAmount'] as const).map(name=><FormField key={name} control={form.control} name={name} render={({field})=><FormItem><FormLabel>{name==='escalationPercentage'?'Rent escalation percentage':'Rent escalation fixed amount'}</FormLabel><FormControl><Input type="number" min="0" {...field}/></FormControl><FormMessage/></FormItem>}/>)}<RentScheduleEditor compact value={form.watch('rentSchedule')||[]} onChange={rows=>{form.setValue('rentSchedule',rows);if(rows[0])form.setValue('monthlyRent',rows[0].amount);}} start={form.watch('agreementStartDate')||''} end={form.watch('agreementEndDate')||''} rent={form.watch('monthlyRent')||''} percentage={form.watch('escalationPercentage')} fixed={form.watch('escalationAmount')}/></section>}{adminIntake&&form.watch('rentalStatus')==='rented'&&<FormField control={form.control} name="tenantAlternatePhone" render={({field})=><FormItem><FormLabel>Tenant alternate mobile (optional)</FormLabel><FormControl><Input type="tel" {...field} value={field.value||''}/></FormControl><FormMessage/></FormItem>}/>}{(adminIntake&&form.watch('rentalStatus')==='rented'||['rent','sell_rent'].includes(listingType||'')) && form.watch("rentalStatus") === "rented" && (
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-4 border rounded-lg">
                     <div className="lg:col-span-3">
                       <h3 className="text-lg font-semibold mb-4">Current Tenant Information</h3>
@@ -1216,7 +1226,7 @@ return true;
                     )}
                   />}
 
-                  {['rent','sell_rent'].includes(listingType||'') && (
+                  {(adminIntake&&form.watch('rentalStatus')==='rented'||['rent','sell_rent'].includes(listingType||'')) && (
                     <FormField
                       control={form.control}
                       name="maintenanceToBePaidBy"
@@ -1266,7 +1276,7 @@ return true;
                     />
                   )}
 
-                  {((['rent','sell_rent'].includes(listingType||'') && form.watch("rentalStatus") === "available") || ['sell','sell_rent'].includes(listingType||'')) && (
+                  {(((adminIntake&&form.watch('rentalStatus')==='rented'||['rent','sell_rent'].includes(listingType||'')) && form.watch("rentalStatus") === "available") || ['sell','sell_rent'].includes(listingType||'')) && (
                     <FormField
                       control={form.control}
                       name="possessionDate"
@@ -1282,7 +1292,7 @@ return true;
                     />
                   )}
                 </div></PropertyStepPanel>
-<PropertyStepPanel number={5} step={wizardStep}><div className="grid grid-cols-1 gap-6 p-4 border rounded-lg">
+<PropertyStepPanel number={5} step={wizardStep}>{adminIntake&&<AdminIntakeDocuments files={adminDocuments} onChange={setAdminDocuments}/>}<div className="grid grid-cols-1 gap-6 p-4 border rounded-lg">
                   <h3 className="text-lg font-semibold">Additional Information</h3>
 
                   <FormField
@@ -1433,7 +1443,25 @@ return true;
                     )}
                   />}
 
-                </div></PropertyStepPanel><PropertyStepPanel number={6} step={wizardStep}>{wizardStep===6&&<PropertyFormReview titles={OWNER_STEPS} onEdit={goStep} media={<><p>{uploadedImages.length} exterior and {uploadedInternalImages.length} internal image(s) prepared. {Object.values(leaseFiles).filter(Boolean).length} supporting file(s) selected locally; evidence uploads occur after creation. {activeFurnishedItems(furnishedChecklist,form.watch('unitCondition'),form.watch('structure')).length} furnishing item(s).</p><FurnishingReview items={furnishedChecklist.filter(item=>item.checked)}/><ul>{Object.entries(leaseFiles).flatMap(([kind,file])=>file?[<li key={kind}>{kind==='lease'?'Lease evidence':'Income evidence'}: {file.name} - selected locally</li>]:[])}</ul></>}/>}</PropertyStepPanel>{wizardError&&<p role="alert" className="text-destructive">{wizardError}</p>}<PropertyStepActions step={wizardStep} count={6} busy={form.formState.isSubmitting||isUploading||isInternalUploading} onBack={()=>goStep(wizardStep-1)} onNext={nextStep} submitLabel={form.formState.isSubmitting?'Saving...':'Submit Property'}/><Button type="button" variant="ghost" onClick={()=>navigate('/manage-property')}>Cancel</Button></form>
+                </div></PropertyStepPanel><PropertyStepPanel number={6} step={wizardStep}>{wizardStep===(adminIntake?8:6)&&<PropertyFormReview titles={stepTitles} sectionNumbers={adminIntake?adminSections:undefined} onEdit={goStep} media={<><p>{uploadedImages.length} exterior and {uploadedInternalImages.length} internal image(s) prepared. {Object.values(leaseFiles).filter(Boolean).length} supporting file(s) selected locally; evidence uploads occur after creation. {activeFurnishedItems(furnishedChecklist,form.watch('unitCondition'),form.watch('structure')).length} furnishing item(s).</p><FurnishingReview items={furnishedChecklist.filter(item=>item.checked)}/>{adminIntake&&<section aria-label="Approval recipients"><h3>Approval recipients</h3><p>Owner: {adminOwner.email}</p>{form.watch('rentalStatus')==='rented'&&<p>Tenant: {form.watch('tenantEmail')}</p>}<p>Recipients must verify their email and explicitly accept. Creating the property does not activate either relationship.</p></section>}{adminIntake&&<ul>{adminDocuments.map(item=><li key={item.key}>{item.file.name} - {item.uploaded?'Uploaded':'Selected locally; upload pending'}</li>)}</ul>}<ul>{Object.entries(leaseFiles).flatMap(([kind,file])=>file?[<li key={kind}>{kind==='lease'?'Lease evidence':'Income evidence'}: {file.name} - selected locally</li>]:[])}</ul></>}/>}</PropertyStepPanel></>;
+  if(adminIntake&&adminSavedId.current&&(adminUploadError||adminDocumentsBusy))return <section className="mx-auto my-8 max-w-3xl space-y-4 rounded-xl border bg-white p-6"><h1 className="font-serif text-2xl">Property saved - supporting documents pending</h1><p role="alert">{adminUploadError}</p><AdminIntakeDocuments files={adminDocuments} onChange={setAdminDocuments} disabled={adminDocumentsBusy}/><Button disabled={adminDocumentsBusy||form.formState.isSubmitting} onClick={async()=>{if(submitLock.current)return;submitLock.current=true;try{if(await uploadAdminDocuments(adminSavedId.current))navigate('/admin?tab=properties');}finally{submitLock.current=false;}}}>Retry pending document uploads</Button><Button variant="outline" onClick={()=>navigate('/admin?tab=properties')}>Return to Admin Portal</Button></section>;
+  return (
+    <main className={`${styles.page} ${styles.compactPage}`}>
+      <>
+        <title>Add Property â€” Comprehensive Property Details</title>
+        <meta name="description" content="Add comprehensive property details including rental terms, tenant information, and agreement details." />
+        <link rel="canonical" href="/add-property" />
+      </>
+
+      <div className={styles.shell}>
+<PropertyIntakeHeader category={selectedPropertyType} context={adminIntake?'Administrator - recipients must accept':selectedRole==='tenant'?'As a Tenant':'As an Owner'}>          <Button variant="ghost" onClick={() => navigate(adminIntake?'/admin':`/select-property-type?as=${selectedRole}${adminOwnerUID?`&adminOwnerUID=${encodeURIComponent(adminOwnerUID)}`:''}`)} >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Property Type Selection
+          </Button></PropertyIntakeHeader>
+<Card className={styles.formPanel}>
+          <CardContent className="p-0">
+            <Form {...form}>
+              <form data-demo-autofill="off" ref={wizardForm} noValidate onSubmit={submitWizard} className={`${styles.formBody} space-y-4`}>{adminUploadError&&<p role="alert">{adminUploadError}</p>}<PropertyFormProgress titles={stepTitles} step={stepNumber} furthest={adminIntake?adminSections.filter(section=>section<=furthest).length:furthest} busy={form.formState.isSubmitting||isUploading||isInternalUploading} onStep={position=>goStep(adminIntake?adminSections[position-1]:position)}/>{adminIntake?<AdminPropertySections panels={intakePanels} parts={{field:FormField,client:ClientPropertyFields,panel:PropertyStepPanel,owner:AdminIntakeOwnerFields,documents:AdminIntakeDocuments,address:StructuredAddressFields,purpose:PropertyPurposeFields,schedule:RentScheduleEditor,nextAgreement:NextAgreementFields,review:PropertyFormReview}} step={wizardStep} rented={form.watch('rentalStatus')==='rented'} categorySelector={adminCategorySelector}/>:intakePanels}{wizardError&&<p role="alert" className="text-destructive">{wizardError}</p>}<PropertyStepActions step={stepNumber} count={stepTitles.length} busy={form.formState.isSubmitting||isUploading||isInternalUploading} onBack={()=>goStep(adminIntake?adminSections[stepNumber-2]:wizardStep-1)} onNext={nextStep} submitLabel={form.formState.isSubmitting?'Saving...':adminIntake&&adminSavedId.current?'Retry Supporting Documents':adminIntake?'Create Property & Send Invitations':'Submit Property'}/><Button type="button" variant="ghost" onClick={()=>navigate('/manage-property')}>Cancel</Button></form>
             </Form>
           </CardContent>
         </Card>
